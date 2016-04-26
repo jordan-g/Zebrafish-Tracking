@@ -12,25 +12,15 @@ import pdb
 
 import os
 
-def track_image(image_path, shrink_factor,
-                offsets=None, crops=None,
-                tail_threshold_brightness=219, head_threshold_brightness=60,
-                min_eye_distance=20):
+def load_image(image_path, shrink_factor, offsets=None, crops=None):
     '''
-    Track zebrafish heading & tail motion in a whole image or multiple cropped areas of an image.
+    Load an image & return a list of cropped, shrunken subregions.
 
     image_path                : path to the image
     shrink_factor             : factor with which to reduce the resolution of the image before processing
     offsets                   : a list of (x, y) tuples that indicate top-left corners of cropped areas to track
     crops                     : a list of (w, h) tuples that indicate widths & heights of cropped areas to track
-    tail_threshold_brightness : brightness threshold to use to isolate the zebrafish tail (0 - 255)
-    head_threshold_brightness : brightness threshold to use to isolate the zebrafish head (0 - 255)
-    min_eye_distance          : minimum distance from the eyes at which to start the tail curve
     '''
-
-    # clear plots
-    plt.clf()
-
     # get image directory, name & extension
     image_dir, image_filename = os.path.split(image_path)
     image_name, image_ext = image_filename.split('.')
@@ -64,6 +54,10 @@ def track_image(image_path, shrink_factor,
     else:
         n_crops = 1
 
+    cropped_images = []
+    y_offsets = []
+    x_offsets = []
+
     for i in range(n_crops):
         # get offsets
         if offsets is not None:
@@ -72,6 +66,9 @@ def track_image(image_path, shrink_factor,
         else:
             x_offset = 0
             y_offset = 0
+
+        y_offsets.append(y_offset)
+        x_offsets.append(x_offset)
 
         # crop the image
         if crops is not None:
@@ -88,90 +85,120 @@ def track_image(image_path, shrink_factor,
             cropped_image = image
 
             print("Cropped, small image size is ({0}, {1}).".format(cropped_image.shape[0], cropped_image.shape[1]))
+        cropped_images.append(cropped_image)
 
-        # track head
-        try:
-            eye_centroids_x_coords, eye_centroids_y_coords, perpendicular_x_coords, perpendicular_y_coords = track_head(cropped_image, head_threshold_brightness)
-        except:
-            print("Error: Failed to track eyes.")
-            return
+    return image, cropped_images, y_offsets, x_offsets, image_dir, image_name
 
-        # track tail
+def track_image(image, tail_threshold_brightness=219,
+                head_threshold_brightness=60,
+                min_eye_distance=20):
+    '''
+    Track zebrafish heading & tail motion in an image.
+
+    tail_threshold_brightness : brightness threshold to use to isolate the zebrafish tail (0 - 255)
+    head_threshold_brightness : brightness threshold to use to isolate the zebrafish head (0 - 255)
+    min_eye_distance          : minimum distance from the eyes at which to start the tail curve
+    '''
+
+    # pdb.set_trace()
+
+    # track head
+    try:
+        eye_centroids_x_coords, eye_centroids_y_coords, perpendicular_x_coords, perpendicular_y_coords = track_head(image, head_threshold_brightness)
+    except:
+        print("Error: Failed to track eyes.")
+        return
+
+    # track tail
+    try:
+        tail_x_coords, tail_y_coords, spline = track_tail(image, tail_threshold_brightness, eye_centroids_x_coords, eye_centroids_y_coords, min_eye_distance)
+    except:
+        print("Error: Failed to track tail.")
+        return
+
+    return tail_y_coords, tail_x_coords, spline[1], spline[0], eye_centroids_y_coords, eye_centroids_x_coords, perpendicular_y_coords, perpendicular_x_coords
+
+def track_and_save_image(image_path, shrink_factor,
+                offsets=None, crops=None,
+                tail_threshold_brightness=200, head_threshold_brightness=80,
+                min_eye_distance=20):
+
+    # clear plots
+    plt.clf()
+
+    original_image, cropped_images, y_offsets, x_offsets, image_dir, image_name = load_image(image_path, shrink_factor, offsets, crops)
+
+    if crops is not None:
+        n_crops = len(crops)
+    else:
+        n_crops = 1
+
+    for n in range(n_crops):
+        cropped_image = cropped_images[n]
+        y_offset = y_offsets[n]
+        x_offset = x_offsets[n]
+
         try:
-            tail_x_coords, tail_y_coords, spline = track_tail(cropped_image, tail_threshold_brightness, eye_centroids_x_coords, eye_centroids_y_coords, min_eye_distance)
+            tail_y_coords, tail_x_coords, spline_y_coords, spline_x_coords, eye_centroids_y_coords, eye_centroids_x_coords, perpendicular_y_coords, perpendicular_x_coords = track_image(cropped_image, tail_threshold_brightness, head_threshold_brightness, min_eye_distance)
         except:
-            print("Error: Failed to track tail.")
+            print("Error: Could not track image.")
             return
 
         # plot result
-        if n_crops == 1:
-            # plot tail curve
-            plt.plot(spline[1], spline[0], lw=1, c='red')
-
-            # plot tail points
-            # plt.scatter(tail_x_coords, tail_y_coords, s=5, c='blue')
-
-            # plot eye centroids
-            plt.scatter(eye_centroids_x_coords, eye_centroids_y_coords, s=2, c='orange')
-
-            # join eye centroids
-            plt.plot(eye_centroids_x_coords, eye_centroids_y_coords, lw=1, c='orange')
-
-            # plot perpendicular line
-            plt.plot(perpendicular_x_coords, perpendicular_y_coords, lw=1, c='green')
-
-            # plot the cropped image
-            plt.imshow(cropped_image, 'gray', interpolation='none')
-
-            # set plot parameters
-            plt.xlim(0, cropped_image.shape[1])
-            plt.ylim(cropped_image.shape[0], 0)
-            plt.xticks([])
-            plt.yticks([])
-            plt.tight_layout()
-            fig = plt.gcf()
-            fig.set_dpi(100)
-            fig.set_size_inches(cropped_image.shape[1]/30.0, cropped_image.shape[0]/30.0)
-            plt.axis('off')
-        else:
+        if n_crops != 1:
             # convert coordinates of cropped image to full image coordinates
             tail_x_coords = tail_x_coords + x_offset
             tail_y_coords = tail_y_coords + y_offset
-            spline[0] += y_offset
-            spline[1] += x_offset
+            spline_y_coords += x_offset
+            spline_x_coords += y_offset
             eye_centroids_x_coords = [ x + x_offset for x in eye_centroids_x_coords]
             eye_centroids_y_coords = [ y + y_offset for y in eye_centroids_y_coords]
             perpendicular_x_coords = [ x + x_offset for x in perpendicular_x_coords]
             perpendicular_y_coords = [ y + y_offset for y in perpendicular_y_coords]
 
-            # plot tail curve
-            plt.plot(spline[1], spline[0], lw=1, c='red')
+        # plot tail curve
+        plt.plot(spline_y_coords, spline_x_coords, lw=1, c='red')
 
-            # plot tail points
-            # plt.scatter(tail_x_coords, tail_y_coords, s=0.5, c='blue')
+        # plot tail points
+        # plt.scatter(tail_x_coords, tail_y_coords, s=5, c='blue')
 
-            # plot eye centroids
-            plt.scatter(eye_centroids_x_coords, eye_centroids_y_coords, s=1.0, c='orange')
+        # plot eye centroids
+        plt.scatter(eye_centroids_x_coords, eye_centroids_y_coords, s=2, c='orange')
 
-            # join eye centroids
-            plt.plot(eye_centroids_x_coords, eye_centroids_y_coords, lw=0.5, c='orange')
+        # join eye centroids
+        plt.plot(eye_centroids_x_coords, eye_centroids_y_coords, lw=1, c='orange')
 
-            # plot perpendicular line
-            plt.plot(perpendicular_x_coords, perpendicular_y_coords, lw=0.5, c='green')
+        # plot perpendicular line
+        plt.plot(perpendicular_x_coords, perpendicular_y_coords, lw=1, c='green')
 
-            # plot the original image
-            plt.imshow(image, 'gray', interpolation='none')
+    if n_crops == 1:
+        # plot the original image
+        plt.imshow(cropped_image, 'gray', interpolation='none')
 
-            # set plot parameters
-            plt.xlim(0, image.shape[1])
-            plt.ylim(image.shape[0], 0)
-            plt.xticks([])
-            plt.yticks([])
-            plt.tight_layout()
-            fig = plt.gcf()
-            fig.set_dpi(100)
-            fig.set_size_inches(image.shape[1]/30.0, image.shape[0]/30.0)
-            plt.axis('off')
+        # set plot parameters
+        plt.xlim(0, cropped_image.shape[1])
+        plt.ylim(cropped_image.shape[0], 0)
+        plt.xticks([])
+        plt.yticks([])
+        plt.tight_layout()
+        fig = plt.gcf()
+        fig.set_dpi(100)
+        fig.set_size_inches(cropped_image.shape[1]/30.0, cropped_image.shape[0]/30.0)
+        plt.axis('off')
+    else:
+        # plot the original image
+        plt.imshow(image, 'gray', interpolation='none')
+
+        # set plot parameters
+        plt.xlim(0, image.shape[1])
+        plt.ylim(image.shape[0], 0)
+        plt.xticks([])
+        plt.yticks([])
+        plt.tight_layout()
+        fig = plt.gcf()
+        fig.set_dpi(100)
+        fig.set_size_inches(image.shape[1]/30.0, image.shape[0]/30.0)
+        plt.axis('off')
 
     # create new directory to save tracked image
     if not os.path.exists(image_dir + "/tracked"):
@@ -251,7 +278,7 @@ def track_tail(image, tail_threshold_brightness, eye_x_coords, eye_y_coords, min
 
     # get tail skeleton matrix
     skeleton_matrix = bwmorph_thin(tail_threshold, n_iter=np.inf)
-    
+
     # get an ordered list of coordinates of the tail, from one end to the other
     try:
         tail_y_coords, tail_x_coords = get_ordered_points(skeleton_matrix, eye_y_coords, eye_x_coords)
@@ -337,7 +364,7 @@ def get_ordered_points(matrix, eye_y_coords, eye_x_coords):
 
         # get neighborhood around the current point
         neighborhood = padded_matrix[np.maximum(0, y):np.minimum(padded_matrix.shape[0], y+2*r+1), np.maximum(0, x):np.minimum(padded_matrix.shape[1], x+2*r+1)]
-        
+
         # get coordinates of nonzero elements in the neighborhood
         nonzero_points_y, nonzero_points_x = np.nonzero(neighborhood)
 
