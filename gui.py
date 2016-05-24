@@ -518,21 +518,15 @@ class ParamWindow(QtGui.QMainWindow):
 
     def open_video(self, path=""):
         if path == "":
-            self.path = str(QtGui.QFileDialog.getOpenFileName(self, 'Open video', '', 'Videos (*.mov *.tif *.mp4)'))
+            self.path = str(QtGui.QFileDialog.getOpenFileName(self, 'Open video', '', 'Videos (*.mov *.tif *.mp4 *.avi)'))
         else:
             self.path = path
 
         if self.path != "":
-            self.frames = tt.load_video(self.path)
+            self.frames = tt.load_video(self.path, n_frames=100)
 
             if self.frames != None:
                 self.n_frames = len(self.frames)
-
-                if len(self.frames) >= 100:
-                    f = lambda m, n: [i*n//m + n//(2*m) for i in range(m)]
-                    self.frames = [self.frames[i] for i in f(100, self.n_frames)]
-                    self.n_frames = 100
-                print(self.n_frames, len(self.frames))
 
                 self.folder_opeend = False
                 self.video_opened  = True
@@ -745,7 +739,7 @@ class ParamWindow(QtGui.QMainWindow):
 
         t = threading.Thread(target=tt.track_video, args=(self.path, self.save_path, self.crop, self.offset, self.shrink_factor,
                             self.head_threshold, self.tail_threshold, self.min_eye_distance*self.shrink_factor,
-                            self.eye_1_index, self.eye_2_index, self.track_head, self.track_tail))
+                            self.eye_1_index, self.eye_2_index, self.track_head, self.track_tail, self.param_controls['invert_image'].isChecked(), os.path.dirname(self.save_path)))
 
         t.start()
 
