@@ -21,41 +21,55 @@ import matplotlib.pyplot as plt
 
 gray_color_table = [QtGui.qRgb(i, i, i) for i in range(256)]
 
-default_params = {'shrink_factor': 1.0,
-                  'offset': None,
-                  'crop': None,
-                  'tail_threshold': 200,
-                  'head_threshold': 50,
-                  'invert': False,
-                  'video_opened': False,
-                  'folder_opened': False,
-                  'image_opened': False,
-                  'min_eye_distance': 20,
-                  'eye_1_index': 0,
-                  'eye_2_index': 1,
-                  'track_head_bool': True,
-                  'track_tail_bool': True,
-                  'show_head_threshold': False,
-                  'show_tail_threshold': False,
-                  'last_path': "",
+default_params = {'shrink_factor': 1.0,         # factor by which to shrink the original frame
+                  'offset': None,               # crop offset
+                  'crop': None,                 # crop size
+                  'tail_threshold': 200,        # pixel brightness to use for thresholding to find the tail (0-255)
+                  'head_threshold': 50,         # pixel brightness to use for thresholding to find the eyes (0-255)
+                  'invert': False,              # invert the frame
+                  'video_opened': False,        # whether a video is opened
+                  'folder_opened': False,       # whether a folder is opened
+                  'image_opened': False,        # whether an image is opened
+                  'min_eye_distance': 20,       # min. distance between the eyes and the tail
+                  'eye_1_index': 0,             # index of first eye
+                  'eye_2_index': 1,             # index of second eye
+                  'track_head_bool': True,      # track head/eyes
+                  'track_tail_bool': True,      # track tail
+                  'show_head_threshold': False, # show head threshold in preview window
+                  'show_tail_threshold': False, # show tail threshold in preview window
+                  'last_path': "",              # path to last opened image/folder/video
+                  'save_video': True,           # whether to make a video with tracking overlaid
+                  'new_video_fps': 30,          # fps for the generated video
                  }
 
 class PlotQLabel(QtGui.QLabel):
+    '''
+    QLabel subclass used to show a preview image.
+    '''
+    def __init__(self):
+        QtGui.QLabel.__init__(self)
+
+        self.scale_factor = None
+
     def mousePressEvent(self, event):
-        self.y_start = int(event.y()/self.scale_factor)
-        self.x_start = int(event.x()/self.scale_factor)
+        if self.scale_factor:
+            self.y_start = int(event.y()/self.scale_factor)
+            self.x_start = int(event.x()/self.scale_factor)
 
     def mouseMoveEvent(self, event):
-        self.y_end = int(event.y()/self.scale_factor)
-        self.x_end = int(event.x()/self.scale_factor)
+        if self.scale_factor:
+            self.y_end = int(event.y()/self.scale_factor)
+            self.x_end = int(event.x()/self.scale_factor)
 
-        self.plot_window.draw_crop_selection(self.y_start, self.y_end, self.x_start, self.x_end)
+            self.plot_window.draw_crop_selection(self.y_start, self.y_end, self.x_start, self.x_end)
 
     def mouseReleaseEvent(self, event):
-        self.y_end = int(event.y()/self.scale_factor)
-        self.x_end = int(event.x()/self.scale_factor)
+        if self.scale_factor:
+            self.y_end = int(event.y()/self.scale_factor)
+            self.x_end = int(event.x()/self.scale_factor)
 
-        self.plot_window.crop_selection(self.y_start, self.y_end, self.x_start, self.x_end)
+            if self.y_end != self.y_start and self.x_end != self.x_start:
+                self.plot_window.crop_selection(self.y_start, self.y_end, self.x_start, self.x_end)
 
     def set_plot_window(self, plot_window):
         self.plot_window = plot_window
@@ -347,9 +361,11 @@ class ParamWindow(QtGui.QMainWindow):
         self.add_slider('shrink_factor', 'Shrink factor:', 1, 10, int(10*self.shrink_factor))
         self.add_slider('eye_1_index', 'Index of eye 1:', 0, 5, self.eye_1_index)
         self.add_slider('eye_2_index', 'Index of eye 2:', 0, 5, self.eye_2_index)
-        self.add_textbox('min_eye_distance', 'Minimum distance b/w eye & tail:', self.min_eye_distance)
+        self.add_textbox('min_eye_distance', 'Head/tail min. dist.:', self.min_eye_distance)
         self.add_textbox('head_threshold', 'Head threshold:', self.head_threshold)
         self.add_textbox('tail_threshold', 'Tail threshold:', self.tail_threshold)
+        self.add_checkbox('save_video', "Save video", self.toggle_save_video, self.save_video)
+        self.add_textbox('new_video_fps', 'Saved Video FPS:', self.new_video_fps)
 
         self.layout.addLayout(self.form_layout)
 
@@ -421,6 +437,25 @@ class ParamWindow(QtGui.QMainWindow):
             # load experiments
             with open(self.params_file, "r") as input_file:
                 self.params = json.load(input_file)
+
+            self.shrink_factor         = self.params['shrink_factor']
+            self.offset                = self.params['offset']
+            self.crop                  = self.params['crop']
+            self.tail_threshold        = self.params['tail_threshold']
+            self.head_threshold        = self.params['head_threshold']
+            self.invert                = self.params['invert']
+            self.min_eye_distance      = self.params['min_eye_distance']
+            self.eye_1_index           = self.params['eye_1_index']
+            self.eye_2_index           = self.params['eye_2_index']
+            self.track_head_bool       = self.params['track_head_bool']
+            self.track_tail_bool       = self.params['track_tail_bool']
+            self.show_head_threshold   = self.params['show_head_threshold']
+            self.show_tail_threshold   = self.params['show_tail_threshold']
+            self.video_opened          = self.params['video_opened']
+            self.folder_opened         = self.params['folder_opened']
+            self.image_opened          = self.params['image_opened']
+            self.save_video            = self.params['save_video']
+            self.new_video_fps         = self.params['new_video_fps']
         except:
             # if none exist, create & save a default experiment
             self.params = default_params
@@ -429,22 +464,24 @@ class ParamWindow(QtGui.QMainWindow):
         if self.params['last_path'] == "":
             self.params = default_params
 
-        self.shrink_factor       = self.params['shrink_factor']
-        self.offset              = self.params['offset']
-        self.crop                = self.params['crop']
-        self.tail_threshold      = self.params['tail_threshold']
-        self.head_threshold      = self.params['head_threshold']
-        self.invert              = self.params['invert']
-        self.min_eye_distance    = self.params['min_eye_distance']
-        self.eye_1_index         = self.params['eye_1_index']
-        self.eye_2_index         = self.params['eye_2_index']
-        self.track_head_bool     = self.params['track_head_bool']
-        self.track_tail_bool     = self.params['track_tail_bool']
-        self.show_head_threshold = self.params['show_head_threshold']
-        self.show_tail_threshold = self.params['show_tail_threshold']
-        self.video_opened        = self.params['video_opened']
-        self.folder_opened       = self.params['folder_opened']
-        self.image_opened        = self.params['image_opened']
+        self.shrink_factor         = self.params['shrink_factor']
+        self.offset                = self.params['offset']
+        self.crop                  = self.params['crop']
+        self.tail_threshold        = self.params['tail_threshold']
+        self.head_threshold        = self.params['head_threshold']
+        self.invert                = self.params['invert']
+        self.min_eye_distance      = self.params['min_eye_distance']
+        self.eye_1_index           = self.params['eye_1_index']
+        self.eye_2_index           = self.params['eye_2_index']
+        self.track_head_bool       = self.params['track_head_bool']
+        self.track_tail_bool       = self.params['track_tail_bool']
+        self.show_head_threshold   = self.params['show_head_threshold']
+        self.show_tail_threshold   = self.params['show_tail_threshold']
+        self.video_opened          = self.params['video_opened']
+        self.folder_opened         = self.params['folder_opened']
+        self.image_opened          = self.params['image_opened']
+        self.save_video            = self.params['save_video']
+        self.new_video_fps         = self.params['new_video_fps']
 
     def open_last_file(self):
         try:
@@ -480,7 +517,7 @@ class ParamWindow(QtGui.QMainWindow):
         slider.setMinimum(minimum)
         slider.setMaximum(maximum)
         slider.setValue(value)
-        slider.setMinimumWidth(200)
+        slider.setMinimumWidth(250)
 
         slider.valueChanged.connect(self.save_params)
         self.form_layout.addRow(description, slider)
@@ -621,6 +658,12 @@ class ParamWindow(QtGui.QMainWindow):
         self.invert_image()
         self.reshape_image()
 
+    def toggle_save_video(self, checkbox):
+        if checkbox.isChecked():
+            self.save_video = True
+        else:
+            self.save_video = False
+
     def toggle_threshold_image(self, checkbox):
         if self.head_threshold_image != None:
             if checkbox.isChecked():
@@ -681,23 +724,25 @@ class ParamWindow(QtGui.QMainWindow):
             self.tail_threshold = new_tail_threshold
             generate_new_image = True
 
-        self.params['shrink_factor']       = self.shrink_factor
-        self.params['offset']              = self.offset
-        self.params['crop']                = self.crop
-        self.params['tail_threshold']      = self.tail_threshold
-        self.params['head_threshold']      = self.head_threshold
-        self.params['min_eye_distance']    = self.min_eye_distance
-        self.params['eye_1_index']         = self.eye_1_index
-        self.params['eye_2_index']         = self.eye_2_index
-        self.params['track_head_bool']     = self.track_head_bool
-        self.params['track_tail_bool']     = self.track_tail_bool
-        self.params['show_head_threshold'] = self.show_head_threshold
-        self.params['show_tail_threshold'] = self.show_tail_threshold
-        self.params['video_opened']        = self.video_opened
-        self.params['folder_opened']       = self.folder_opened
-        self.params['image_opened']        = self.image_opened
-        self.params['invert']              = self.invert
-        self.params['last_path']           = self.path
+        self.params['shrink_factor']         = self.shrink_factor
+        self.params['offset']                = self.offset
+        self.params['crop']                  = self.crop
+        self.params['tail_threshold']        = self.tail_threshold
+        self.params['head_threshold']        = self.head_threshold
+        self.params['min_eye_distance']      = self.min_eye_distance
+        self.params['eye_1_index']           = self.eye_1_index
+        self.params['eye_2_index']           = self.eye_2_index
+        self.params['track_head_bool']       = self.track_head_bool
+        self.params['track_tail_bool']       = self.track_tail_bool
+        self.params['show_head_threshold']   = self.show_head_threshold
+        self.params['show_tail_threshold']   = self.show_tail_threshold
+        self.params['video_opened']          = self.video_opened
+        self.params['folder_opened']         = self.folder_opened
+        self.params['image_opened']          = self.image_opened
+        self.params['invert']                = self.invert
+        self.params['last_path']             = self.path
+        self.params['save_video']            = self.save_video
+        self.params['new_video_fps']         = self.new_video_fps
 
         self.save_params_file()
 
@@ -773,7 +818,9 @@ class ParamWindow(QtGui.QMainWindow):
                         'head_threshold': self.head_threshold,
                         'tail_threshold': self.tail_threshold,
                         'track_head_bool': self.track_head_bool,
-                        'track_tail_bool': self.track_tail_bool
+                        'track_tail_bool': self.track_tail_bool,
+                        'save_video': self.save_video,
+                        'new_video_fps': self.new_video_fps
                       }
 
         t = threading.Thread(target=tt.track_image, args=(self.path, self.save_path), kwargs=kwargs_dict)
@@ -793,7 +840,9 @@ class ParamWindow(QtGui.QMainWindow):
                         'head_threshold': self.head_threshold,
                         'tail_threshold': self.tail_threshold,
                         'track_head_bool': self.track_head_bool,
-                        'track_tail_bool': self.track_tail_bool
+                        'track_tail_bool': self.track_tail_bool,
+                        'save_video': self.save_video,
+                        'new_video_fps': self.new_video_fps
                       }
 
         t = threading.Thread(target=tt.track_folder, args=(self.path, self.save_path), kwargs=kwargs_dict)
@@ -814,7 +863,9 @@ class ParamWindow(QtGui.QMainWindow):
                         'head_threshold': self.head_threshold,
                         'tail_threshold': self.tail_threshold,
                         'track_head_bool': self.track_head_bool,
-                        'track_tail_bool': self.track_tail_bool
+                        'track_tail_bool': self.track_tail_bool,
+                        'save_video': self.save_video,
+                        'new_video_fps': self.new_video_fps
                       }
 
         t = threading.Thread(target=tt.track_video, args=(self.path, self.save_path), kwargs=kwargs_dict)
@@ -822,33 +873,32 @@ class ParamWindow(QtGui.QMainWindow):
         t.start()
 
     def update_crop_from_selection(self, y_start, y_end, x_start, x_end):
-        if abs(y_end - y_start) != 0 and abs(x_end - x_start) != 0:
-            y_start = round(y_start/self.shrink_factor)
-            y_end   = round(y_end/self.shrink_factor)
-            x_start = round(x_start/self.shrink_factor)
-            x_end   = round(x_end/self.shrink_factor)
-            end_add = round(1*self.shrink_factor)
+        y_start = round(y_start/self.shrink_factor)
+        y_end   = round(y_end/self.shrink_factor)
+        x_start = round(x_start/self.shrink_factor)
+        x_end   = round(x_end/self.shrink_factor)
+        end_add = round(1*self.shrink_factor)
 
-            self.crop = (abs(y_end - y_start)+end_add, abs(x_end - x_start)+end_add)
-            self.offset = (self.offset[0] + min(y_start, y_end), self.offset[1] + min(x_start, x_end))
+        self.crop = (abs(y_end - y_start)+end_add, abs(x_end - x_start)+end_add)
+        self.offset = (self.offset[0] + min(y_start, y_end), self.offset[1] + min(x_start, x_end))
 
-            self.param_controls['crop_y'].blockSignals(True)
-            self.param_controls['crop_x'].blockSignals(True)
-            self.param_controls['offset_y'].blockSignals(True)
-            self.param_controls['offset_x'].blockSignals(True)
+        self.param_controls['crop_y'].blockSignals(True)
+        self.param_controls['crop_x'].blockSignals(True)
+        self.param_controls['offset_y'].blockSignals(True)
+        self.param_controls['offset_x'].blockSignals(True)
 
-            self.param_controls['crop_y'].setValue(round(500.0*self.crop[0]/self.image.shape[0]))
-            self.param_controls['crop_x'].setValue(round(500.0*self.crop[1]/self.image.shape[1]))
+        self.param_controls['crop_y'].setValue(round(500.0*self.crop[0]/self.image.shape[0]))
+        self.param_controls['crop_x'].setValue(round(500.0*self.crop[1]/self.image.shape[1]))
 
-            self.param_controls['offset_y'].setValue(round(500.0*self.offset[0]/self.image.shape[0]))
-            self.param_controls['offset_x'].setValue(round(500.0*self.offset[1]/self.image.shape[1]))
+        self.param_controls['offset_y'].setValue(round(500.0*self.offset[0]/self.image.shape[0]))
+        self.param_controls['offset_x'].setValue(round(500.0*self.offset[1]/self.image.shape[1]))
 
-            self.param_controls['crop_y'].blockSignals(False)
-            self.param_controls['crop_x'].blockSignals(False)
-            self.param_controls['offset_y'].blockSignals(False)
-            self.param_controls['offset_x'].blockSignals(False)
+        self.param_controls['crop_y'].blockSignals(False)
+        self.param_controls['crop_x'].blockSignals(False)
+        self.param_controls['offset_y'].blockSignals(False)
+        self.param_controls['offset_x'].blockSignals(False)
 
-            self.reshape_image(new_image=True)
+        self.reshape_image(new_image=True)
 
     def reset_crop(self):
         self.crop = (self.image.shape[0], self.image.shape[1])

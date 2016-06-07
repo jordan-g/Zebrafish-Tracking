@@ -14,6 +14,7 @@ import analysis as an
 
 import pdb
 
+# initialize tracking variables
 last_eye_y_coords = None
 last_eye_x_coords = None
 head_threshold = 0
