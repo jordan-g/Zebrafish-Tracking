@@ -19,6 +19,8 @@ from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
+if __name__ == "__main__":
+    import multiprocessing as mp; mp.set_start_method('forkserver')
 
 gray_color_table = [QtGui.qRgb(i, i, i) for i in range(256)]
 
@@ -288,17 +290,13 @@ class PreviewWindow(QtGui.QMainWindow):
     def plot_tracked_image(self, image, fish_crop, tracking_list):
         self.tracking_list = tracking_list
 
-        tail_y_coords   = self.tracking_list[0]
-        tail_x_coords   = self.tracking_list[1]
-        spline_y_coords = self.tracking_list[2]
-        spline_x_coords = self.tracking_list[3]
-        eye_y_coords    = self.tracking_list[4]
-        eye_x_coords    = self.tracking_list[5]
-        perp_y_coords   = self.tracking_list[6]
-        perp_x_coords   = self.tracking_list[7]
+        tail_coords   = self.tracking_list[0]
+        spline_coords = self.tracking_list[1]
+        eye_coords    = self.tracking_list[2]
+        perp_coords   = self.tracking_list[3]
 
-        image = tt.plot_image(image, tail_y_coords, tail_x_coords, spline_y_coords, spline_x_coords,
-                                eye_y_coords, eye_x_coords, perp_y_coords, perp_x_coords)
+        image = tt.add_tracking_to_image(image, tail_coords, spline_coords,
+                                eye_coords, perp_coords)
 
         self.orig_image = np.copy(image)
 
@@ -509,7 +507,7 @@ class ParamWindow(QtGui.QMainWindow):
         hbox2.addStretch(1)
         hbox3 = QtGui.QHBoxLayout()
         hbox3.setSpacing(5)
-        hbox3.setMargin(0)
+        # hbox3.setMargin(0)
         hbox3.addStretch(1)
 
         # add buttons
@@ -712,6 +710,8 @@ class ParamWindow(QtGui.QMainWindow):
         else:
             self.params['last_path'] = path
 
+        print(self.params['last_path'])
+
         if self.params['last_path'] not in ("", None):
             self.params['type_opened'] = 'image'
 
@@ -728,11 +728,13 @@ class ParamWindow(QtGui.QMainWindow):
         if path == "":
             # ask the user to select a video
             self.params['last_path'] = str(QtGui.QFileDialog.getOpenFileName(self, 'Open video', '', 'Videos (*.mov *.tif *.mp4 *.avi)'))
+
+            print(self.params['last_path'])
         else:
             self.params['last_path'] = path
 
         if self.params['last_path'] not in ("", None):
-            self.frames = tt.load_video(self.params['last_path'], n_frames=max_n_frames)
+            self.frames = tt.load_frames_from_video(self.params['last_path'], n_frames=max_n_frames)
 
             if self.frames == None:
                 print("Could not load frames.")
@@ -818,9 +820,9 @@ class ParamWindow(QtGui.QMainWindow):
         if self.params['type_opened'] == 'video':
             self.current_frame = self.frames[n]
         elif self.params['type_opened'] == 'folder':
-            self.current_frame = tt.load_image(self.image_paths[n])
+            self.current_frame = tt.load_frames_from_image(self.image_paths[n])
         elif self.params['type_opened'] == 'image':
-            self.current_frame = tt.load_image(self.params['last_path'])
+            self.current_frame = tt.load_frames_from_image(self.params['last_path'])
 
         # stop selecting eyes
         if self.preview_window.selecting_eyes:
@@ -848,6 +850,8 @@ class ParamWindow(QtGui.QMainWindow):
         if self.current_frame != None:
             if self.params['shrink_factor'] != None:
                 self.shrunken_frame = tt.shrink_image(self.current_frame, self.params['shrink_factor'])
+            else:
+                self.shrunken_frame = self.current_frame
 
             # crop the image
             if self.params['crop'] is not None and self.params['offset'] is not None:
@@ -855,6 +859,10 @@ class ParamWindow(QtGui.QMainWindow):
                 offset = (round(self.params['offset'][0]*self.params['shrink_factor']), round(self.params['offset'][1]*self.params['shrink_factor']))
 
                 self.cropped_frame = tt.crop_image(self.shrunken_frame, offset, crop)
+            else:
+                self.cropped_frame = self.shrunken_frame
+
+            # print(self.cropped_frame)
 
             self.generate_threshold_frames()
 
@@ -984,94 +992,25 @@ class ParamWindow(QtGui.QMainWindow):
     def track_frame(self):
         self.update_params_from_gui()
 
-        if self.params['track_head']:
-            start_time = time.clock()
-            (eye_y_coords, eye_x_coords,
-            perp_y_coords, perp_x_coords) = tt.track_head(self.head_threshold_frame,
-                                                            0, 1,
-                                                            self.params['closest_eye_y_coords'], self.params['closest_eye_x_coords'])
+        (tail_coords, spline_coords,
+        eye_coords, perp_coords, skeleton_matrix) = tt.track_image(self.cropped_frame, self.params['head_threshold'], self.params['tail_threshold'],
+                                                                   self.params['min_eye_distance'], 30,
+                                                                   self.params['track_head'], self.params['track_tail'],
+                                                                   30, self.params['fish_crop_dims'], adjust_thresholds=False)
 
-            end_time = time.clock()
-
-            print("Head time: {}".format(end_time - start_time))
-
-            if eye_x_coords == None:
-                print("Could not track head.")
-            else:
-                self.params['closest_eye_y_coords'] = eye_y_coords
-                self.params['closest_eye_x_coords'] = eye_x_coords
-        else:
-            (eye_y_coords, eye_x_coords,
-            perp_y_coords, perp_x_coords) = [None]*4
-
-        if self.params['track_tail']:
-            if self.params['closest_eye_y_coords'] != None and self.params['closest_eye_y_coords'][0] != None:
-                self.pos_y_coord = (self.params['closest_eye_y_coords'][0] + self.params['closest_eye_y_coords'][1])/2.0
-                self.pos_x_coord = (self.params['closest_eye_x_coords'][0] + self.params['closest_eye_x_coords'][1])/2.0
-
-                if self.params['fish_crop_dims'][0] == None:
-                    self.fish_crop = [0, self.cropped_image.shape[0], 0, self.cropped_image.shape[1]]
-                else:
-                    self.fish_crop = [np.maximum(0, self.pos_y_coord-self.params['fish_crop_dims'][0]), np.minimum(self.cropped_frame.shape[0], self.pos_y_coord+self.params['fish_crop_dims'][0]), np.maximum(0, self.pos_x_coord-self.params['fish_crop_dims'][1]), np.minimum(self.cropped_frame.shape[1], self.pos_x_coord+self.params['fish_crop_dims'][1])]
-                
-                if eye_y_coords != None:
-                    eye_y_coords = [eye_y_coords[0]-self.fish_crop[0], eye_y_coords[1]-self.fish_crop[0]]
-                    eye_x_coords = [eye_x_coords[0]-self.fish_crop[2], eye_x_coords[1]-self.fish_crop[2]]
-
-                tail_threshold_image = self.tail_threshold_frame[self.fish_crop[0]:self.fish_crop[1], self.fish_crop[2]:self.fish_crop[3]]
-            else:
-                tail_threshold_image = self.tail_threshold_frame
-            start_time = time.clock()
-            (tail_y_coords, tail_x_coords,
-            spline_y_coords, spline_x_coords, skeleton_matrix) = tt.track_tail(tail_threshold_image,
-                                                                eye_x_coords, eye_y_coords,
-                                                                min_eye_distance=self.params['min_eye_distance']*self.params['shrink_factor'], max_eye_distance=self.params['max_eye_distance']*self.params['shrink_factor'])
-
-            end_time = time.clock()
-
-            print("Tail time: {}".format(end_time - start_time))
-
-            if tail_x_coords == None:
-                print("Could not track tail.")
-        else:
-            (tail_y_coords, tail_x_coords,
-            spline_y_coords, spline_x_coords) = [None]*4
-
-        if self.params['closest_eye_y_coords'] != None and self.params['closest_eye_y_coords'][0] != None:
-            if eye_y_coords != None:
-                eye_y_coords = [eye_y_coords[0]+self.fish_crop[0], eye_y_coords[1]+self.fish_crop[0]]
-                eye_x_coords = [eye_x_coords[0]+self.fish_crop[2], eye_x_coords[1]+self.fish_crop[2]]
-
-            if tail_y_coords != None:
-                for i in range(len(tail_y_coords)):
-                    tail_y_coords[i] += self.fish_crop[0]
-                    tail_x_coords[i] += self.fish_crop[2]
-                for i in range(len(spline_y_coords)):
-                    spline_y_coords[i] += self.fish_crop[0]
-                    spline_x_coords[i] += self.fish_crop[2]
+        # self.params['closest_eye_y_coords'] = eye_y_coords
+        # self.params['closest_eye_x_coords'] = eye_x_coords
 
         if not self.signalsBlocked():
             if self.param_controls["show_head_threshold"].isChecked():
-                self.imageTracked.emit(self.head_threshold_frame*255, self.fish_crop, [tail_y_coords, tail_x_coords,
-                    spline_y_coords, spline_x_coords,
-                    eye_y_coords,
-                    eye_x_coords,
-                    perp_y_coords,
-                    perp_x_coords])
+                self.imageTracked.emit(self.head_threshold_frame*255, self.fish_crop,
+                    [tail_coords, spline_coords, eye_coords, perp_coords])
             elif self.param_controls["show_tail_threshold"].isChecked():
-                self.imageTracked.emit(self.tail_threshold_frame*255, self.fish_crop, [tail_y_coords, tail_x_coords,
-                    spline_y_coords, spline_x_coords,
-                    eye_y_coords,
-                    eye_x_coords,
-                    perp_y_coords,
-                    perp_x_coords])
+                self.imageTracked.emit(self.tail_threshold_frame*255, self.fish_crop,
+                    [tail_coords, spline_coords, eye_coords, perp_coords])
             else:
-                self.imageTracked.emit(self.cropped_frame, self.fish_crop, [tail_y_coords, tail_x_coords,
-                    spline_y_coords, spline_x_coords,
-                    eye_y_coords,
-                    eye_x_coords,
-                    perp_y_coords,
-                    perp_x_coords])
+                self.imageTracked.emit(self.cropped_frame, self.fish_crop,
+                    [tail_coords, spline_coords, eye_coords, perp_coords])
 
     def track(self):
         if self.params['type_opened'] == "image":
@@ -1100,7 +1039,7 @@ class ParamWindow(QtGui.QMainWindow):
                         'new_video_fps': self.params['new_video_fps']
                       }
 
-        t = threading.Thread(target=tt.track_image, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
+        t = threading.Thread(target=tt.open_and_track_image, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
 
         t.start()
 
@@ -1124,7 +1063,7 @@ class ParamWindow(QtGui.QMainWindow):
                         'fish_crop_dims': self.params['fish_crop_dims']
                       }
 
-        t = threading.Thread(target=tt.track_folder, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
+        t = threading.Thread(target=tt.open_and_track_folder, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
 
         t.start()
 
@@ -1149,7 +1088,7 @@ class ParamWindow(QtGui.QMainWindow):
                         'mini_crop_dims': self.params['fish_crop_dims']
                       }
 
-        t = threading.Thread(target=tt.track_video, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
+        t = threading.Thread(target=tt.open_and_track_video, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
 
         t.start()
 
@@ -1234,10 +1173,11 @@ class ParamWindow(QtGui.QMainWindow):
     def closeEvent(self, ce):
         self.fileQuit()
 
-qApp = QtGui.QApplication(sys.argv)
-# qApp.setStyle("cleanlooks")
+if __name__ == "__main__":
+    qApp = QtGui.QApplication(sys.argv)
+    # qApp.setStyle("cleanlooks")
 
-param_window = ParamWindow()
-param_window.show()
+    param_window = ParamWindow()
+    param_window.show()
 
-sys.exit(qApp.exec_())
+    sys.exit(qApp.exec_())

@@ -4,18 +4,32 @@ import os
 
 def get_heading_angle(save_dir=None, plot=True, perp_y_coords_array=None, perp_x_coords_array=None):
 	if save_dir != None:
+		tail_end_y_coords_array = np.loadtxt(os.path.join(save_dir, "tail_end_y_coords_array.csv"))
+		tail_end_x_coords_array = np.loadtxt(os.path.join(save_dir, "tail_end_x_coords_array.csv"))
+		tail_y_coords_array     = np.loadtxt(os.path.join(save_dir, "tail_y_coords_array.csv"))
+		tail_x_coords_array     = np.loadtxt(os.path.join(save_dir, "tail_x_coords_array.csv"))
 		perp_y_coords_array = np.loadtxt(os.path.join(save_dir, "perp_y_coords_array.csv"))
 		perp_x_coords_array = np.loadtxt(os.path.join(save_dir, "perp_x_coords_array.csv"))
 
-	y_diff_array = perp_y_coords_array[:, 1] - perp_y_coords_array[:, 0]
-	x_diff_array = perp_x_coords_array[:, 1] - perp_x_coords_array[:, 0]
+	perp_y_diff_array = perp_y_coords_array[:, 0] - perp_y_coords_array[:, 1]
+	perp_x_diff_array = perp_x_coords_array[:, 0] - perp_x_coords_array[:, 1]
+	perp_vectors = np.vstack((perp_x_diff_array, perp_y_diff_array))
+	perp_vectors_2 = -perp_vectors
 
-	# y_diff_array[y_diff_array == 0] = np.nan
-	# x_diff_array[x_diff_array == 0] = np.nan
+	y_diff_array = perp_y_coords_array[:, 0] - np.mean(tail_end_y_coords_array[:, -2:], axis=1)
+	x_diff_array = perp_x_coords_array[:, 0] - np.mean(tail_end_x_coords_array[:, -2:], axis=1)
+	tail_vectors = np.vstack((x_diff_array, y_diff_array))
 
-	angle_array = np.unwrap(np.arctan2(x_diff_array, y_diff_array))
+	mask = np.sum(tail_vectors*perp_vectors, axis=0) < np.sum(tail_vectors*perp_vectors_2, axis=0)
+	perp_vectors[:, mask] = perp_vectors_2[:, mask]
+	print(perp_vectors.shape, tail_vectors.shape)
 
-	angle_array = np.convolve(angle_array, np.ones((3,))/3, mode='valid')
+	angle_array = np.arctan2(perp_vectors[1, :], perp_vectors[0, :])
+	# angle_array = np.convolve(angle_array, np.ones((2,))/2, mode='valid')
+
+	# angle_array = np.unwrap(angle_array)
+	angle_array[~np.isnan(angle_array)] = np.unwrap(angle_array[~np.isnan(angle_array)])
+
 
 	if plot:
 		plt.plot(np.arange(angle_array.shape[0]), angle_array)
@@ -32,24 +46,47 @@ def get_tail_angle(save_dir=None, plot=True, tail_end_y_coords_array=None, tail_
 		perp_y_coords_array     = np.loadtxt(os.path.join(save_dir, "perp_y_coords_array.csv"))
 		perp_x_coords_array     = np.loadtxt(os.path.join(save_dir, "perp_x_coords_array.csv"))
 
-	center_y_pos_array = (perp_y_coords_array[:, 1] + perp_y_coords_array[:, 0])/2.0
-	center_x_pos_array = (perp_x_coords_array[:, 1] + perp_x_coords_array[:, 0])/2.0
+	# center_y_pos_array = (perp_y_coords_array[:, 1] + perp_y_coords_array[:, 0])/2.0
+	# center_x_pos_array = (perp_x_coords_array[:, 1] + perp_x_coords_array[:, 0])/2.0
+
+	perp_y_diff_array = perp_y_coords_array[:, 0] - perp_y_coords_array[:, 1]
+	perp_x_diff_array = perp_x_coords_array[:, 0] - perp_x_coords_array[:, 1]
+	perp_vectors = np.vstack((perp_x_diff_array, perp_y_diff_array))
+	perp_vectors_2 = -perp_vectors
 
 	# y_diff_array = tail_end_y_coords_array[:, 1] - tail_end_y_coords_array[:, 0]
 	# x_diff_array = tail_end_x_coords_array[:, 1] - tail_end_x_coords_array[:, 0]
+	y_diff_array = perp_y_coords_array[:, 0] - np.mean(tail_end_y_coords_array[:, -3:], axis=1)
+	x_diff_array = perp_x_coords_array[:, 0] - np.mean(tail_end_x_coords_array[:, -3:], axis=1)
+	tail_vectors = np.vstack((x_diff_array, y_diff_array))
 
-	y_diff_array = center_y_pos_array - np.mean(tail_end_y_coords_array[:, -2:], axis=1)
-	x_diff_array = center_x_pos_array - np.mean(tail_end_x_coords_array[:, -2:], axis=1)
+	mask = np.sum(tail_vectors*perp_vectors, axis=0) < np.sum(tail_vectors*perp_vectors_2, axis=0)
+	perp_vectors[:, mask] = perp_vectors_2[:, mask]
+	print(perp_vectors.shape, tail_vectors.shape)
 	
 	# y_diff_array[y_diff_array == 0] = np.nan
 	# x_diff_array[x_diff_array == 0] = np.nan
 
-	angle_array = np.arctan2(x_diff_array, y_diff_array)
+	dot = tail_vectors[0, :]*perp_vectors[0, :] + tail_vectors[1, :]*perp_vectors[1, :]      # dot product
+	det = tail_vectors[0, :]*perp_vectors[1, :] - tail_vectors[1, :]*perp_vectors[0, :]      # determinant
 
-	angle_array = np.convolve(angle_array, np.ones((3,))/3, mode='valid')
+	angle_array = np.arctan2(dot, det) - np.pi/2.0
+
+	for i in range(1, angle_array.shape[0]-1):
+		if angle_array[i] - angle_array[i-1] >= np.pi/2.0:
+			angle_array[i] -= np.pi
+		elif angle_array[i] - angle_array[i-1] <= -np.pi/2.0:
+			angle_array[i] += np.pi
+
+	# angle_array = np.arccos((np.sum(tail_vectors*perp_vectors, axis=0))/(np.linalg.norm(tail_vectors, axis=0)*np.linalg.norm(perp_vectors,axis=0)))
+	# angle_array = np.arctan2(tail_vectors[1, :] - perp_vectors[1, :], tail_vectors[0, :] - perp_vectors[0, :])
+
+	# angle_array = np.convolve(angle_array, np.ones((3,))/3, mode='valid')
 	# if heading_angle_array is not None:
-	# 	angle_array += heading_angle_array
+	# 	angle_array -= heading_angle_array
 
+	# angle_array[angle_array >= np.pi] -= 2*np.pi
+	# angle_array[angle_array <= -np.pi] += 2*np.pi
 
 	if plot:
 		plt.plot(np.arange(angle_array.shape[0]), angle_array)
