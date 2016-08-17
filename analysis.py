@@ -2,95 +2,68 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def get_heading_angle(save_dir=None, plot=True, perp_y_coords_array=None, perp_x_coords_array=None):
-	if save_dir != None:
-		tail_end_y_coords_array = np.loadtxt(os.path.join(save_dir, "tail_end_y_coords_array.csv"))
-		tail_end_x_coords_array = np.loadtxt(os.path.join(save_dir, "tail_end_x_coords_array.csv"))
-		tail_y_coords_array     = np.loadtxt(os.path.join(save_dir, "tail_y_coords_array.csv"))
-		tail_x_coords_array     = np.loadtxt(os.path.join(save_dir, "tail_x_coords_array.csv"))
-		perp_y_coords_array = np.loadtxt(os.path.join(save_dir, "perp_y_coords_array.csv"))
-		perp_x_coords_array = np.loadtxt(os.path.join(save_dir, "perp_x_coords_array.csv"))
+def open_saved_data(save_dir=None):
+	"""
+	Open saved tracking data from the given directory.
+	"""
+	try:
+		eye_coords_array    = np.load(os.path.join(save_dir, "eye_coords.npy"))
+		perp_coords_array   = np.load(os.path.join(save_dir, "perp_coords.npy"))
+		tail_coords_array   = np.load(os.path.join(save_dir, "tail_coords.npy"))
+		spline_coords_array = np.load(os.path.join(save_dir, "spline_coords.npy"))
+	except:
+		print("ERROR: Tracking data could not be found.")
+		return [None]*4
 
-	perp_y_diff_array = perp_y_coords_array[:, 0] - perp_y_coords_array[:, 1]
-	perp_x_diff_array = perp_x_coords_array[:, 0] - perp_x_coords_array[:, 1]
-	perp_vectors = np.vstack((perp_x_diff_array, perp_y_diff_array))
-	perp_vectors_2 = -perp_vectors
+	return eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array
 
-	y_diff_array = perp_y_coords_array[:, 0] - np.mean(tail_end_y_coords_array[:, -2:], axis=1)
-	x_diff_array = perp_x_coords_array[:, 0] - np.mean(tail_end_x_coords_array[:, -2:], axis=1)
-	tail_vectors = np.vstack((x_diff_array, y_diff_array))
+def get_vectors(perp_coords_array, spline_coords_array):
+	"""
+	Turn arrays of heading & tail spline coordinates into vectors.
+	"""
+	# create heading vectors -- starting coordinate minus ending coordinate of the heading line
+	perp_vectors = perp_coords_array[:, :, 0] - perp_coords_array[:, :, 1]
 
-	mask = np.sum(tail_vectors*perp_vectors, axis=0) < np.sum(tail_vectors*perp_vectors_2, axis=0)
-	perp_vectors[:, mask] = perp_vectors_2[:, mask]
-	print(perp_vectors.shape, tail_vectors.shape)
+	# get distances between start/end coordinates of the heading line and the starting coordinates of the tail
+	tail_distances = np.sqrt((perp_coords_array[:, 0, :] - spline_coords_array[:, 0, 0][:, np.newaxis])**2 + (perp_coords_array[:, 1, :] - spline_coords_array[:, 1, 0][:, np.newaxis])**2)
+	
+	# get frames where the "starting" heading coordinate is closer to the tail than the "ending" coordinate
+	mask = tail_distances[:, 0] < tail_distances[:, 1]
 
-	angle_array = np.arctan2(perp_vectors[1, :], perp_vectors[0, :])
-	# angle_array = np.convolve(angle_array, np.ones((2,))/2, mode='valid')
+	# flip heading vectors for these frames, so that all vectors point toward the tail.
+	perp_vectors[mask, :] *= -1
 
-	# angle_array = np.unwrap(angle_array)
+	# get vectors of tail coordinates relative to the heading vectors
+	spline_vectors = perp_coords_array[:, :, 1][:, :, np.newaxis] - spline_coords_array
+
+	return perp_vectors, spline_vectors
+
+def get_heading_angle(perp_vectors):
+	angle_array = np.arctan2(perp_vectors[:, 1], perp_vectors[:, 0])
+
 	angle_array[~np.isnan(angle_array)] = np.unwrap(angle_array[~np.isnan(angle_array)])
 
-
-	if plot:
-		plt.plot(np.arange(angle_array.shape[0]), angle_array)
-		plt.show()
+	for i in range(1, angle_array.shape[0]-1):
+		if angle_array[i] - angle_array[i-1] >= np.pi/2.0:
+			angle_array[i] -= np.pi/2.0
+		elif angle_array[i] - angle_array[i-1] <= -np.pi/2.0:
+			angle_array[i] += np.pi/2.0
 
 	return angle_array
 
-def get_tail_angle(save_dir=None, plot=True, tail_end_y_coords_array=None, tail_end_x_coords_array=None, heading_angle_array=None):
-	if save_dir != None:
-		tail_end_y_coords_array = np.loadtxt(os.path.join(save_dir, "tail_end_y_coords_array.csv"))
-		tail_end_x_coords_array = np.loadtxt(os.path.join(save_dir, "tail_end_x_coords_array.csv"))
-		tail_y_coords_array     = np.loadtxt(os.path.join(save_dir, "tail_y_coords_array.csv"))
-		tail_x_coords_array     = np.loadtxt(os.path.join(save_dir, "tail_x_coords_array.csv"))
-		perp_y_coords_array     = np.loadtxt(os.path.join(save_dir, "perp_y_coords_array.csv"))
-		perp_x_coords_array     = np.loadtxt(os.path.join(save_dir, "perp_x_coords_array.csv"))
+def get_tail_angle(perp_vectors, spline_vectors):
+	spline_vectors = np.mean(spline_vectors[:, :, -3:], axis=2)
 
-	# center_y_pos_array = (perp_y_coords_array[:, 1] + perp_y_coords_array[:, 0])/2.0
-	# center_x_pos_array = (perp_x_coords_array[:, 1] + perp_x_coords_array[:, 0])/2.0
-
-	perp_y_diff_array = perp_y_coords_array[:, 0] - perp_y_coords_array[:, 1]
-	perp_x_diff_array = perp_x_coords_array[:, 0] - perp_x_coords_array[:, 1]
-	perp_vectors = np.vstack((perp_x_diff_array, perp_y_diff_array))
-	perp_vectors_2 = -perp_vectors
-
-	# y_diff_array = tail_end_y_coords_array[:, 1] - tail_end_y_coords_array[:, 0]
-	# x_diff_array = tail_end_x_coords_array[:, 1] - tail_end_x_coords_array[:, 0]
-	y_diff_array = perp_y_coords_array[:, 0] - np.mean(tail_end_y_coords_array[:, -3:], axis=1)
-	x_diff_array = perp_x_coords_array[:, 0] - np.mean(tail_end_x_coords_array[:, -3:], axis=1)
-	tail_vectors = np.vstack((x_diff_array, y_diff_array))
-
-	mask = np.sum(tail_vectors*perp_vectors, axis=0) < np.sum(tail_vectors*perp_vectors_2, axis=0)
-	perp_vectors[:, mask] = perp_vectors_2[:, mask]
-	print(perp_vectors.shape, tail_vectors.shape)
-	
-	# y_diff_array[y_diff_array == 0] = np.nan
-	# x_diff_array[x_diff_array == 0] = np.nan
-
-	dot = tail_vectors[0, :]*perp_vectors[0, :] + tail_vectors[1, :]*perp_vectors[1, :]      # dot product
-	det = tail_vectors[0, :]*perp_vectors[1, :] - tail_vectors[1, :]*perp_vectors[0, :]      # determinant
+	dot = spline_vectors[:, 1]*perp_vectors[:, 1] + spline_vectors[:, 0]*perp_vectors[:, 0]      # dot product
+	det = spline_vectors[:, 1]*perp_vectors[:, 0] - spline_vectors[:, 0]*perp_vectors[:, 1]      # determinant
 
 	angle_array = np.arctan2(dot, det) - np.pi/2.0
 
 	for i in range(1, angle_array.shape[0]-1):
 		if angle_array[i] - angle_array[i-1] >= np.pi/2.0:
-			angle_array[i] -= np.pi
+			angle_array[i] -= np.pi/2.0
 		elif angle_array[i] - angle_array[i-1] <= -np.pi/2.0:
-			angle_array[i] += np.pi
-
-	# angle_array = np.arccos((np.sum(tail_vectors*perp_vectors, axis=0))/(np.linalg.norm(tail_vectors, axis=0)*np.linalg.norm(perp_vectors,axis=0)))
-	# angle_array = np.arctan2(tail_vectors[1, :] - perp_vectors[1, :], tail_vectors[0, :] - perp_vectors[0, :])
-
-	# angle_array = np.convolve(angle_array, np.ones((3,))/3, mode='valid')
-	# if heading_angle_array is not None:
-	# 	angle_array -= heading_angle_array
-
-	# angle_array[angle_array >= np.pi] -= 2*np.pi
-	# angle_array[angle_array <= -np.pi] += 2*np.pi
-
-	if plot:
-		plt.plot(np.arange(angle_array.shape[0]), angle_array)
-		plt.show()
+			angle_array[i] += np.pi/2.0
 
 	return angle_array
 
@@ -115,10 +88,36 @@ def get_position_history(save_dir=None, plot=True, perp_y_coords_array=None, per
 
 	return positions_y, positions_x, speed
 
+def plot_tail_angle_heatmap(perp_vectors, spline_vectors):
+	angle_array = np.zeros((spline_vectors.shape[0], spline_vectors.shape[-1]))
+
+	for j in range(angle_array.shape[-1]):
+		dot = spline_vectors[:, 1, j]*perp_vectors[:, 1] + spline_vectors[:, 0, j]*perp_vectors[:, 0]      # dot product
+		det = spline_vectors[:, 1, j]*perp_vectors[:, 0] - spline_vectors[:, 0, j]*perp_vectors[:, 1]      # determinant
+
+		angle_array[:, j] = np.arctan2(dot, det) - np.pi/2.0
+
+		for i in range(1, angle_array.shape[0]-1):
+			if angle_array[i, j] - angle_array[i-1, j] >= np.pi/2.0:
+				angle_array[i, j] -= np.pi/2.0
+			elif angle_array[i, j] - angle_array[i-1, j] <= -np.pi/2.0:
+				angle_array[i, j] += np.pi/2.0
+
+	fig = plt.figure()
+	fig.set_size_inches(100, 1)
+	ax = plt.Axes(fig, [0., 0., 1., 1.])
+	ax.set_axis_off()
+	fig.add_axes(ax)
+	plt.set_cmap('plasma')
+	ax.imshow(angle_array.T, vmin=-np.pi/3, vmax=np.pi/3, aspect = 'auto')
+	plt.savefig("heatmap.png", dpi = 300)
+
 def contiguous_regions(condition):
-    """Finds contiguous True regions of the boolean array "condition". Returns
+    """
+    Finds contiguous True regions of the boolean array "condition". Returns
     a 2D array where the first column is the start index of the region and the
-    second column is the end index."""
+    second column is the end index.
+    """
 
     # Find the indicies of changes in "condition"
     d = np.diff(condition)

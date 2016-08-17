@@ -1,6 +1,6 @@
 import sys
 import os
-import tracking as tt
+# import tracking as tt
 import numpy as np
 import pdb
 import cv2
@@ -268,8 +268,13 @@ class PlotWindow(QtGui.QMainWindow):
         # ask the user to select a directory
         self.path = str(QtGui.QFileDialog.getExistingDirectory(self, 'Open folder'))
 
-        self.head_angle_array = an.get_heading_angle(self.path, plot=False)
-        self.tail_angle_array = an.get_tail_angle(self.path, plot=False, heading_angle_array=self.head_angle_array)
+        eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array = an.open_saved_data(self.path)
+        perp_vectors, spline_vectors = an.get_vectors(perp_coords_array, spline_coords_array)
+
+        self.head_angle_array = an.get_heading_angle(perp_vectors)
+        self.tail_angle_array = an.get_tail_angle(perp_vectors, spline_vectors)
+
+        an.plot_tail_angle_heatmap(perp_vectors, spline_vectors)
 
         self.tail_canvas.plot_tail_array(self.tail_angle_array)
         self.head_canvas.plot_head_array(self.head_angle_array)
