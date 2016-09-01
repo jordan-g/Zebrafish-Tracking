@@ -145,8 +145,21 @@ class PreviewWindow(QtGui.QMainWindow):
         self.instructions_label.setAlignment(QtCore.Qt.AlignCenter)
         self.main_layout.addWidget(self.instructions_label)
 
+        # create image slider
+        self.image_slider = QtGui.QSlider(QtCore.Qt.Horizontal)
+        self.image_slider.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.image_slider.setTickPosition(QtGui.QSlider.TicksBothSides)
+        self.image_slider.setTickInterval(1)
+        self.image_slider.setSingleStep(1)
+        # self.image_slider.setMinimum(0)
+        # self.image_slider.setMaximum(self.param_window.n_frames-1)
+        self.image_slider.setValue(0)
+        self.image_slider.valueChanged.connect(self.switch_frame)
+        self.image_slider.hide()
+        self.main_layout.addWidget(self.image_slider)
+
         # initialize variables
-        self.image_slider   = None  # slider for selecting frames
+        # self.image_slider   = None  # slider for selecting frames
         self.image          = None  # image to show
         self.pixmap         = None  # image label's pixmap
         self.pixmap_size    = None  # size of image label's pixmap
@@ -193,22 +206,15 @@ class PreviewWindow(QtGui.QMainWindow):
         # add instruction text
         self.instructions_label.setText("Click & drag to select crop area.")
 
-    def plot_image(self, image, tail_crop, new_image=False):
-        if self.image_slider:
-            # update image slider
-            self.image_slider.setMaximum(self.param_window.n_frames-1)
-        else:
-            # create image slider
-            self.image_slider = QtGui.QSlider(QtCore.Qt.Horizontal)
-            self.image_slider.setFocusPolicy(QtCore.Qt.StrongFocus)
-            self.image_slider.setTickPosition(QtGui.QSlider.TicksBothSides)
-            self.image_slider.setTickInterval(1)
-            self.image_slider.setSingleStep(1)
-            self.image_slider.setMinimum(0)
-            self.image_slider.setMaximum(self.param_window.n_frames-1)
-            self.image_slider.setValue(0)
-            self.image_slider.valueChanged.connect(self.switch_frame)
-            self.main_layout.addWidget(self.image_slider)
+    def plot_image(self, image, tail_crop, new_image=False, new_load=False, show_slider=True):
+        if new_load:
+            if show_slider:
+                if not self.image_slider.isVisible():
+                    self.image_slider.setValue(0)
+                    self.image_slider.setMaximum(self.param_window.n_frames-1)
+                    self.image_slider.show()
+            else:
+                self.image_slider.hide()
 
         # update image
         self.image = image
@@ -230,7 +236,15 @@ class PreviewWindow(QtGui.QMainWindow):
             # update image label
             self.update_image_label(rgb_image)
 
-    def plot_threshold_image(self, threshold_image, tail_crop, new_image=False):
+    def plot_threshold_image(self, threshold_image, tail_crop, new_image=False, new_load=False, show_slider=True):
+        if new_load:
+            if show_slider:
+                self.image_slider.setValue(0)
+                self.image_slider.setMaximum(self.param_window.n_frames-1)
+                self.image_slider.show()
+            else:
+                self.image_slider.hide()
+
         new_threshold_image = threshold_image
 
         if new_image:
@@ -357,9 +371,9 @@ class PreviewWindow(QtGui.QMainWindow):
 
 class ParamWindow(QtGui.QMainWindow):
     # initiate drawing signals
-    imageLoaded       = QtCore.Signal(np.ndarray, list, bool)
-    imageTracked      = QtCore.Signal(np.ndarray, list, list)
-    thresholdLoaded   = QtCore.Signal(np.ndarray, list, bool)
+    imageLoaded       = QtCore.Signal(np.ndarray, list, bool, bool, bool)
+    imageTracked      = QtCore.Signal(np.ndarray, list, list, bool, bool)
+    thresholdLoaded   = QtCore.Signal(np.ndarray, list, bool, bool, bool)
     thresholdUnloaded = QtCore.Signal(np.ndarray)
 
     def __init__(self):
@@ -596,6 +610,7 @@ class ParamWindow(QtGui.QMainWindow):
         self.track_all_button.setDisabled(disbaled_bool)
 
     def create_crop(self, crop_params=None):
+        print("creating crop")
         # create crop tab widget & layout
         crop_tab_widget = QtGui.QWidget(self.crop_tabs_widget)
         crop_tab_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
@@ -656,9 +671,6 @@ class ParamWindow(QtGui.QMainWindow):
         
         # update current crop number
         self.current_crop_num = len(self.params['crop_params']) - 1
-
-        # update gui
-        # self.update_crop_param_gui()
 
         # add crop widget as a tab
         self.crop_tabs_widget.addTab(crop_tab_widget, str(self.current_crop_num))
@@ -851,7 +863,7 @@ class ParamWindow(QtGui.QMainWindow):
         # make checkbox & add to layout
         checkbox = QtGui.QCheckBox(description)
         checkbox.setChecked(checked)
-        checkbox.toggled.connect(lambda:toggle_func(checkbox))
+        checkbox.clicked.connect(lambda:toggle_func(checkbox))
         parent.addWidget(checkbox)
 
         # add to list of crop or global controls
@@ -918,7 +930,7 @@ class ParamWindow(QtGui.QMainWindow):
             self.params['type_opened'] = 'folder'
 
             # switch to first frame
-            self.switch_frame(0)
+            self.switch_frame(0, new_load=True)
 
             # update gui
             self.update_crop_param_gui()
@@ -956,7 +968,7 @@ class ParamWindow(QtGui.QMainWindow):
             self.params['type_opened'] = 'image'
 
             # switch to first (and only) frame
-            self.switch_frame(0)
+            self.switch_frame(0, new_load=True)
             
             # update gui
             self.update_crop_param_gui()
@@ -1006,7 +1018,7 @@ class ParamWindow(QtGui.QMainWindow):
             self.params['type_opened'] = 'video'
 
             # switch to first frame
-            self.switch_frame(0)
+            self.switch_frame(0, new_load=True)
 
             # update gui
             self.update_crop_param_gui()
@@ -1075,7 +1087,7 @@ class ParamWindow(QtGui.QMainWindow):
             self.param_controls['save_video'].setChecked(self.params['save_video'])
             self.param_controls['adjust_thresholds'].setChecked(self.params['adjust_thresholds'])
 
-    def switch_frame(self, n):
+    def switch_frame(self, n, new_load=False):
         # set current frame
         if self.params['type_opened'] == 'video':
             self.current_frame = self.frames[n]
@@ -1098,11 +1110,14 @@ class ParamWindow(QtGui.QMainWindow):
             self.crop_param_controls[c]['offset_y'][0].setMaximum(self.current_frame.shape[0]-1)
             self.crop_param_controls[c]['offset_x'][0].setMaximum(self.current_frame.shape[1]-1)
 
+        self.param_controls['tail_crop_height'][0].setMaximum(self.current_frame.shape[0])
+        self.param_controls['tail_crop_width'][0].setMaximum(self.current_frame.shape[1])
+
         # reshape the image
         self.reshape_frame()
 
         # update the image preview
-        self.update_preview(new_frame=True)
+        self.update_preview(new_load=new_load, new_frame=True)
         # self.track_frame(update_params=False)
 
     def reshape_frame(self):
@@ -1132,17 +1147,19 @@ class ParamWindow(QtGui.QMainWindow):
             self.tail_threshold_frame = tt.get_tail_threshold_image(self.cropped_frame, self.current_crop_params['tail_threshold'])
             self.tail_skeleton_frame = tt.get_tail_skeleton_image(self.tail_threshold_frame)
 
-    def update_preview(self, new_frame=False):
+    def update_preview(self, new_load=False, new_frame=False):
         if self.current_frame != None:
+            show_slider = self.n_frames > 1
+
             # plot frame. for threshold/skeleton images, change nonzero pixels to 255 (so they show up as white)
-            if self.param_controls["show_head_threshold"].isChecked():
-                self.thresholdLoaded.emit(self.head_threshold_frame*255, self.params['tail_crop'], new_frame)
-            elif self.param_controls["show_tail_threshold"].isChecked():
-                self.thresholdLoaded.emit(self.tail_threshold_frame*255, self.params['tail_crop'], new_frame)
-            elif self.param_controls["show_tail_skeleton"].isChecked():
-                self.thresholdLoaded.emit(self.tail_skeleton_frame*255, self.params['tail_crop'], new_frame)
+            if self.params["show_head_threshold"]:
+                self.thresholdLoaded.emit(self.head_threshold_frame*255, self.params['tail_crop'], new_frame, new_load, show_slider)
+            elif self.params["show_tail_threshold"]:
+                self.thresholdLoaded.emit(self.tail_threshold_frame*255, self.params['tail_crop'], new_frame, new_load, show_slider)
+            elif self.params["show_tail_skeleton"]:
+                self.thresholdLoaded.emit(self.tail_skeleton_frame*255, self.params['tail_crop'], new_frame, new_load, show_slider)
             else:
-                self.imageLoaded.emit(self.cropped_frame, self.params['tail_crop'], new_frame)
+                self.imageLoaded.emit(self.cropped_frame, self.params['tail_crop'], new_frame, new_load, show_slider)
 
     def invert_frame(self):
         if self.current_frame != None:
