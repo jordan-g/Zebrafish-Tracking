@@ -1,6 +1,5 @@
 import sys
 import os
-# import tracking as tt
 import numpy as np
 import pdb
 import cv2
@@ -25,49 +24,60 @@ import numpy.fft as fft
 import scipy
 import peakdetect
 
-default_params = {'deriv_threshold': 1.0                     # threshold
+default_params = {'deriv_threshold': 1.0 # threshold to use for angle derivative when finding tail bouts
                  }
 
 class MplCanvas(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
+        # make figure
         fig = Figure(figsize=(width, height), dpi=dpi)
+
+        # make axis
         self.axes = fig.add_subplot(111)
 
-        self.compute_initial_figure()
-
+        # run init of superclass
         FigureCanvas.__init__(self, fig)
-        self.setParent(parent)
 
-        FigureCanvas.setSizePolicy(self,
-                                   QtGui.QSizePolicy.Expanding,
-                                   QtGui.QSizePolicy.Expanding)
-        FigureCanvas.updateGeometry(self)
+        # set background to match window background
+        self.setStyleSheet('background: #e2e2e2;')
+        fig.patch.set_visible(False)
 
+        # set tight layout
         fig.tight_layout()
 
-    def compute_initial_figure(self):
-        pass
+        # set parent
+        self.setParent(parent)
+
+        # set resize policy
+        self.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.updateGeometry()
 
     def plot_tail_array(self, array, bouts=None, maxes_y=None, maxes_x=None, mins_y=None, mins_x=None, freqs=None, keep_xlim=False):
         self.axes.cla()
 
         if keep_xlim:
+            # store existing xlim
             xlim = self.axes.get_xlim()
 
+        # plot data
         self.axes.plot(array)
 
         if freqs != None:
+            # overlay frequencies
             self.axes.plot(freqs, 'k')
 
         if maxes_y != None:
+            # overlay min & max peaks
             self.axes.plot(maxes_x, maxes_y, 'g.')
             self.axes.plot(mins_x, mins_y, 'r.')
 
         if bouts != None:
+            # overlay bouts
             for i in range(bouts.shape[0]):
                 self.axes.axvspan(bouts[i, 0], bouts[i, 1], color='red', alpha=0.2)
 
         if keep_xlim:
+            # restore previous xlim
             self.axes.set_xlim(xlim)
 
         self.draw()
@@ -76,11 +86,14 @@ class MplCanvas(FigureCanvas):
         self.axes.cla()
 
         if keep_xlim:
+            # store existing xlim
             xlim = self.axes.get_xlim()
 
+        # plot data
         self.axes.plot(array)
 
         if keep_xlim:
+            # restore previous xlim
             self.axes.set_xlim(xlim)
 
         self.draw()
@@ -120,8 +133,13 @@ class PlotWindow(QtGui.QMainWindow):
         main_layout.addStretch(1)
 
         # create tabs widget & layout
-        self.plot_tabs_widget = QtGui.QTabWidget(self.main_widget)
+        self.plot_tabs_widget = QtGui.QTabWidget()
         plot_tabs_layout  = QtGui.QVBoxLayout(self.plot_tabs_widget)
+        main_layout.addWidget(self.plot_tabs_widget)
+
+        crop_tabs_widget = QtGui.QTabWidget()
+        crop_tabs_layout = QtGui.QVBoxLayout(crop_tabs_widget)
+        self.plot_tabs_widget.addTab(crop_tabs_widget,"Tail")
 
         # create tail tab widget & layout
         tail_tab_widget = QtGui.QWidget()
@@ -129,9 +147,37 @@ class PlotWindow(QtGui.QMainWindow):
 
         # create tail plot canvas & toolbar
         self.tail_canvas = MplCanvas(tail_tab_widget, width=10, height=10, dpi=75)
-        self.tail_toolbar = NavigationToolbar(self.tail_canvas, self)
         self.tail_canvas.resize(400, 300)
-        # self.tail_toolbar.hide()
+        self.tail_toolbar = NavigationToolbar(self.tail_canvas, self)
+        self.tail_toolbar.hide()
+
+        self.button1 = QtGui.QPushButton(u'\u2A01 Zoom')
+        self.button1.clicked.connect(self.zoom_tail)
+         
+        self.button2 = QtGui.QPushButton(u'\u2921 Pan')
+        # pixmap = QtGui.QPixmap("pan.png")
+        # button_icon = QtGui.QIcon(pixmap)
+        # self.button2.setIcon(button_icon)
+        # self.button2.setIconSize(pixmap.rect().size())
+        self.button2.setMinimumWidth(10)
+        # self.button2.setMinimumHeight(10)
+        self.button2.clicked.connect(self.pan_tail)
+         
+        self.button3 = QtGui.QPushButton(u'\u2B51 Home')
+        self.button3.clicked.connect(self.home_tail)
+
+        self.button4 = QtGui.QPushButton(u'\u2714 Save')
+        self.button4.clicked.connect(self.save_tail)
+
+        tail_button_layout_1 = QtGui.QHBoxLayout()
+        tail_button_layout_1.setSpacing(5)
+        tail_button_layout_1.addStretch(1)
+        tail_tab_layout.addLayout(tail_button_layout_1)
+
+        tail_button_layout_1.addWidget(self.button1)
+        tail_button_layout_1.addWidget(self.button2)
+        tail_button_layout_1.addWidget(self.button3)
+        tail_button_layout_1.addWidget(self.button4)
 
         # add tail plot canvas & toolbar to tail tab widget
         tail_tab_layout.addWidget(self.tail_toolbar)
@@ -189,20 +235,49 @@ class PlotWindow(QtGui.QMainWindow):
 
         # create head tab widget & layout
         head_tab_widget = QtGui.QWidget()
-        head_plot_layout = QtGui.QVBoxLayout(head_tab_widget)
+        head_tab_layout = QtGui.QVBoxLayout(head_tab_widget)
 
         # create head plot canvas & toolbar
         self.head_canvas = MplCanvas(head_tab_widget, width=10, height=10, dpi=75)
         self.head_toolbar = NavigationToolbar(self.head_canvas, self)
-        # self.head_toolbar.hide()
+        self.head_toolbar.hide()
 
         # add head plot canvas & toolbar to head tab widget
-        head_plot_layout.addWidget(self.head_toolbar)
-        head_plot_layout.addWidget(self.head_canvas)
+        head_tab_layout.addWidget(self.head_toolbar)
+
+        self.button1 = QtGui.QPushButton(u'\u25A3 Zoom')
+        self.button1.clicked.connect(self.zoom_head)
+         
+        self.button2 = QtGui.QPushButton('Pan')
+        # pixmap = QtGui.QPixmap("pan.png")
+        # button_icon = QtGui.QIcon(pixmap)
+        # self.button2.setIcon(button_icon)
+        # self.button2.setIconSize(pixmap.rect().size())
+        # self.button2.setMinimumWidth(50)
+        # self.button2.setMinimumHeight(10)
+        self.button2.clicked.connect(self.pan_head)
+         
+        self.button3 = QtGui.QPushButton('Home')
+        self.button3.clicked.connect(self.home_head)
+
+        self.button4 = QtGui.QPushButton('Save')
+        self.button4.clicked.connect(self.save_head)
+
+        head_button_layout_1 = QtGui.QHBoxLayout()
+        # head_button_layout_1.setSpacing(5)
+        head_button_layout_1.addStretch(1)
+        head_tab_layout.addLayout(head_button_layout_1)
+
+        head_tab_layout.addWidget(self.head_canvas)
+
+        head_button_layout_1.addWidget(self.button1)
+        head_button_layout_1.addWidget(self.button2)
+        head_button_layout_1.addWidget(self.button3)
+        head_button_layout_1.addWidget(self.button4)
 
         # create button layout for head tab
         head_button_layout = QtGui.QHBoxLayout()
-        head_plot_layout.addLayout(head_button_layout)
+        head_tab_layout.addLayout(head_button_layout)
 
         # add buttons
         self.track_position_button = QtGui.QPushButton('Track Pos', self)
@@ -220,7 +295,7 @@ class PlotWindow(QtGui.QMainWindow):
         self.plot_tabs_widget.resize(450, 350)
 
         # add tabs to plot tabs widget
-        self.plot_tabs_widget.addTab(tail_tab_widget,"Tail")
+        crop_tabs_widget.addTab(tail_tab_widget,"1")
         self.plot_tabs_widget.addTab(head_tab_widget,"Head")
 
         # create button layout for main widget
@@ -250,6 +325,24 @@ class PlotWindow(QtGui.QMainWindow):
         self.main_widget.setFocus()
         self.setCentralWidget(self.main_widget)
 
+    def home_tail(self):
+        self.tail_toolbar.home()
+    def zoom_tail(self):
+        self.tail_toolbar.zoom()
+    def pan_tail(self):
+        self.tail_toolbar.pan()
+    def save_tail(self):
+        self.tail_toolbar.save_figure()
+
+    def home_head(self):
+        self.head_toolbar.home()
+    def zoom_head(self):
+        self.head_toolbar.zoom()
+    def pan_head(self):
+        self.head_toolbar.pan()
+    def save_head(self):
+        self.head_toolbar.save_figure()
+
     def show_smoothed_deriv(self, checkbox):
         if self.smoothed_abs_deriv_abs_angle_array != None:
             if checkbox.isChecked():
@@ -269,7 +362,7 @@ class PlotWindow(QtGui.QMainWindow):
         self.path = str(QtGui.QFileDialog.getExistingDirectory(self, 'Open folder'))
 
         eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array = an.open_saved_data(self.path)
-        perp_vectors, spline_vectors = an.get_vectors(perp_coords_array, spline_coords_array)
+        perp_vectors, spline_vectors = an.get_vectors(perp_coords_array, spline_coords_array, tail_coords_array)
 
         self.head_angle_array = an.get_heading_angle(perp_vectors)
         self.tail_angle_array = an.get_tail_angle(perp_vectors, spline_vectors)

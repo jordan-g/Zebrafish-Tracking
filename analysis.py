@@ -8,7 +8,10 @@ def open_saved_data(save_dir=None):
 	"""
 	try:
 		eye_coords_array    = np.load(os.path.join(save_dir, "eye_coords.npy"))
-		perp_coords_array   = np.load(os.path.join(save_dir, "perp_coords.npy"))
+		try:
+			perp_coords_array   = np.load(os.path.join(save_dir, "heading_coords.npy"))
+		except:
+			perp_coords_array   = np.load(os.path.join(save_dir, "perp_coords.npy"))
 		tail_coords_array   = np.load(os.path.join(save_dir, "tail_coords.npy"))
 		spline_coords_array = np.load(os.path.join(save_dir, "spline_coords.npy"))
 	except:
@@ -17,7 +20,7 @@ def open_saved_data(save_dir=None):
 
 	return eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array
 
-def get_vectors(perp_coords_array, spline_coords_array):
+def get_vectors(perp_coords_array, spline_coords_array, tail_coords_array):
 	"""
 	Turn arrays of heading & tail spline coordinates into vectors.
 	"""
@@ -25,7 +28,7 @@ def get_vectors(perp_coords_array, spline_coords_array):
 	perp_vectors = perp_coords_array[:, :, 0] - perp_coords_array[:, :, 1]
 
 	# get distances between start/end coordinates of the heading line and the starting coordinates of the tail
-	tail_distances = np.sqrt((perp_coords_array[:, 0, :] - spline_coords_array[:, 0, 0][:, np.newaxis])**2 + (perp_coords_array[:, 1, :] - spline_coords_array[:, 1, 0][:, np.newaxis])**2)
+	tail_distances = np.sqrt((perp_coords_array[:, 0, :] - tail_coords_array[:, 0, -1][:, np.newaxis])**2 + (perp_coords_array[:, 1, :] - tail_coords_array[:, 1, -1][:, np.newaxis])**2)
 	
 	# get frames where the "starting" heading coordinate is closer to the tail than the "ending" coordinate
 	mask = tail_distances[:, 0] < tail_distances[:, 1]
@@ -69,8 +72,8 @@ def get_tail_angle(perp_vectors, spline_vectors):
 
 def get_position_history(save_dir=None, plot=True, perp_y_coords_array=None, perp_x_coords_array=None):
 	if save_dir != None:
-		perp_y_coords_array = np.loadtxt(os.path.join(save_dir, "perp_y_coords_array.csv"))
-		perp_x_coords_array = np.loadtxt(os.path.join(save_dir, "perp_x_coords_array.csv"))
+		perp_y_coords_array = np.loadtxt(os.path.join(save_dir, "heading_y_coords_array.csv"))
+		perp_x_coords_array = np.loadtxt(os.path.join(save_dir, "heading_x_coords_array.csv"))
 
 	positions_y = (perp_y_coords_array[:, 0]+perp_y_coords_array[:, 1])/2.0
 	positions_x = (perp_x_coords_array[:, 0]+perp_x_coords_array[:, 1])/2.0
