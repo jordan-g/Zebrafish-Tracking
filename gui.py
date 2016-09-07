@@ -369,6 +369,321 @@ class PreviewWindow(QtGui.QMainWindow):
     def closeEvent(self, ce):
         self.fileQuit()
 
+class CropsWindow(QtGui.QMainWindow):
+    def __init__(self, param_window):
+        QtGui.QMainWindow.__init__(self)
+
+        self.setGeometry(420, 100, 10, 10)
+
+        # set param window
+        self.param_window = param_window
+
+        # set title
+        self.setWindowTitle("Crops")
+
+        self.current_crop_num     = -1
+
+        # set default params
+        self.current_crop_params = default_crop_params
+
+        # create main widget
+        self.main_widget = QtGui.QWidget(self)
+        # create main layout
+        self.layout = QtGui.QVBoxLayout(self.main_widget)
+        self.layout.setAlignment(QtCore.Qt.AlignTop)
+        self.layout.addStretch(1)
+        self.layout.setSpacing(5)
+
+        # initialize dict used for accessing all crop parameter controls
+        self.crop_param_controls = []
+
+        # create tabs widget
+        self.crop_tabs_widget = QtGui.QTabWidget()
+        self.crop_tabs_widget.setUsesScrollButtons(True)
+        self.crop_tabs_widget.tabCloseRequested.connect(self.remove_crop)
+        self.crop_tabs_widget.currentChanged.connect(self.change_crop)
+        self.crop_tabs_widget.setElideMode(QtCore.Qt.ElideLeft)
+        self.crop_tabs_widget.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.MinimumExpanding)
+        self.crop_tabs_widget.setMinimumSize(276, 300)
+        self.layout.addWidget(self.crop_tabs_widget)
+
+        # create tabs layout
+        crop_tabs_layout  = QtGui.QHBoxLayout(self.crop_tabs_widget)
+
+        # create lists for storing all crop tab widgets & layouts
+        self.crop_tab_layouts = []
+        self.crop_tab_widgets = []
+
+        # create a default crop
+        self.create_crop()
+
+        # add crop button layout
+        crop_button_layout = QtGui.QHBoxLayout()
+        crop_button_layout.setSpacing(5)
+        crop_button_layout.addStretch(1)
+        self.layout.addLayout(crop_button_layout)
+
+        # add delete crop button
+        self.remove_crop_button = QtGui.QPushButton(u'\u2717 Remove Crop', self)
+        # self.remove_crop_button.setMinimumHeight(10)
+        self.remove_crop_button.setMaximumWidth(120)
+        self.remove_crop_button.clicked.connect(lambda:self.remove_crop(self.current_crop_num))
+        self.remove_crop_button.setDisabled(True)
+        crop_button_layout.addWidget(self.remove_crop_button)
+
+        # add new crop button
+        self.create_crop_button = QtGui.QPushButton(u'\u270E New Crop', self)
+        # self.create_crop_button.setMinimumHeight(10)
+        self.create_crop_button.setMaximumWidth(100)
+        self.create_crop_button.clicked.connect(lambda:self.create_crop())
+        crop_button_layout.addWidget(self.create_crop_button)
+
+        # set main widget
+        self.setCentralWidget(self.main_widget)
+
+        # set window buttons
+        self.setWindowFlags(QtCore.Qt.CustomizeWindowHint | QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowMaximizeButtonHint)
+
+        self.show()
+
+    def add_textbox(self, label, description, default_value, parent):
+        # make textbox & add row to form layout
+        param_box = QtGui.QLineEdit()
+        # param_box.setMinimumHeight(10)
+        param_box.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        parent.addRow(description, param_box)
+
+        # set default text
+        if default_value != None:
+            param_box.setText(str(default_value))
+
+        # add to list of crop or global controls
+        self.crop_param_controls[-1][label] = param_box
+
+    def add_slider(self, label, description, minimum, maximum, value, parent, tick_interval=1, single_step=1, multiplier=1):
+        # make layout to hold slider and textbox
+        control_layout = QtGui.QHBoxLayout()
+
+        # make slider & add to layout
+        slider = QtGui.QSlider(QtCore.Qt.Horizontal)
+        slider.setFocusPolicy(QtCore.Qt.StrongFocus)
+        slider.setTickPosition(QtGui.QSlider.TicksBothSides)
+        slider.setTickInterval(tick_interval)
+        slider.setSingleStep(single_step)
+        slider.setMinimum(minimum)
+        slider.setMaximum(maximum)
+        slider.setValue(value)
+        control_layout.addWidget(slider)
+
+        # make textbox & add to layout
+        textbox = QtGui.QLineEdit()
+        # textbox.setMinimumHeight(10)
+        textbox.setFixedWidth(40)
+        textbox.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        textbox.setText(str(value/multiplier))
+        control_layout.addWidget(textbox)
+
+        # connect slider to set textbox text & update params
+        slider.sliderMoved.connect(lambda:self.update_textbox_from_slider(slider, textbox, multiplier))
+        slider.sliderMoved.connect(self.param_window.update_params_from_gui)
+
+        # connect textbox to 
+        textbox.editingFinished.connect(lambda:self.update_slider_from_textbox(slider, textbox, multiplier))
+        textbox.editingFinished.connect(self.param_window.update_params_from_gui)
+
+        # add row to form layout
+        parent.addRow(description, control_layout)
+
+        # add to list of crop or global controls
+        self.crop_param_controls[-1][label] = [slider, textbox]
+
+    def update_textbox_from_slider(self, slider, textbox, multiplier=1.0):
+        textbox.setText(str(slider.sliderPosition()/multiplier))
+
+    def update_slider_from_textbox(self, slider, textbox, multiplier=1.0):
+        slider.setValue(float(textbox.text())*multiplier)
+
+    def set_slider_value(self, slider_widgets, value, slider_scale_factor=None):
+        # change slider value without sending signals
+        slider = slider_widgets[0]
+
+        if value == None:
+            value = slider.minimum()
+
+        slider.blockSignals(True)
+
+        if slider_scale_factor != None:
+            slider.setValue(value*slider_scale_factor)
+        else:
+            slider.setValue(value)
+
+        slider.blockSignals(False)
+
+        # change textbox value
+        textbox = slider_widgets[1]
+        textbox.setText(str(float(value)))
+
+    def set_gui_disabled(self, disbaled_bool):
+        self.crop_tabs_widget.setDisabled(disbaled_bool)
+
+        self.remove_crop_button.setDisabled(disbaled_bool)
+        self.create_crop_button.setDisabled(disbaled_bool)
+
+    def create_crop(self, crop_params=None):
+        # create crop tab widget & layout
+        crop_tab_widget = QtGui.QWidget(self.crop_tabs_widget)
+        crop_tab_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        crop_tab_widget.resize(276, 300)
+
+        crop_tab_layout = QtGui.QVBoxLayout(crop_tab_widget)
+
+        # add to list of crop widgets & layouts
+        self.crop_tab_layouts.append(crop_tab_layout)
+        self.crop_tab_widgets.append(crop_tab_widget)
+
+        # create form layout
+        form_layout = QtGui.QFormLayout()
+        form_layout.setFieldGrowthPolicy(QtGui.QFormLayout.AllNonFixedFieldsGrow)
+        crop_tab_layout.addLayout(form_layout)
+
+        # add dict for storing param controls for this crop
+        self.crop_param_controls.append({})
+
+        # add sliders - (key, description, start, end, initial value, parent layout)
+        if self.param_window.current_frame != None:
+            self.add_slider('crop_y', 'Crop y:', 1, self.param_window.current_frame.shape[0], self.param_window.current_frame.shape[0], form_layout, tick_interval=50)
+            self.add_slider('crop_x', 'Crop x:', 1, self.param_window.current_frame.shape[1], self.param_window.current_frame.shape[1], form_layout, tick_interval=50)
+            self.add_slider('offset_y', 'Offset y:', 0, self.param_window.current_frame.shape[0]-1, 0, form_layout, tick_interval=50)
+            self.add_slider('offset_x', 'Offset x:', 0, self.param_window.current_frame.shape[1]-1, 0, form_layout, tick_interval=50)
+        else:
+            self.add_slider('crop_y', 'Crop y:', 1, 2, 1, form_layout, tick_interval=50)
+            self.add_slider('crop_x', 'Crop x:', 1, 2, 1, form_layout, tick_interval=50)
+            self.add_slider('offset_y', 'Offset y:', 0, 1, 0, form_layout, tick_interval=50)
+            self.add_slider('offset_x', 'Offset x:', 0, 1, 0, form_layout, tick_interval=50)
+
+        # add textboxes - (key, decription, initial value, parent layout)
+        self.add_textbox('head_threshold', 'Head threshold:', self.current_crop_params['head_threshold'], form_layout)
+        self.add_textbox('tail_threshold', 'Tail threshold:', self.current_crop_params['tail_threshold'], form_layout)
+
+        # create crop button layout
+        crop_button_layout = QtGui.QHBoxLayout()
+        crop_button_layout.setSpacing(5)
+        crop_button_layout.addStretch(1)
+        crop_tab_layout.addLayout(crop_button_layout)
+
+        # add crop buttons
+        self.reset_crop_button = QtGui.QPushButton(u'\u25A8 Reset Crop', self)
+        # self.reset_crop_button.setMinimumHeight(10)
+        self.reset_crop_button.setMaximumWidth(110)
+        self.reset_crop_button.clicked.connect(self.param_window.reset_crop)
+        crop_button_layout.addWidget(self.reset_crop_button)
+
+        self.select_crop_button = QtGui.QPushButton(u'\u25A3 Select Crop', self)
+        # self.select_crop_button.setMinimumHeight(10)
+        self.select_crop_button.setMaximumWidth(110)
+        self.select_crop_button.clicked.connect(self.param_window.select_crop)
+        crop_button_layout.addWidget(self.select_crop_button)
+
+        if crop_params == None:
+            # no params are given for this crop; set to default parameters
+            self.param_window.params['crop_params'].append(default_crop_params.copy())
+        
+        # update current crop number
+        self.current_crop_num = len(self.param_window.params['crop_params']) - 1
+
+        # add crop widget as a tab
+        self.crop_tabs_widget.addTab(crop_tab_widget, str(self.current_crop_num))
+
+        # make this crop the active tab
+        self.crop_tabs_widget.setCurrentIndex(self.current_crop_num)
+
+        # update text on all tabs
+        for i in range(len(self.param_window.params['crop_params'])):
+                self.crop_tabs_widget.setTabText(i, str(i))
+
+    def change_crop(self, index):
+        if index != -1:
+            # get params for this crop
+            self.current_crop_params = self.param_window.params['crop_params'][index]
+
+            # update current crop number
+            self.current_crop_num = index
+
+            # update the gui with these crop params
+            self.update_crop_param_gui()
+
+            # update the image preview
+            self.param_window.reshape_frame()
+            self.param_window.update_preview(new_frame=True)
+
+    def remove_crop(self, index):
+        # get current number of crops
+        n_crops = len(self.param_window.params['crop_params'])
+
+        if n_crops > 1:
+            # delete params for this crop
+            del self.param_window.params['crop_params'][index]
+
+            # remove the tab
+            self.crop_tabs_widget.removeTab(index)
+
+            # delete this tab's controls, widget & layout
+            del self.crop_param_controls[index]
+            del self.crop_tab_widgets[index]
+            del self.crop_tab_layouts[index]
+
+            # set current crop to last tab
+            self.current_crop_num = len(self.param_window.params['crop_params']) - 1
+            self.current_crop_params = self.param_window.params['crop_params'][-1]
+
+            # update text on all tabs
+            for i in range(len(self.param_window.params['crop_params'])):
+                self.crop_tabs_widget.setTabText(i, str(i))
+
+    def clear_crops(self):
+        # get current number of crops
+        n_crops = len(self.param_window.params['crop_params'])
+
+        print(n_crops)
+
+        for c in range(n_crops-1, -1, -1):
+            # delete params
+            del self.param_window.params['crop_params'][c]
+
+            # remove tab
+            self.crop_tabs_widget.removeTab(c)
+
+            # delete controls, widget & layout
+            del self.crop_param_controls[c]
+            del self.crop_tab_widgets[c]
+            del self.crop_tab_layouts[c]
+
+        # reset current crop
+        self.param_window.params['crop_params'] = []
+        self.current_crop_params = None
+        self.current_crop_num = -1
+
+    def update_crop_param_gui(self):
+        # update param controls with current parameters
+        if self.current_crop_params['crop'] != None:
+            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['crop_y'], self.current_crop_params['crop'][0])
+            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['crop_x'], self.current_crop_params['crop'][1])
+            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['offset_y'], self.current_crop_params['offset'][0])
+            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['offset_x'], self.current_crop_params['offset'][1])
+        elif self.param_window.current_frame != None:
+            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['crop_y'], self.param_window.current_frame.shape[0])
+            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['crop_x'], self.param_window.current_frame.shape[1])
+            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['offset_y'], 0)
+            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['offset_x'], 0)
+
+        self.crop_param_controls[self.current_crop_num]['tail_threshold'].setText(str(self.current_crop_params['tail_threshold']))
+        self.crop_param_controls[self.current_crop_num]['head_threshold'].setText(str(self.current_crop_params['head_threshold']))
+
+    def fileQuit(self):
+        self.close()
+
+    def closeEvent(self, ce):
+        self.fileQuit()
 class ParamWindow(QtGui.QMainWindow):
     # initiate drawing signals
     imageLoaded       = QtCore.Signal(np.ndarray, list, bool, bool, bool)
@@ -385,6 +700,8 @@ class ParamWindow(QtGui.QMainWindow):
         # create preview window
         self.preview_window = PreviewWindow(self)
 
+        self.setGeometry(100, 100, 10, 10)
+
         # initiate image vars
         self.current_frame        = None
         self.cropped_frame        = None
@@ -393,10 +710,8 @@ class ParamWindow(QtGui.QMainWindow):
         self.tail_threshold_frame = None
         self.tail_skeleton_frame  = None
         self.n_frames             = 0
-        self.current_crop_num     = -1
 
         # set default params
-        self.current_crop_params = default_crop_params
         self.params              = default_params
 
         # initialize parameter controls variable
@@ -449,54 +764,12 @@ class ParamWindow(QtGui.QMainWindow):
         self.layout.addStretch(1)
         self.layout.setSpacing(5)
 
-        # initialize dict used for accessing all crop parameter controls
-        self.crop_param_controls = []
-
-        # create tabs widget
-        self.crop_tabs_widget = QtGui.QTabWidget()
-        self.crop_tabs_widget.setUsesScrollButtons(True)
-        self.crop_tabs_widget.tabCloseRequested.connect(self.remove_crop)
-        self.crop_tabs_widget.currentChanged.connect(self.change_crop)
-        self.crop_tabs_widget.setElideMode(QtCore.Qt.ElideLeft)
-        self.crop_tabs_widget.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.MinimumExpanding)
-        self.crop_tabs_widget.setMinimumSize(276, 300)
-        self.layout.addWidget(self.crop_tabs_widget)
-
-        # create tabs layout
-        crop_tabs_layout  = QtGui.QHBoxLayout(self.crop_tabs_widget)
-
-        # create lists for storing all crop tab widgets & layouts
-        self.crop_tab_layouts = []
-        self.crop_tab_widgets = []
-
-        # create a default crop
-        self.create_crop()
-
-        # add crop button layout
-        crop_button_layout = QtGui.QHBoxLayout()
-        crop_button_layout.setSpacing(5)
-        crop_button_layout.addStretch(1)
-        self.layout.addLayout(crop_button_layout)
-
-        # add delete crop button
-        self.remove_crop_button = QtGui.QPushButton(u'\u2717 Remove Crop', self)
-        self.remove_crop_button.setMinimumHeight(10)
-        self.remove_crop_button.setMaximumWidth(120)
-        self.remove_crop_button.clicked.connect(lambda:self.remove_crop(self.current_crop_num))
-        self.remove_crop_button.setDisabled(True)
-        crop_button_layout.addWidget(self.remove_crop_button)
-
-        # add new crop button
-        self.create_crop_button = QtGui.QPushButton(u'\u270E New Crop', self)
-        self.create_crop_button.setMinimumHeight(10)
-        self.create_crop_button.setMaximumWidth(100)
-        self.create_crop_button.clicked.connect(lambda:self.create_crop())
-        crop_button_layout.addWidget(self.create_crop_button)
-
         # create form layout
         self.form_layout = QtGui.QFormLayout()
         self.form_layout.setFieldGrowthPolicy(QtGui.QFormLayout.AllNonFixedFieldsGrow)
         self.layout.addLayout(self.form_layout)
+
+        self.crops_window = CropsWindow(self)
 
         # create dict for storing all parameter controls
         self.param_controls = {}
@@ -539,47 +812,47 @@ class ParamWindow(QtGui.QMainWindow):
 
         # add buttons
         self.save_button = QtGui.QPushButton(u'\u2713 Save', self)
-        self.save_button.setMinimumHeight(10)
+        # self.save_button.setMinimumHeight(10)
         self.save_button.setMaximumWidth(80)
         self.save_button.clicked.connect(self.save_params)
         button_layout_1.addWidget(self.save_button)
 
         self.track_button = QtGui.QPushButton(u'\u279E Track', self)
-        self.track_button.setMinimumHeight(10)
+        # self.track_button.setMinimumHeight(10)
         self.track_button.setMaximumWidth(80)
         self.track_button.clicked.connect(self.track_frame)
         button_layout_1.addWidget(self.track_button)
 
         self.track_all_button = QtGui.QPushButton(u'\u27A0 Track All', self)
-        self.track_all_button.setMinimumHeight(10)
+        # self.track_all_button.setMinimumHeight(10)
         self.track_all_button.setMaximumWidth(180)
         self.track_all_button.clicked.connect(self.track)
         self.track_all_button.setStyleSheet("font-weight: bold")
         button_layout_1.addWidget(self.track_all_button)
 
         self.reload_last_save_button = QtGui.QPushButton(u'\u27AA Reload', self)
-        self.reload_last_save_button.setMinimumHeight(10)
+        # self.reload_last_save_button.setMinimumHeight(10)
         self.reload_last_save_button.setMaximumWidth(90)
         self.reload_last_save_button.clicked.connect(lambda:self.reload_last_save())
-        button_layout_1.addWidget(self.reload_last_save_button)
+        button_layout_2.addWidget(self.reload_last_save_button)
 
         self.open_image_button = QtGui.QPushButton('+ Image', self)
-        self.open_image_button.setMinimumHeight(10)
+        # self.open_image_button.setMinimumHeight(10)
         self.open_image_button.setMaximumWidth(70)
         self.open_image_button.clicked.connect(lambda:self.open_image(""))
-        button_layout_1.addWidget(self.open_image_button)
+        button_layout_2.addWidget(self.open_image_button)
 
         self.open_folder_button = QtGui.QPushButton('+ Folder', self)
-        self.open_folder_button.setMinimumHeight(10)
+        # self.open_folder_button.setMinimumHeight(10)
         self.open_folder_button.setMaximumWidth(70)
         self.open_folder_button.clicked.connect(lambda:self.open_folder(""))
-        button_layout_1.addWidget(self.open_folder_button)
+        button_layout_2.addWidget(self.open_folder_button)
 
         self.open_video_button = QtGui.QPushButton('+ Video', self)
-        self.open_video_button.setMinimumHeight(10)
+        # self.open_video_button.setMinimumHeight(10)
         self.open_video_button.setMaximumWidth(70)
         self.open_video_button.clicked.connect(lambda:self.open_video(""))
-        button_layout_1.addWidget(self.open_video_button)
+        button_layout_2.addWidget(self.open_video_button)
 
         # set window buttons
         self.setWindowFlags(QtCore.Qt.CustomizeWindowHint | QtCore.Qt.WindowCloseButtonHint | QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowMaximizeButtonHint)
@@ -592,161 +865,19 @@ class ParamWindow(QtGui.QMainWindow):
 
         self.show()
 
-    def set_gui_disabled(self, disbaled_bool):
-        self.crop_tabs_widget.setDisabled(disbaled_bool)
-
-        self.remove_crop_button.setDisabled(disbaled_bool)
-        self.create_crop_button.setDisabled(disbaled_bool)
-
+    def set_gui_disabled(self, disabled_bool):
         for param_control in self.param_controls.values():
             if type(param_control) == list:
-                param_control[0].setDisabled(disbaled_bool)
-                param_control[1].setDisabled(disbaled_bool)
+                param_control[0].setDisabled(disabled_bool)
+                param_control[1].setDisabled(disabled_bool)
             else:
-                param_control.setDisabled(disbaled_bool)
+                param_control.setDisabled(disabled_bool)
 
-        self.save_button.setDisabled(disbaled_bool)
-        self.track_button.setDisabled(disbaled_bool)
-        self.track_all_button.setDisabled(disbaled_bool)
+        self.save_button.setDisabled(disabled_bool)
+        self.track_button.setDisabled(disabled_bool)
+        self.track_all_button.setDisabled(disabled_bool)
 
-    def create_crop(self, crop_params=None):
-        print("creating crop")
-        # create crop tab widget & layout
-        crop_tab_widget = QtGui.QWidget(self.crop_tabs_widget)
-        crop_tab_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
-        crop_tab_widget.resize(276, 300)
-
-        crop_tab_layout = QtGui.QVBoxLayout(crop_tab_widget)
-
-        # add to list of crop widgets & layouts
-        self.crop_tab_layouts.append(crop_tab_layout)
-        self.crop_tab_widgets.append(crop_tab_widget)
-
-        # create form layout
-        form_layout = QtGui.QFormLayout()
-        form_layout.setFieldGrowthPolicy(QtGui.QFormLayout.AllNonFixedFieldsGrow)
-        crop_tab_layout.addLayout(form_layout)
-
-        # add dict for storing param controls for this crop
-        self.crop_param_controls.append({})
-
-        # add sliders - (key, description, start, end, initial value, parent layout)
-        if self.current_frame != None:
-            self.add_slider('crop_y', 'Crop y:', 1, self.current_frame.shape[0], self.current_frame.shape[0], form_layout, tick_interval=50)
-            self.add_slider('crop_x', 'Crop x:', 1, self.current_frame.shape[1], self.current_frame.shape[1], form_layout, tick_interval=50)
-            self.add_slider('offset_y', 'Offset y:', 0, self.current_frame.shape[0]-1, 0, form_layout, tick_interval=50)
-            self.add_slider('offset_x', 'Offset x:', 0, self.current_frame.shape[1]-1, 0, form_layout, tick_interval=50)
-        else:
-            self.add_slider('crop_y', 'Crop y:', 1, 2, 1, form_layout, tick_interval=50)
-            self.add_slider('crop_x', 'Crop x:', 1, 2, 1, form_layout, tick_interval=50)
-            self.add_slider('offset_y', 'Offset y:', 0, 1, 0, form_layout, tick_interval=50)
-            self.add_slider('offset_x', 'Offset x:', 0, 1, 0, form_layout, tick_interval=50)
-
-        # add textboxes - (key, decription, initial value, parent layout)
-        self.add_textbox('head_threshold', 'Head threshold:', self.current_crop_params['head_threshold'], form_layout)
-        self.add_textbox('tail_threshold', 'Tail threshold:', self.current_crop_params['tail_threshold'], form_layout)
-
-        # create crop button layout
-        crop_button_layout = QtGui.QHBoxLayout()
-        crop_button_layout.setSpacing(5)
-        crop_button_layout.addStretch(1)
-        crop_tab_layout.addLayout(crop_button_layout)
-
-        # add crop buttons
-        self.reset_crop_button = QtGui.QPushButton(u'\u25A8 Reset Crop', self)
-        self.reset_crop_button.setMinimumHeight(10)
-        self.reset_crop_button.setMaximumWidth(110)
-        self.reset_crop_button.clicked.connect(self.reset_crop)
-        crop_button_layout.addWidget(self.reset_crop_button)
-
-        self.select_crop_button = QtGui.QPushButton(u'\u25A3 Select Crop', self)
-        self.select_crop_button.setMinimumHeight(10)
-        self.select_crop_button.setMaximumWidth(110)
-        self.select_crop_button.clicked.connect(self.select_crop)
-        crop_button_layout.addWidget(self.select_crop_button)
-
-        if crop_params == None:
-            # no params are given for this crop; set to default parameters
-            self.params['crop_params'].append(default_crop_params.copy())
-        
-        # update current crop number
-        self.current_crop_num = len(self.params['crop_params']) - 1
-
-        # add crop widget as a tab
-        self.crop_tabs_widget.addTab(crop_tab_widget, str(self.current_crop_num))
-
-        # make this crop the active tab
-        self.crop_tabs_widget.setCurrentIndex(self.current_crop_num)
-
-        # update text on all tabs
-        for i in range(len(self.params['crop_params'])):
-                self.crop_tabs_widget.setTabText(i, str(i))
-
-    def change_crop(self, index):
-        if index != -1:
-            # get params for this crop
-            self.current_crop_params = self.params['crop_params'][index]
-
-            # update current crop number
-            self.current_crop_num = index
-
-            # update the gui with these crop params
-            self.update_crop_param_gui()
-
-            # update the image preview
-            self.reshape_frame()
-            self.update_preview(new_frame=True)
-
-    def remove_crop(self, index):
-        # get current number of crops
-        n_crops = len(self.params['crop_params'])
-
-        if n_crops > 1:
-            # delete params for this crop
-            del self.params['crop_params'][index]
-
-            # remove the tab
-            self.crop_tabs_widget.removeTab(index)
-
-            # delete this tab's controls, widget & layout
-            del self.crop_param_controls[index]
-            del self.crop_tab_widgets[index]
-            del self.crop_tab_layouts[index]
-
-            # set current crop to last tab
-            self.current_crop_num = len(self.params['crop_params']) - 1
-            self.current_crop_params = self.params['crop_params'][-1]
-
-            # update text on all tabs
-            for i in range(len(self.params['crop_params'])):
-                self.crop_tabs_widget.setTabText(i, str(i))
-
-    def clear_crops(self):
-        # get current number of crops
-        n_crops = len(self.params['crop_params'])
-
-        print(n_crops)
-
-        for c in range(n_crops-1, -1, -1):
-            # delete params
-            del self.params['crop_params'][c]
-
-            # remove tab
-            self.crop_tabs_widget.removeTab(c)
-
-            # delete controls, widget & layout
-            del self.crop_param_controls[c]
-            del self.crop_tab_widgets[c]
-            del self.crop_tab_layouts[c]
-
-        # reset current crop
-        self.params['crop_params'] = []
-        self.current_crop_params = None
-        self.current_crop_num = -1
-
-    def select_crop(self):
-        # user wants to draw a crop selection; start selecting
-        self.preview_window.start_select_crop()
+        self.crops_window.set_gui_disabled(disabled_bool)
 
     def hideEvent(self, event):
         # quit app when clicking 'x' button on macOS
@@ -756,14 +887,14 @@ class ParamWindow(QtGui.QMainWindow):
         # re-load last saved state
 
         # clear all crops
-        self.clear_crops()
+        self.crops_window.clear_crops()
 
         # load saved parameters
         self.load_params()
 
         # add all saved crops
         for j in range(len(self.params['crop_params'])):
-            self.create_crop(self.params['crop_params'][j])
+            self.crops_window.create_crop(self.params['crop_params'][j])
 
         # re-open the last file
         self.open_last_file()
@@ -778,10 +909,10 @@ class ParamWindow(QtGui.QMainWindow):
                 new_params.update(saved_params)
         except:
             self.params['crop_params'] = [default_crop_params]
-            self.current_crop_params = self.params['crop_params'][0]
+            self.crops_window.current_crop_params = self.params['crop_params'][0]
         else:
             self.params = new_params
-            self.current_crop_params = self.params['crop_params'][0]
+            self.crops_window.current_crop_params = self.params['crop_params'][0]
 
     def open_last_file(self):
         if self.params['type_opened'] == "video":
@@ -799,7 +930,7 @@ class ParamWindow(QtGui.QMainWindow):
     def add_textbox(self, label, description, default_value, parent):
         # make textbox & add row to form layout
         param_box = QtGui.QLineEdit()
-        param_box.setMinimumHeight(10)
+        # param_box.setMinimumHeight(10)
         param_box.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         parent.addRow(description, param_box)
 
@@ -808,10 +939,7 @@ class ParamWindow(QtGui.QMainWindow):
             param_box.setText(str(default_value))
 
         # add to list of crop or global controls
-        if label in ('crop_y', 'crop_x', 'offset_y', 'offset_x', 'head_threshold', 'tail_threshold'):
-            self.crop_param_controls[-1][label] = param_box
-        else:
-            self.param_controls[label] = param_box
+        self.param_controls[label] = param_box
 
     def add_slider(self, label, description, minimum, maximum, value, parent, tick_interval=1, single_step=1, multiplier=1):
         # make layout to hold slider and textbox
@@ -830,7 +958,7 @@ class ParamWindow(QtGui.QMainWindow):
 
         # make textbox & add to layout
         textbox = QtGui.QLineEdit()
-        textbox.setMinimumHeight(10)
+        # textbox.setMinimumHeight(10)
         textbox.setFixedWidth(40)
         textbox.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         textbox.setText(str(value/multiplier))
@@ -848,10 +976,7 @@ class ParamWindow(QtGui.QMainWindow):
         parent.addRow(description, control_layout)
 
         # add to list of crop or global controls
-        if label in ('crop_y', 'crop_x', 'offset_y', 'offset_x', 'head_threshold', 'tail_threshold'):
-            self.crop_param_controls[-1][label] = [slider, textbox]
-        else:
-            self.param_controls[label] = [slider, textbox]
+        self.param_controls[label] = [slider, textbox]
 
     def update_textbox_from_slider(self, slider, textbox, multiplier=1.0):
         textbox.setText(str(slider.sliderPosition()/multiplier))
@@ -867,10 +992,7 @@ class ParamWindow(QtGui.QMainWindow):
         parent.addWidget(checkbox)
 
         # add to list of crop or global controls
-        if label in ('crop_y', 'crop_x', 'offset_y', 'offset_x', 'head_threshold', 'tail_threshold'):
-            self.crop_param_controls[-1][label] = checkbox
-        else:
-            self.param_controls[label] = checkbox
+        self.param_controls[label] = checkbox
 
     def add_combobox(self, label, description, options, value, parent):
         combobox = QtGui.QComboBox()
@@ -912,16 +1034,16 @@ class ParamWindow(QtGui.QMainWindow):
 
             if reset_params:
                 # clear all crops
-                self.clear_crops()
+                self.crops_window.clear_crops()
 
                 # set params to defaults
                 self.params = default_params
 
                 # set crop params to defaults
-                self.current_crop_params = default_crop_params
+                self.crops_window.current_crop_params = default_crop_params
 
                 # create a default crop
-                self.create_crop()
+                self.crops_window.create_crop()
 
             # set path
             self.params['last_path'] = path
@@ -933,7 +1055,7 @@ class ParamWindow(QtGui.QMainWindow):
             self.switch_frame(0, new_load=True)
 
             # update gui
-            self.update_crop_param_gui()
+            self.crops_window.update_crop_param_gui()
             self.update_global_param_gui()
 
             # enable controls
@@ -950,16 +1072,16 @@ class ParamWindow(QtGui.QMainWindow):
 
             if reset_params:
                 # clear all crops
-                self.clear_crops()
+                self.crops_window.clear_crops()
 
                 # set params to defaults
                 self.params = default_params
 
                 # set crop params to defaults
-                self.current_crop_params = default_crop_params
+                self.crops_window.current_crop_params = default_crop_params
 
                 # create a default crop
-                self.create_crop()
+                self.crops_window.create_crop()
 
             # set path
             self.params['last_path'] = path
@@ -971,7 +1093,7 @@ class ParamWindow(QtGui.QMainWindow):
             self.switch_frame(0, new_load=True)
             
             # update gui
-            self.update_crop_param_gui()
+            self.crops_window.update_crop_param_gui()
             self.update_global_param_gui()
 
             # enable controls
@@ -1000,16 +1122,16 @@ class ParamWindow(QtGui.QMainWindow):
 
             if reset_params:
                 # clear all crops
-                self.clear_crops()
+                self.crops_window.clear_crops()
 
                 # set params to defaults
                 self.params = default_params
 
                 # set crop params to defaults
-                self.current_crop_params = default_crop_params
+                self.crops_window.current_crop_params = default_crop_params
 
                 # create a default crop
-                self.create_crop()
+                self.crops_window.create_crop()
 
             # set path
             self.params['last_path'] = path
@@ -1021,7 +1143,7 @@ class ParamWindow(QtGui.QMainWindow):
             self.switch_frame(0, new_load=True)
 
             # update gui
-            self.update_crop_param_gui()
+            self.crops_window.update_crop_param_gui()
             self.update_global_param_gui()
 
             # enable controls
@@ -1046,22 +1168,6 @@ class ParamWindow(QtGui.QMainWindow):
         # change textbox value
         textbox = slider_widgets[1]
         textbox.setText(str(float(value)))
-
-    def update_crop_param_gui(self):
-        # update param controls with current parameters
-        if self.current_crop_params['crop'] != None:
-            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['crop_y'], self.current_crop_params['crop'][0])
-            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['crop_x'], self.current_crop_params['crop'][1])
-            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['offset_y'], self.current_crop_params['offset'][0])
-            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['offset_x'], self.current_crop_params['offset'][1])
-        elif self.current_frame != None:
-            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['crop_y'], self.current_frame.shape[0])
-            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['crop_x'], self.current_frame.shape[1])
-            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['offset_y'], 0)
-            self.set_slider_value(self.crop_param_controls[self.current_crop_num]['offset_x'], 0)
-
-        self.crop_param_controls[self.current_crop_num]['tail_threshold'].setText(str(self.current_crop_params['tail_threshold']))
-        self.crop_param_controls[self.current_crop_num]['head_threshold'].setText(str(self.current_crop_params['head_threshold']))
 
     def update_global_param_gui(self):
         # update param controls with current parameters
@@ -1100,15 +1206,15 @@ class ParamWindow(QtGui.QMainWindow):
             # invert the frame
             self.invert_frame()
 
-        if self.current_crop_params['crop'] == None:
+        if self.crops_window.current_crop_params['crop'] == None:
             # update crop
-            self.current_crop_params['crop'] = self.current_frame.shape
+            self.crops_window.current_crop_params['crop'] = self.current_frame.shape
 
         for c in range(len(self.params['crop_params'])):
-            self.crop_param_controls[c]['crop_y'][0].setMaximum(self.current_frame.shape[0])
-            self.crop_param_controls[c]['crop_x'][0].setMaximum(self.current_frame.shape[1])
-            self.crop_param_controls[c]['offset_y'][0].setMaximum(self.current_frame.shape[0]-1)
-            self.crop_param_controls[c]['offset_x'][0].setMaximum(self.current_frame.shape[1]-1)
+            self.crops_window.crop_param_controls[c]['crop_y'][0].setMaximum(self.current_frame.shape[0])
+            self.crops_window.crop_param_controls[c]['crop_x'][0].setMaximum(self.current_frame.shape[1])
+            self.crops_window.crop_param_controls[c]['offset_y'][0].setMaximum(self.current_frame.shape[0]-1)
+            self.crops_window.crop_param_controls[c]['offset_x'][0].setMaximum(self.current_frame.shape[1]-1)
 
         self.param_controls['tail_crop_height'][0].setMaximum(self.current_frame.shape[0])
         self.param_controls['tail_crop_width'][0].setMaximum(self.current_frame.shape[1])
@@ -1118,7 +1224,7 @@ class ParamWindow(QtGui.QMainWindow):
 
         # update the image preview
         self.update_preview(new_load=new_load, new_frame=True)
-        # self.track_frame(update_params=False)
+        self.track_frame(update_params=False)
 
     def reshape_frame(self):
         if self.current_frame != None:
@@ -1129,9 +1235,9 @@ class ParamWindow(QtGui.QMainWindow):
                 self.shrunken_frame = self.current_frame
 
             # crop the image
-            if self.current_crop_params['crop'] is not None and self.current_crop_params['offset'] is not None:
-                crop = (round(self.current_crop_params['crop'][0]*self.params['shrink_factor']), round(self.current_crop_params['crop'][1]*self.params['shrink_factor']))
-                offset = (round(self.current_crop_params['offset'][0]*self.params['shrink_factor']), round(self.current_crop_params['offset'][1]*self.params['shrink_factor']))
+            if self.crops_window.current_crop_params['crop'] is not None and self.crops_window.current_crop_params['offset'] is not None:
+                crop = (round(self.crops_window.current_crop_params['crop'][0]*self.params['shrink_factor']), round(self.crops_window.current_crop_params['crop'][1]*self.params['shrink_factor']))
+                offset = (round(self.crops_window.current_crop_params['offset'][0]*self.params['shrink_factor']), round(self.crops_window.current_crop_params['offset'][1]*self.params['shrink_factor']))
 
                 self.cropped_frame = tt.crop_image(self.shrunken_frame, offset, crop)
             else:
@@ -1143,8 +1249,8 @@ class ParamWindow(QtGui.QMainWindow):
     def generate_threshold_frames(self):
         # generate head & tail thresholded frames
         if self.current_frame != None:
-            self.head_threshold_frame = tt.get_head_threshold_image(self.cropped_frame, self.current_crop_params['head_threshold'])
-            self.tail_threshold_frame = tt.get_tail_threshold_image(self.cropped_frame, self.current_crop_params['tail_threshold'])
+            self.head_threshold_frame = tt.get_head_threshold_image(self.cropped_frame, self.crops_window.current_crop_params['head_threshold'])
+            self.tail_threshold_frame = tt.get_tail_threshold_image(self.cropped_frame, self.crops_window.current_crop_params['tail_threshold'])
             self.tail_skeleton_frame = tt.get_tail_skeleton_image(self.tail_threshold_frame)
 
     def update_preview(self, new_load=False, new_frame=False):
@@ -1230,18 +1336,18 @@ class ParamWindow(QtGui.QMainWindow):
         if self.current_frame != None:
             # get crop params from gui
             for c in range(len(self.params['crop_params'])):
-                crop_y = int(float(self.crop_param_controls[c]['crop_y'][1].text()))
-                crop_x = int(float(self.crop_param_controls[c]['crop_x'][1].text()))
-                offset_y = int(float(self.crop_param_controls[c]['offset_y'][1].text()))
-                offset_x = int(float(self.crop_param_controls[c]['offset_x'][1].text()))
+                crop_y = int(float(self.crops_window.crop_param_controls[c]['crop_y'][1].text()))
+                crop_x = int(float(self.crops_window.crop_param_controls[c]['crop_x'][1].text()))
+                offset_y = int(float(self.crops_window.crop_param_controls[c]['offset_y'][1].text()))
+                offset_x = int(float(self.crops_window.crop_param_controls[c]['offset_x'][1].text()))
 
                 self.params['crop_params'][c]['crop'] = [crop_y, crop_x]
                 self.params['crop_params'][c]['offset'] = [offset_y, offset_x]
 
-                self.params['crop_params'][c]['head_threshold'] = int(self.crop_param_controls[c]['head_threshold'].text())
-                self.params['crop_params'][c]['tail_threshold'] = int(self.crop_param_controls[c]['tail_threshold'].text())
+                self.params['crop_params'][c]['head_threshold'] = int(self.crops_window.crop_param_controls[c]['head_threshold'].text())
+                self.params['crop_params'][c]['tail_threshold'] = int(self.crops_window.crop_param_controls[c]['tail_threshold'].text())
 
-            self.current_crop_params = self.params['crop_params'][self.current_crop_num]
+            self.crops_window.current_crop_params = self.params['crop_params'][self.crops_window.current_crop_num]
 
             # get global params from gui
             self.params['shrink_factor'] = float(self.param_controls['shrink_factor'][1].text())
@@ -1289,7 +1395,7 @@ class ParamWindow(QtGui.QMainWindow):
         # track frame
         (tail_coords, spline_coords,
          eye_coords, heading_coords,
-         skeleton_matrix) = tt.track_image(self.cropped_frame, self.current_crop_params['head_threshold'], self.current_crop_params['tail_threshold'],
+         skeleton_matrix) = tt.track_image(self.cropped_frame, self.crops_window.current_crop_params['head_threshold'], self.crops_window.current_crop_params['tail_threshold'],
                                            self.params['min_tail_eye_dist'], self.params['max_tail_eye_dist'],
                                            self.params['track_head'], self.params['track_tail'],
                                            self.params['n_tail_points'], self.params['tail_crop'], self.params['adjust_thresholds'],
@@ -1299,16 +1405,16 @@ class ParamWindow(QtGui.QMainWindow):
             # plot tracked frame. for threshold/skeleton images, change nonzero pixels to 255 (so they show up as white)
             if self.param_controls["show_head_threshold"].isChecked():
                 self.imageTracked.emit(self.head_threshold_frame*255, self.params['tail_crop'],
-                    [tail_coords, spline_coords, eye_coords, heading_coords])
+                    [tail_coords, spline_coords, eye_coords, heading_coords], False, False)
             elif self.param_controls["show_tail_threshold"].isChecked():
                 self.imageTracked.emit(self.tail_threshold_frame*255, self.params['tail_crop'],
-                    [tail_coords, spline_coords, eye_coords, heading_coords])
+                    [tail_coords, spline_coords, eye_coords, heading_coords], False, False)
             elif self.param_controls["show_tail_skeleton"].isChecked():
                 self.imageTracked.emit(self.tail_skeleton_frame*255, self.params['tail_crop'],
-                    [tail_coords, spline_coords, eye_coords, heading_coords])
+                    [tail_coords, spline_coords, eye_coords, heading_coords], False, False)
             else:
                 self.imageTracked.emit(self.cropped_frame, self.params['tail_crop'],
-                    [tail_coords, spline_coords, eye_coords, heading_coords])
+                    [tail_coords, spline_coords, eye_coords, heading_coords], False, False)
 
     def track(self):
         if self.params['interpolation'] == 'Nearest Neighbor':
@@ -1320,51 +1426,35 @@ class ParamWindow(QtGui.QMainWindow):
         elif self.params['interpolation'] == 'Lanczos':
             interpolation = cv2.INTER_LANCZOS4
 
-        kwargs_dict = { 'crop_params':       self.params['crop_params'],
-                        'shrink_factor':     self.params['shrink_factor'],
-                        'invert':            self.params['invert'],
-                        'min_tail_eye_dist': self.params['min_tail_eye_dist'],
-                        'max_tail_eye_dist': self.params['max_tail_eye_dist'],
-                        'track_head':        self.params['track_head'],
-                        'track_tail':        self.params['track_tail'],
-                        'save_video':        self.params['save_video'],
-                        'new_video_fps':     self.params['new_video_fps'],
-                        'tail_crop':         self.params['tail_crop'],
-                        'n_tail_points':     self.params['n_tail_points'],
-                        'adjust_thresholds': self.params['adjust_thresholds'],
-                        'eye_resize_factor': self.params['eye_resize_factor'],
-                        'interpolation':     interpolation
-                      }
-
         if self.params['type_opened'] == "image":
-            self.track_image(kwargs_dict)
+            self.track_image(self.params)
         elif self.params['type_opened'] == "folder":
-            self.track_folder(kwargs_dict)
+            self.track_folder(self.params)
         elif self.params['type_opened'] == "video":
-            self.track_video(kwargs_dict)
+            self.track_video(self.params)
 
-    def track_image(self, kwargs_dict):
+    def track_image(self, params):
         # get save path
         self.save_path = str(QtGui.QFileDialog.getSaveFileName(self, 'Save image', '', 'Images (*.jpg *.tif *.png)'))
 
         # spawn thread to track image
-        t = threading.Thread(target=tt.open_and_track_image, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
+        t = threading.Thread(target=tt.open_and_track_image, args=(self.params['last_path'], self.save_path, params))
         t.start()
 
-    def track_folder(self, kwargs_dict):
+    def track_folder(self, params):
         # get save path
         self.save_path = str(QtGui.QFileDialog.getSaveFileName(self, 'Save video', '', 'Videos (*.mov *.tif *.mp4 *.avi)'))
 
         # spawn thread to track folder
-        t = threading.Thread(target=tt.open_and_track_folder, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
+        t = threading.Thread(target=tt.open_and_track_folder, args=(self.params['last_path'], self.save_path, params))
         t.start()
 
-    def track_video(self, kwargs_dict):
+    def track_video(self, params):
         # get save path
         self.save_path = str(QtGui.QFileDialog.getSaveFileName(self, 'Save video', '', 'Videos (*.mov *.tif *.mp4 *.avi)'))
 
         # spawn thread to track video
-        t = threading.Thread(target=tt.open_and_track_video, args=(self.params['last_path'], self.save_path), kwargs=kwargs_dict)
+        t = threading.Thread(target=tt.open_and_track_video, args=(self.params['last_path'], self.save_path, params))
         t.start()
 
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
@@ -1376,12 +1466,12 @@ class ParamWindow(QtGui.QMainWindow):
         end_add = round(1*self.params['shrink_factor'])
 
         # update crop params
-        self.current_crop_params['crop']   = [abs(y_end - y_start)+end_add, abs(x_end - x_start)+end_add]
-        self.current_crop_params['offset'] = [self.current_crop_params['offset'][0] + min(y_start, y_end), self.current_crop_params['offset'][1] + min(x_start, x_end)]
-        self.params['crop_params'][self.current_crop_num] = self.current_crop_params
+        self.crops_window.current_crop_params['crop']   = [abs(y_end - y_start)+end_add, abs(x_end - x_start)+end_add]
+        self.crops_window.current_crop_params['offset'] = [self.crops_window.current_crop_params['offset'][0] + min(y_start, y_end), self.crops_window.current_crop_params['offset'][1] + min(x_start, x_end)]
+        self.params['crop_params'][self.crops_window.current_crop_num] = self.crops_window.current_crop_params
 
         # update crop gui
-        self.update_crop_param_gui()
+        self.crops_window.update_crop_param_gui()
 
         # reshape current frame
         self.reshape_frame()
@@ -1389,14 +1479,18 @@ class ParamWindow(QtGui.QMainWindow):
         # update the image preview
         self.update_preview(new_frame=True)
 
+    def select_crop(self):
+        # user wants to draw a crop selection; start selecting
+        self.preview_window.start_select_crop()
+
     def reset_crop(self):
         # reset crop params
-        self.current_crop_params['crop']   = [self.current_frame.shape[0], self.current_frame.shape[1]]
-        self.current_crop_params['offset'] = [0, 0]
-        self.params['crop_params'][self.current_crop_num] = self.current_crop_params
+        self.crops_window.current_crop_params['crop']   = [self.current_frame.shape[0], self.current_frame.shape[1]]
+        self.crops_window.current_crop_params['offset'] = [0, 0]
+        self.params['crop_params'][self.crops_window.current_crop_num] = self.crops_window.current_crop_params
 
         # update crop gui
-        self.update_crop_param_gui()
+        self.crops_window.update_crop_param_gui()
 
         # reshape current frame
         self.reshape_frame()

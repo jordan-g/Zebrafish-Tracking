@@ -2,23 +2,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def open_saved_data(save_dir=None):
+def open_saved_data(save_dir=None, k=0):
 	"""
 	Open saved tracking data from the given directory.
 	"""
 	try:
-		eye_coords_array    = np.load(os.path.join(save_dir, "eye_coords.npy"))
-		try:
-			perp_coords_array   = np.load(os.path.join(save_dir, "heading_coords.npy"))
-		except:
-			perp_coords_array   = np.load(os.path.join(save_dir, "perp_coords.npy"))
-		tail_coords_array   = np.load(os.path.join(save_dir, "tail_coords.npy"))
-		spline_coords_array = np.load(os.path.join(save_dir, "spline_coords.npy"))
+		npzfile = np.load(os.path.join(save_dir, "crop_{}_tracking_data.npy.npz".format(k)))
+		# print("hi")
+		# print(npzfile.files)
+		eye_coords_array    = npzfile['eye_coords']
+		perp_coords_array = npzfile['heading_coords']
+		tail_coords_array = npzfile['tail_coords']
+		spline_coords_array = npzfile['spline_coords']
+		params = npzfile['params'][()]
+
+		# print(eye_coords_array)
+		# try:
+		# 	perp_coords_array   = np.load(os.path.join(save_dir, "heading_coords.npy"))
+		# except:
+		# 	perp_coords_array   = np.load(os.path.join(save_dir, "perp_coords.npy"))
+		# tail_coords_array   = np.load(os.path.join(save_dir, "tail_coords.npy"))
+		# spline_coords_array = np.load(os.path.join(save_dir, "spline_coords.npy"))
 	except:
 		print("ERROR: Tracking data could not be found.")
 		return [None]*4
 
-	return eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array
+	return eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array, params
 
 def get_vectors(perp_coords_array, spline_coords_array, tail_coords_array):
 	"""
@@ -28,10 +37,10 @@ def get_vectors(perp_coords_array, spline_coords_array, tail_coords_array):
 	perp_vectors = perp_coords_array[:, :, 0] - perp_coords_array[:, :, 1]
 
 	# get distances between start/end coordinates of the heading line and the starting coordinates of the tail
-	tail_distances = np.sqrt((perp_coords_array[:, 0, :] - tail_coords_array[:, 0, -1][:, np.newaxis])**2 + (perp_coords_array[:, 1, :] - tail_coords_array[:, 1, -1][:, np.newaxis])**2)
+	spline_distances = np.sqrt((perp_coords_array[:, 0, :] - spline_coords_array[:, 0, -1][:, np.newaxis])**2 + (perp_coords_array[:, 1, :] - spline_coords_array[:, 1, -1][:, np.newaxis])**2)
 	
 	# get frames where the "starting" heading coordinate is closer to the tail than the "ending" coordinate
-	mask = tail_distances[:, 0] < tail_distances[:, 1]
+	mask = spline_distances[:, 0] < spline_distances[:, 1]
 
 	# flip heading vectors for these frames, so that all vectors point toward the tail.
 	perp_vectors[mask, :] *= -1

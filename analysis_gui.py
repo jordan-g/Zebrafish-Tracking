@@ -117,6 +117,24 @@ class PlotWindow(QtGui.QMainWindow):
         self.peak_mins_y                        = None
         self.peak_mins_x                        = None
         self.freqs                              = None
+        self.crop_tab_layouts = []
+        self.crop_tab_widgets = []
+        self.tail_tab_layouts = []
+        self.tail_tab_widgets = []
+        self.head_tab_layouts = []
+        self.head_tab_widgets = []
+        self.tail_toolbars = []
+        self.head_toolbars = []
+        self.tail_canvases = []
+        self.head_canvases = []
+        self.plot_tabs_widgets = []
+        self.plot_tabs_layouts = []
+
+        self.tail_angle_arrays = []
+        self.head_angle_arrays = []
+
+        self.n_crops = 0
+        self.current_crop_num = -1
 
         self.smoothing_window_width = 10
         self.threshold = 0.01
@@ -129,178 +147,21 @@ class PlotWindow(QtGui.QMainWindow):
 
         # create main widget & layout
         self.main_widget = QtGui.QWidget(self)
-        main_layout = QtGui.QVBoxLayout(self.main_widget)
-        main_layout.addStretch(1)
+        self.main_layout = QtGui.QVBoxLayout(self.main_widget)
+        self.main_layout.addStretch(1)
 
-        # create tabs widget & layout
-        self.plot_tabs_widget = QtGui.QTabWidget()
-        plot_tabs_layout  = QtGui.QVBoxLayout(self.plot_tabs_widget)
-        main_layout.addWidget(self.plot_tabs_widget)
+        self.crop_tabs_widget = QtGui.QTabWidget()
+        self.crop_tabs_widget.currentChanged.connect(self.change_crop)
+        self.crop_tabs_widget.setElideMode(QtCore.Qt.ElideLeft)
+        # self.crop_tabs_widget.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.MinimumExpanding)
+        self.crop_tabs_layout = QtGui.QVBoxLayout(self.crop_tabs_widget)
+        self.main_layout.addWidget(self.crop_tabs_widget)
 
-        crop_tabs_widget = QtGui.QTabWidget()
-        crop_tabs_layout = QtGui.QVBoxLayout(crop_tabs_widget)
-        self.plot_tabs_widget.addTab(crop_tabs_widget,"Tail")
-
-        # create tail tab widget & layout
-        tail_tab_widget = QtGui.QWidget()
-        tail_tab_layout = QtGui.QVBoxLayout(tail_tab_widget)
-
-        # create tail plot canvas & toolbar
-        self.tail_canvas = MplCanvas(tail_tab_widget, width=10, height=10, dpi=75)
-        self.tail_canvas.resize(400, 300)
-        self.tail_toolbar = NavigationToolbar(self.tail_canvas, self)
-        self.tail_toolbar.hide()
-
-        self.button1 = QtGui.QPushButton(u'\u2A01 Zoom')
-        self.button1.clicked.connect(self.zoom_tail)
-         
-        self.button2 = QtGui.QPushButton(u'\u2921 Pan')
-        # pixmap = QtGui.QPixmap("pan.png")
-        # button_icon = QtGui.QIcon(pixmap)
-        # self.button2.setIcon(button_icon)
-        # self.button2.setIconSize(pixmap.rect().size())
-        self.button2.setMinimumWidth(10)
-        # self.button2.setMinimumHeight(10)
-        self.button2.clicked.connect(self.pan_tail)
-         
-        self.button3 = QtGui.QPushButton(u'\u2B51 Home')
-        self.button3.clicked.connect(self.home_tail)
-
-        self.button4 = QtGui.QPushButton(u'\u2714 Save')
-        self.button4.clicked.connect(self.save_tail)
-
-        tail_button_layout_1 = QtGui.QHBoxLayout()
-        tail_button_layout_1.setSpacing(5)
-        tail_button_layout_1.addStretch(1)
-        tail_tab_layout.addLayout(tail_button_layout_1)
-
-        tail_button_layout_1.addWidget(self.button1)
-        tail_button_layout_1.addWidget(self.button2)
-        tail_button_layout_1.addWidget(self.button3)
-        tail_button_layout_1.addWidget(self.button4)
-
-        # add tail plot canvas & toolbar to tail tab widget
-        tail_tab_layout.addWidget(self.tail_toolbar)
-        tail_tab_layout.addWidget(self.tail_canvas)
-
-        # create button layout for tail tab
-        tail_button_layout = QtGui.QHBoxLayout()
-        tail_tab_layout.addLayout(tail_button_layout)
-
-        # add buttons
-        self.track_bouts_button = QtGui.QPushButton('Track Bouts', self)
-        self.track_bouts_button.setMinimumHeight(30)
-        self.track_bouts_button.setMaximumWidth(100)
-        self.track_bouts_button.clicked.connect(lambda:self.track_bouts())
-        tail_button_layout.addWidget(self.track_bouts_button)
-
-        self.track_freqs_button = QtGui.QPushButton('Track Freq', self)
-        self.track_freqs_button.setMinimumHeight(30)
-        self.track_freqs_button.setMaximumWidth(100)
-        self.track_freqs_button.clicked.connect(lambda:self.track_freqs())
-        tail_button_layout.addWidget(self.track_freqs_button)
-
-        # add checkbox for switching plots
-        self.smoothed_deriv_checkbox = QtGui.QCheckBox("Show smoothed deriv")
-        self.smoothed_deriv_checkbox.toggled.connect(lambda:self.show_smoothed_deriv(self.smoothed_deriv_checkbox))
-        tail_button_layout.addWidget(self.smoothed_deriv_checkbox)
-
-        # add param labels & textboxes
-        smoothing_window_label = QtGui.QLabel()
-        smoothing_window_label.setText("Smoothing Window: =")
-        tail_button_layout.addWidget(smoothing_window_label)
-
-        self.smoothing_window_param_box = QtGui.QLineEdit(self)
-        self.smoothing_window_param_box.setMinimumHeight(10)
-        self.smoothing_window_param_box.setText(str(self.smoothing_window_width))
-        tail_button_layout.addWidget(self.smoothing_window_param_box)
-
-        threshold_label = QtGui.QLabel()
-        threshold_label.setText("Threshold: =")
-        tail_button_layout.addWidget(threshold_label)
-
-        self.threshold_param_box = QtGui.QLineEdit(self)
-        self.threshold_param_box.setMinimumHeight(10)
-        self.threshold_param_box.setText(str(self.threshold))
-        tail_button_layout.addWidget(self.threshold_param_box)
-
-        min_width_label = QtGui.QLabel()
-        min_width_label.setText("Min width: =")
-        tail_button_layout.addWidget(min_width_label)
-
-        self.min_width_param_box = QtGui.QLineEdit(self)
-        self.min_width_param_box.setMinimumHeight(10)
-        self.min_width_param_box.setText(str(self.min_width))
-        tail_button_layout.addWidget(self.min_width_param_box)
-
-        # create head tab widget & layout
-        head_tab_widget = QtGui.QWidget()
-        head_tab_layout = QtGui.QVBoxLayout(head_tab_widget)
-
-        # create head plot canvas & toolbar
-        self.head_canvas = MplCanvas(head_tab_widget, width=10, height=10, dpi=75)
-        self.head_toolbar = NavigationToolbar(self.head_canvas, self)
-        self.head_toolbar.hide()
-
-        # add head plot canvas & toolbar to head tab widget
-        head_tab_layout.addWidget(self.head_toolbar)
-
-        self.button1 = QtGui.QPushButton(u'\u25A3 Zoom')
-        self.button1.clicked.connect(self.zoom_head)
-         
-        self.button2 = QtGui.QPushButton('Pan')
-        # pixmap = QtGui.QPixmap("pan.png")
-        # button_icon = QtGui.QIcon(pixmap)
-        # self.button2.setIcon(button_icon)
-        # self.button2.setIconSize(pixmap.rect().size())
-        # self.button2.setMinimumWidth(50)
-        # self.button2.setMinimumHeight(10)
-        self.button2.clicked.connect(self.pan_head)
-         
-        self.button3 = QtGui.QPushButton('Home')
-        self.button3.clicked.connect(self.home_head)
-
-        self.button4 = QtGui.QPushButton('Save')
-        self.button4.clicked.connect(self.save_head)
-
-        head_button_layout_1 = QtGui.QHBoxLayout()
-        # head_button_layout_1.setSpacing(5)
-        head_button_layout_1.addStretch(1)
-        head_tab_layout.addLayout(head_button_layout_1)
-
-        head_tab_layout.addWidget(self.head_canvas)
-
-        head_button_layout_1.addWidget(self.button1)
-        head_button_layout_1.addWidget(self.button2)
-        head_button_layout_1.addWidget(self.button3)
-        head_button_layout_1.addWidget(self.button4)
-
-        # create button layout for head tab
-        head_button_layout = QtGui.QHBoxLayout()
-        head_tab_layout.addLayout(head_button_layout)
-
-        # add buttons
-        self.track_position_button = QtGui.QPushButton('Track Pos', self)
-        self.track_position_button.setMinimumHeight(30)
-        self.track_position_button.setMaximumWidth(100)
-        self.track_position_button.clicked.connect(lambda:self.track_position())
-        head_button_layout.addWidget(self.track_position_button)
-
-        # add checkbox for switching plots
-        self.speed_checkbox = QtGui.QCheckBox("Show speed")
-        self.speed_checkbox.toggled.connect(lambda:self.show_speed(self.speed_checkbox))
-        head_button_layout.addWidget(self.speed_checkbox)
-    
-        # set plot tabs widget size
-        self.plot_tabs_widget.resize(450, 350)
-
-        # add tabs to plot tabs widget
-        crop_tabs_widget.addTab(tail_tab_widget,"1")
-        self.plot_tabs_widget.addTab(head_tab_widget,"Head")
+        self.create_crop()
 
         # create button layout for main widget
         main_button_layout = QtGui.QHBoxLayout()
-        main_layout.addLayout(main_button_layout)
+        self.main_layout.addLayout(main_button_layout)
 
         # add buttons
         self.load_data_button = QtGui.QPushButton('Load Data', self)
@@ -309,21 +170,229 @@ class PlotWindow(QtGui.QMainWindow):
         self.load_data_button.clicked.connect(lambda:self.load_data())
         main_button_layout.addWidget(self.load_data_button)
 
-        # self.button1 = QtGui.QPushButton('Zoom')
-        # self.button1.clicked.connect(self.zoom)
-         
-        # self.button2 = QtGui.QPushButton('Pan')
-        # self.button2.clicked.connect(self.pan)
-         
-        # self.button3 = QtGui.QPushButton('Home')
-        # self.button3.clicked.connect(self.home)
-        
-        # main_button_layout.addWidget(self.button1)
-        # main_button_layout.addWidget(self.button2)
-        # main_button_layout.addWidget(self.button3)
-
         self.main_widget.setFocus()
         self.setCentralWidget(self.main_widget)
+
+    def create_crop(self):
+        crop_tab_widget = QtGui.QWidget(self.crop_tabs_widget)
+        crop_tab_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        crop_tab_layout = QtGui.QVBoxLayout(crop_tab_widget)
+
+        # add to list of crop widgets & layouts
+        self.crop_tab_layouts.append(crop_tab_layout)
+        self.crop_tab_widgets.append(crop_tab_widget)
+
+        # create tabs widget & layout
+        plot_tabs_widget = QtGui.QTabWidget()
+        plot_tabs_layout  = QtGui.QVBoxLayout(plot_tabs_widget)
+        crop_tab_layout.addWidget(plot_tabs_widget)
+
+        # add to list of crop widgets & layouts
+        self.plot_tabs_layouts.append(plot_tabs_layout)
+        self.plot_tabs_widgets.append(plot_tabs_widget)
+
+        # create tail tab widget & layout
+        tail_tab_widget = QtGui.QWidget()
+        tail_tab_layout = QtGui.QVBoxLayout(tail_tab_widget)
+
+        # add to list of crop widgets & layouts
+        self.tail_tab_layouts.append(tail_tab_layout)
+        self.tail_tab_widgets.append(tail_tab_widget)
+
+        # create tail plot canvas & toolbar
+        tail_canvas = MplCanvas(tail_tab_widget, width=10, height=10, dpi=75)
+        tail_canvas.resize(400, 300)
+        tail_toolbar = NavigationToolbar(tail_canvas, self)
+        tail_toolbar.hide()
+        self.tail_toolbars.append(tail_toolbar)
+        self.tail_canvases.append(tail_canvas)
+
+        zoom_button = QtGui.QPushButton(u'\u2A01 Zoom')
+        zoom_button.clicked.connect(self.zoom_tail)
+         
+        pan_button = QtGui.QPushButton(u'\u2921 Pan')
+        pan_button.clicked.connect(self.pan_tail)
+         
+        home_button = QtGui.QPushButton(u'\u2B51 Home')
+        home_button.clicked.connect(self.home_tail)
+
+        save_button = QtGui.QPushButton(u'\u2714 Save')
+        save_button.clicked.connect(self.save_tail)
+
+        top_tail_button_layout = QtGui.QHBoxLayout()
+        top_tail_button_layout.setSpacing(5)
+        top_tail_button_layout.addStretch(1)
+        tail_tab_layout.addLayout(top_tail_button_layout)
+
+        top_tail_button_layout.addWidget(zoom_button)
+        top_tail_button_layout.addWidget(pan_button)
+        top_tail_button_layout.addWidget(home_button)
+        top_tail_button_layout.addWidget(save_button)
+
+        # add tail plot canvas & toolbar to tail tab widget
+        tail_tab_layout.addWidget(tail_toolbar)
+        tail_tab_layout.addWidget(tail_canvas)
+
+        # create button layout for tail tab
+        bottom_tail_button_layout = QtGui.QHBoxLayout()
+        tail_tab_layout.addLayout(bottom_tail_button_layout)
+
+        # add buttons
+        track_bouts_button = QtGui.QPushButton('Track Bouts', self)
+        track_bouts_button.setMinimumHeight(30)
+        track_bouts_button.setMaximumWidth(100)
+        track_bouts_button.clicked.connect(lambda:self.track_bouts())
+        bottom_tail_button_layout.addWidget(track_bouts_button)
+
+        track_freqs_button = QtGui.QPushButton('Track Freq', self)
+        track_freqs_button.setMinimumHeight(30)
+        track_freqs_button.setMaximumWidth(100)
+        track_freqs_button.clicked.connect(lambda:self.track_freqs())
+        bottom_tail_button_layout.addWidget(track_freqs_button)
+
+        # add checkbox for switching plots
+        smoothed_deriv_checkbox = QtGui.QCheckBox("Show smoothed deriv")
+        smoothed_deriv_checkbox.toggled.connect(lambda:self.show_smoothed_deriv(smoothed_deriv_checkbox))
+        bottom_tail_button_layout.addWidget(smoothed_deriv_checkbox)
+
+        # add param labels & textboxes
+        smoothing_window_label = QtGui.QLabel()
+        smoothing_window_label.setText("Smoothing Window: =")
+        bottom_tail_button_layout.addWidget(smoothing_window_label)
+
+        smoothing_window_param_box = QtGui.QLineEdit(self)
+        smoothing_window_param_box.setMinimumHeight(10)
+        smoothing_window_param_box.setText(str(self.smoothing_window_width))
+        bottom_tail_button_layout.addWidget(smoothing_window_param_box)
+
+        threshold_label = QtGui.QLabel()
+        threshold_label.setText("Threshold: =")
+        bottom_tail_button_layout.addWidget(threshold_label)
+
+        threshold_param_box = QtGui.QLineEdit(self)
+        threshold_param_box.setMinimumHeight(10)
+        threshold_param_box.setText(str(self.threshold))
+        bottom_tail_button_layout.addWidget(threshold_param_box)
+
+        min_width_label = QtGui.QLabel()
+        min_width_label.setText("Min width: =")
+        bottom_tail_button_layout.addWidget(min_width_label)
+
+        min_width_param_box = QtGui.QLineEdit(self)
+        min_width_param_box.setMinimumHeight(10)
+        min_width_param_box.setText(str(self.min_width))
+        bottom_tail_button_layout.addWidget(min_width_param_box)
+
+        # create head tab widget & layout
+        head_tab_widget = QtGui.QWidget()
+        head_tab_layout = QtGui.QVBoxLayout(head_tab_widget)
+
+        # add to list of crop widgets & layouts
+        self.head_tab_layouts.append(head_tab_layout)
+        self.head_tab_widgets.append(head_tab_widget)
+
+        # create head plot canvas & toolbar
+        head_canvas = MplCanvas(head_tab_widget, width=10, height=10, dpi=75)
+        head_toolbar = NavigationToolbar(head_canvas, self)
+        head_toolbar.hide()
+        self.head_toolbars.append(head_toolbar)
+        self.head_canvases.append(head_canvas)
+
+        zoom_button = QtGui.QPushButton(u'\u2A01 Zoom')
+        zoom_button.clicked.connect(self.zoom_head)
+         
+        pan_button = QtGui.QPushButton(u'\u2921 Pan')
+        pan_button.clicked.connect(self.pan_head)
+         
+        home_button = QtGui.QPushButton(u'\u2B51 Home')
+        home_button.clicked.connect(self.home_head)
+
+        save_button = QtGui.QPushButton(u'\u2714 Save')
+        save_button.clicked.connect(self.save_head)
+
+        top_head_button_layout = QtGui.QHBoxLayout()
+        top_head_button_layout.setSpacing(5)
+        top_head_button_layout.addStretch(1)
+        head_tab_layout.addLayout(top_head_button_layout)
+
+        top_head_button_layout.addWidget(zoom_button)
+        top_head_button_layout.addWidget(pan_button)
+        top_head_button_layout.addWidget(home_button)
+        top_head_button_layout.addWidget(save_button)
+
+        # add tail plot canvas & toolbar to tail tab widget
+        head_tab_layout.addWidget(head_toolbar)
+        head_tab_layout.addWidget(head_canvas)
+
+        # create button layout for head tab
+        bottom_head_button_layout = QtGui.QHBoxLayout()
+        head_tab_layout.addLayout(bottom_head_button_layout)
+
+        # add buttons
+        track_position_button = QtGui.QPushButton('Track Pos', self)
+        track_position_button.setMinimumHeight(30)
+        track_position_button.setMaximumWidth(100)
+        track_position_button.clicked.connect(lambda:self.track_position())
+        bottom_head_button_layout.addWidget(track_position_button)
+
+        # add checkbox for switching plots
+        speed_checkbox = QtGui.QCheckBox("Show speed")
+        speed_checkbox.toggled.connect(lambda:self.show_speed(self.speed_checkbox))
+        bottom_head_button_layout.addWidget(speed_checkbox)
+    
+        # set plot tabs widget size
+        # plot_tabs_widget.resize(450, 350)
+
+        plot_tabs_widget.addTab(tail_tab_widget, "Tail")
+        plot_tabs_widget.addTab(head_tab_widget, "Head")
+
+        self.n_crops += 1
+
+        self.current_crop_num = self.n_crops - 1
+
+        # add tabs to plot tabs widget
+        self.crop_tabs_widget.addTab(crop_tab_widget, str(self.current_crop_num))
+
+        self.crop_tabs_widget.setCurrentIndex(self.current_crop_num)
+
+    def change_crop(self, index):
+        print(index)
+        if index != -1:
+            # get params for this crop
+            # self.current_crop_params = self.params['crop_params'][index]
+
+            # update current crop number
+            self.current_crop_num = index
+
+            self.tail_toolbar = self.tail_toolbars[index]
+            self.head_toolbar = self.head_toolbars[index]
+            self.tail_canvas = self.tail_canvases[index]
+            self.head_canvas = self.head_canvases[index]
+
+    def clear_crops(self):
+        print(self.n_crops)
+
+        self.crop_tab_layouts = []
+        self.crop_tab_widgets = []
+        self.tail_tab_layouts = []
+        self.tail_tab_widgets = []
+        self.head_tab_layouts = []
+        self.head_tab_widgets = []
+        self.tail_toolbars = []
+        self.head_toolbars = []
+        self.tail_canvases = []
+        self.head_canvases = []
+        self.plot_tabs_widgets = []
+        self.plot_tabs_layouts = []
+
+        self.head_angle_arrays = []
+        self.tail_angle_arrays = []
+        for c in range(self.n_crops-1, -1, -1):
+            # remove tab
+            self.crop_tabs_widget.removeTab(c)
+
+        self.n_crops = 0
+        self.current_crop_num = -1
 
     def home_tail(self):
         self.tail_toolbar.home()
@@ -360,17 +429,25 @@ class PlotWindow(QtGui.QMainWindow):
     def load_data(self):
         # ask the user to select a directory
         self.path = str(QtGui.QFileDialog.getExistingDirectory(self, 'Open folder'))
+        eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array, self.params = an.open_saved_data(self.path)
+        self.clear_crops()
 
-        eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array = an.open_saved_data(self.path)
-        perp_vectors, spline_vectors = an.get_vectors(perp_coords_array, spline_coords_array, tail_coords_array)
+        n_crops_tot = len(self.params['crop_params'])
 
-        self.head_angle_array = an.get_heading_angle(perp_vectors)
-        self.tail_angle_array = an.get_tail_angle(perp_vectors, spline_vectors)
+        print(self.n_crops, self.current_crop_num)
 
-        an.plot_tail_angle_heatmap(perp_vectors, spline_vectors)
+        for k in range(n_crops_tot):
+            self.create_crop()
 
-        self.tail_canvas.plot_tail_array(self.tail_angle_array)
-        self.head_canvas.plot_head_array(self.head_angle_array)
+            eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array, self.params = an.open_saved_data(self.path, k)
+            perp_vectors, spline_vectors = an.get_vectors(perp_coords_array, spline_coords_array, tail_coords_array)
+            self.head_angle_arrays.append(an.get_heading_angle(perp_vectors))
+            self.tail_angle_arrays.append(an.get_tail_angle(perp_vectors, spline_vectors))
+
+        # an.plot_tail_angle_heatmap(perp_vectors, spline_vectors)
+
+            self.tail_canvases[k].plot_tail_array(self.tail_angle_arrays[k])
+            self.head_canvases[k].plot_head_array(self.head_angle_arrays[k])
 
     def track_bouts(self):
         if self.tail_angle_array != None:
@@ -452,7 +529,7 @@ class PlotWindow(QtGui.QMainWindow):
     def resizeEvent(self, re):
         QtGui.QMainWindow.resizeEvent(self, re)
 
-        self.plot_tabs_widget.resize(self.frameGeometry().width(), self.frameGeometry().height()-80)
+        self.plot_tabs_widgets[self.current_crop_num].resize(self.frameGeometry().width()-80, self.frameGeometry().height()-160)
 
 qApp = QtGui.QApplication(sys.argv)
 
