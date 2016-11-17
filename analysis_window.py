@@ -234,7 +234,7 @@ class AnalysisWindow(QMainWindow):
         self.tail_toolbars.append(tail_toolbar)
         self.tail_canvases.append(tail_canvas)
 
-        zoom_button = QPushButton('± Zoom')
+        zoom_button = QPushButton('+ Zoom')
         zoom_button.clicked.connect(self.zoom_tail)
          
         pan_button = QPushButton('> Pan')
@@ -328,7 +328,7 @@ class AnalysisWindow(QMainWindow):
         self.head_toolbars.append(head_toolbar)
         self.head_canvases.append(head_canvas)
 
-        zoom_button = QPushButton('± Zoom')
+        zoom_button = QPushButton('+ Zoom')
         zoom_button.clicked.connect(self.zoom_head)
          
         pan_button = QPushButton('> Pan')

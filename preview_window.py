@@ -291,8 +291,8 @@ class PreviewWindow(QMainWindow):
             # update crop parameters from the selection
             self.controller.update_crop_from_selection(start_crop_coord, end_crop_coord)
 
-    def fileQuit(self):
-        self.close()
-
     def closeEvent(self, ce):
-        self.fileQuit()
+        if not self.controller.closing:
+            ce.ignore()
+        else:
+            ce.accept()

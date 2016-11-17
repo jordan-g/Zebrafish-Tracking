@@ -97,6 +97,7 @@ class Controller():
         self.n                     = 0    # index of currently selected frame
         self.tracking_path         = None # path to where tracking data will be saved
         self.get_background_thread = None
+        self.closing               = False
 
         # create preview window
         self.preview_window  = PreviewWindow(self)
@@ -595,6 +596,12 @@ class Controller():
 
             # update the image preview
             self.update_preview(image=None, new_load=False, new_frame=True)
+
+    def close_all(self):
+        self.closing = True
+        self.param_window.close()
+        self.crops_window.close()
+        self.preview_window.close()
 
 class FreeswimmingController(Controller):
     def __init__(self):

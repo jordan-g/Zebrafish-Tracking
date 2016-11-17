@@ -66,7 +66,7 @@ class ParamWindow(QMainWindow):
 
         # disable controls
         self.set_gui_disabled(True)
-
+        
         self.show()
 
     def create_menubar(self):
@@ -333,13 +333,8 @@ class ParamWindow(QMainWindow):
     def hide_invalid_params_text(self):
         self.invalid_params_label.setText("")
 
-    def fileQuit(self):
-        self.close()
-
     def closeEvent(self, event):
-        # self.controller.crops_window.closeEvent(event)
-        # self.controller.analysis_window.closeEvent(event)
-        self.fileQuit()
+        self.controller.close_all()
 
 class HeadfixedParamWindow(ParamWindow):
     def __init__(self, controller):

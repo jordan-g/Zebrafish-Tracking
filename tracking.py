@@ -18,6 +18,7 @@ from multiprocessing import sharedctypes
 from functools import partial
 from itertools import chain
 
+from moviepy.video.io.ffmpeg_reader import *
 from skimage.morphology import skeletonize
 
 default_crop_params = { 'offset': [0, 0],      # crop offset
@@ -688,7 +689,7 @@ def get_eye_coords(eye_threshold_image, eye_resize_factor, min_intereye_dist=3, 
 
     if centroid_coords == None:
         # no centroids found; end here.
-        return [None]*2
+        return None
 
     # get the number of found eye centroids
     n_centroids = centroid_coords.shape[1]

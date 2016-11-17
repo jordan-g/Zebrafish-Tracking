@@ -86,7 +86,7 @@ class CropsWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
 
         # set window buttons
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
 
         self.show()
 
@@ -274,11 +274,11 @@ class CropsWindow(QMainWindow):
                 self.set_slider_value('offset_y', crop_params[c]['offset'][0], c)
                 self.set_slider_value('offset_x', crop_params[c]['offset'][1], c)
 
-    def fileQuit(self):
-        self.close()
-
     def closeEvent(self, ce):
-        self.fileQuit()
+        if not self.controller.closing:
+            ce.ignore()
+        else:
+            ce.accept()
 
 class FreeswimmingCropsWindow(CropsWindow):
     def __init__(self, controller):
