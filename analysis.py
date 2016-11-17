@@ -2,127 +2,168 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def open_saved_data(save_dir=None, k=0):
-	"""
-	Open saved tracking data from the given directory.
-	"""
-	try:
-		npzfile = np.load(os.path.join(save_dir, "crop_{}_tracking_data.npy.npz".format(k)))
-		# print("hi")
-		# print(npzfile.files)
-		eye_coords_array    = npzfile['eye_coords']
-		perp_coords_array = npzfile['heading_coords']
-		tail_coords_array = npzfile['tail_coords']
-		spline_coords_array = npzfile['spline_coords']
-		params = npzfile['params'][()]
+def open_saved_data(save_dir=None):
+    # load first crop
+    try:
+        npzfile = np.load(os.path.join(save_dir, "tracking_data.npz"))
 
-		# print(eye_coords_array)
-		# try:
-		# 	perp_coords_array   = np.load(os.path.join(save_dir, "heading_coords.npy"))
-		# except:
-		# 	perp_coords_array   = np.load(os.path.join(save_dir, "perp_coords.npy"))
-		# tail_coords_array   = np.load(os.path.join(save_dir, "tail_coords.npy"))
-		# spline_coords_array = np.load(os.path.join(save_dir, "spline_coords.npy"))
-	except:
-		print("ERROR: Tracking data could not be found.")
-		return [None]*4
+        tail_coords_array   = npzfile['tail_coords']
+        spline_coords_array = npzfile['spline_coords']
+        heading_angle_array = np.radians(npzfile['heading_angle'])
+        body_position_array = npzfile['body_position']
+        eye_coords_array    = npzfile['eye_coords']
+        params              = npzfile['params'][()]
 
-	return eye_coords_array, perp_coords_array, tail_coords_array, spline_coords_array, params
+        if params['type'] == "headfixed":
+            heading_angle_array = None
+            body_position_array = None
+            eye_coords_array    = None
+        else:
+            if params['track_tail'] == False:
+                tail_coords_array   = None
+                spline_coords_array = None
+            if params['track_eyes'] == False:
+                eye_coords_array = None
+    except:
+        print("Error: Tracking data could not be found.")
+        return [None]*6
 
-def get_vectors(perp_coords_array, spline_coords_array, tail_coords_array):
-	"""
-	Turn arrays of heading & tail spline coordinates into vectors.
-	"""
-	# create heading vectors -- starting coordinate minus ending coordinate of the heading line
-	perp_vectors = perp_coords_array[:, :, 0] - perp_coords_array[:, :, 1]
+    return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array, params
 
-	# get distances between start/end coordinates of the heading line and the starting coordinates of the tail
-	spline_distances = np.sqrt((perp_coords_array[:, 0, :] - spline_coords_array[:, 0, -1][:, np.newaxis])**2 + (perp_coords_array[:, 1, :] - spline_coords_array[:, 1, -1][:, np.newaxis])**2)
-	
-	# get frames where the "starting" heading coordinate is closer to the tail than the "ending" coordinate
-	mask = spline_distances[:, 0] < spline_distances[:, 1]
+def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_position_array):
+    # get number of crops, frames & tail points
+    n_crops       = tail_coords_array.shape[0]
+    n_frames      = tail_coords_array.shape[1]
+    n_tail_points = tail_coords_array.shape[-1]
 
-	# flip heading vectors for these frames, so that all vectors point toward the tail.
-	perp_vectors[mask, :] *= -1
+    # initialize array for storing tail angles
+    tail_angle_array = np.zeros((n_crops, n_frames, n_tail_points)) + np.nan
 
-	# get vectors of tail coordinates relative to the heading vectors
-	spline_vectors = perp_coords_array[:, :, 1][:, :, np.newaxis] - spline_coords_array
+    # create heading vectors based on heading angle
+    heading_vectors = np.zeros((n_crops, n_frames, 2)) + np.nan
+    heading_vectors[:, :, 0][:, :, np.newaxis] = np.cos(heading_angle_array)
+    heading_vectors[:, :, 1][:, :, np.newaxis] = np.sin(heading_angle_array)
 
-	return perp_vectors, spline_vectors
+    # create array of start/end coordinates of the line with the heading angle passing through the body center position
+    heading_coords_array = np.zeros((n_crops, n_frames, 2, 2))
+    heading_coords_array[:, :, :, 0] = body_position_array + heading_vectors
+    heading_coords_array[:, :, :, 1] = body_position_array - heading_vectors
 
-def get_heading_angle(perp_vectors):
-	angle_array = np.arctan2(perp_vectors[:, 1], perp_vectors[:, 0])
+    # get distances between start/end coordinates of the heading line and the starting coordinates of the tail
+    tail_distances = np.sqrt((heading_coords_array[:, :, 0, :] - tail_coords_array[:, :, 0, -1][:, :, np.newaxis])**2 + (heading_coords_array[:, :, 1, :] - tail_coords_array[:, :, 1, -1][:, :, np.newaxis])**2)
 
-	angle_array[~np.isnan(angle_array)] = np.unwrap(angle_array[~np.isnan(angle_array)])
+    # get frames where the "starting" heading coordinate is closer to the tail than the "ending" coordinate
+    mask = tail_distances[:, :, 0] < tail_distances[:, :, 1]
 
-	for i in range(1, angle_array.shape[0]-1):
-		if angle_array[i] - angle_array[i-1] >= np.pi/2.0:
-			angle_array[i] -= np.pi/2.0
-		elif angle_array[i] - angle_array[i-1] <= -np.pi/2.0:
-			angle_array[i] += np.pi/2.0
+    # flip heading vectors for these frames, so that all vectors point toward the tail
+    heading_vectors[mask, :] *= -1
 
-	return angle_array
+    # create tail vectors by subtracting points along the tail and the body position
+    tail_vectors = body_position_array[:, :, :, np.newaxis] - tail_coords_array
 
-def get_tail_angle(perp_vectors, spline_vectors):
-	spline_vectors = np.mean(spline_vectors[:, :, -3:], axis=2)
+    for k in range(n_crops):
+        for j in range(n_tail_points):
+            # get dot product and determinant between the tail vectors and the heading vectors
+            dot = tail_vectors[k, :, 0, j]*heading_vectors[k, :, 1] + tail_vectors[k, :, 1, j]*heading_vectors[k, :, 0] # dot product
+            det = tail_vectors[k, :, 0, j]*heading_vectors[k, :, 0] - tail_vectors[k, :, 1, j]*heading_vectors[k, :, 1] # determinant
 
-	dot = spline_vectors[:, 1]*perp_vectors[:, 1] + spline_vectors[:, 0]*perp_vectors[:, 0]      # dot product
-	det = spline_vectors[:, 1]*perp_vectors[:, 0] - spline_vectors[:, 0]*perp_vectors[:, 1]      # determinant
+            # get an angle between 0 and 2*pi
+            tail_angle_array[k, :, j] = np.arctan2(dot, det)
 
-	angle_array = np.arctan2(dot, det) - np.pi/2.0
+            # correct for abrupt jumps in angle due to vectors switching quadrants between frames
+            for i in range(1, n_frames):
+                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/2.0:
+                    tail_angle_array[k, i, j] -= np.pi
+                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/2.0:
+                    tail_angle_array[k, i, j] += np.pi
 
-	for i in range(1, angle_array.shape[0]-1):
-		if angle_array[i] - angle_array[i-1] >= np.pi/2.0:
-			angle_array[i] -= np.pi/2.0
-		elif angle_array[i] - angle_array[i-1] <= -np.pi/2.0:
-			angle_array[i] += np.pi/2.0
+    return tail_angle_array
 
-	return angle_array
+def get_headfixed_tail_angles(tail_coords_array, tail_direction):
+    # convert tail direction to heading angle
+    if tail_direction == "Left":
+        heading_angle = 0
+    elif tail_direction == "Down":
+        heading_angle = np.pi/2.0
+    elif tail_direction == "Right":
+        heading_angle = np.pi
+    elif tail_direction == "Up":
+        heading_angle = -3.0*pi/2.0
 
-def get_position_history(save_dir=None, plot=True, perp_y_coords_array=None, perp_x_coords_array=None):
-	if save_dir != None:
-		perp_y_coords_array = np.loadtxt(os.path.join(save_dir, "heading_y_coords_array.csv"))
-		perp_x_coords_array = np.loadtxt(os.path.join(save_dir, "heading_x_coords_array.csv"))
+    # get number of crops, frames & tail points
+    n_crops       = tail_coords_array.shape[0]
+    n_frames      = tail_coords_array.shape[1]
+    n_tail_points = tail_coords_array.shape[-1]
 
-	positions_y = (perp_y_coords_array[:, 0]+perp_y_coords_array[:, 1])/2.0
-	positions_x = (perp_x_coords_array[:, 0]+perp_x_coords_array[:, 1])/2.0
+    # initialize array for storing tail angles
+    tail_angle_array = np.zeros((n_crops, n_frames, n_tail_points)) + np.nan
 
-	speed = np.sqrt(np.gradient(positions_y)**2 + np.gradient(positions_x)**2)
+    # create heading vectors based on heading angle
+    heading_vectors = np.zeros((n_crops, n_frames, 2)) + np.nan
+    heading_vectors[:, :, 0][:, :, np.newaxis] = np.cos(heading_angle)
+    heading_vectors[:, :, 1][:, :, np.newaxis] = np.sin(heading_angle)
 
-	speed = np.convolve(speed, np.ones((3,))/3, mode='valid')
+    # create tail vectors by subtracting points along the tail and the body position
+    tail_vectors = tail_coords_array[:, :, :, 0][:, :, :, np.newaxis] - tail_coords_array
 
-	# positions_y[positions_y == 0] = np.nan
-	# positions_x[positions_x == 0] = np.nan
+    for k in range(n_crops):
+        for j in range(n_tail_points):
+            # get dot product and determinant between the tail vectors and the heading vectors
+            dot = tail_vectors[k, :, 0, j]*heading_vectors[k, :, 1] + tail_vectors[k, :, 1, j]*heading_vectors[k, :, 0] # dot product
+            det = tail_vectors[k, :, 0, j]*heading_vectors[k, :, 0] - tail_vectors[k, :, 1, j]*heading_vectors[k, :, 1] # determinant
 
-	if plot:
-		plt.plot(positions_x, positions_y)
-		plt.show()
+            # get an angle between 0 and 2*pi
+            tail_angle_array[k, :, j] = np.arctan2(dot, det)
 
-	return positions_y, positions_x, speed
+            # correct for abrupt jumps in angle due to vectors switching quadrants between frames
+            for i in range(1, n_frames):
+                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/2.0:
+                    tail_angle_array[k, i, j] -= np.pi
+                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/2.0:
+                    tail_angle_array[k, i, j] += np.pi
+
+    return tail_angle_array
+
+def get_position_history(body_position_array, plot=True):
+    positions_y = body_position_array[:, :, 0]
+    positions_x = body_position_array[:, :, 1]
+
+    speed_array = np.sqrt(np.gradient(positions_y)**2 + np.gradient(positions_x)**2)
+
+    speed_array = np.convolve(speed, np.ones((3,))/3, mode='valid')
+
+    # positions_y[positions_y == 0] = np.nan
+    # positions_x[positions_x == 0] = np.nan
+
+    if plot:
+        plt.plot(positions_x, positions_y)
+        plt.show()
+
+    return positions_y, positions_x, speed
 
 def plot_tail_angle_heatmap(perp_vectors, spline_vectors):
-	angle_array = np.zeros((spline_vectors.shape[0], spline_vectors.shape[-1]))
+    angle_array = np.zeros((spline_vectors.shape[0], spline_vectors.shape[-1]))
 
-	for j in range(angle_array.shape[-1]):
-		dot = spline_vectors[:, 1, j]*perp_vectors[:, 1] + spline_vectors[:, 0, j]*perp_vectors[:, 0]      # dot product
-		det = spline_vectors[:, 1, j]*perp_vectors[:, 0] - spline_vectors[:, 0, j]*perp_vectors[:, 1]      # determinant
+    for j in range(angle_array.shape[-1]):
+        dot = spline_vectors[:, 1, j]*perp_vectors[:, 1] + spline_vectors[:, 0, j]*perp_vectors[:, 0]      # dot product
+        det = spline_vectors[:, 1, j]*perp_vectors[:, 0] - spline_vectors[:, 0, j]*perp_vectors[:, 1]      # determinant
 
-		angle_array[:, j] = np.arctan2(dot, det) - np.pi/2.0
+        angle_array[:, j] = np.arctan2(dot, det) - np.pi/2.0
 
-		for i in range(1, angle_array.shape[0]-1):
-			if angle_array[i, j] - angle_array[i-1, j] >= np.pi/2.0:
-				angle_array[i, j] -= np.pi/2.0
-			elif angle_array[i, j] - angle_array[i-1, j] <= -np.pi/2.0:
-				angle_array[i, j] += np.pi/2.0
+        for i in range(1, angle_array.shape[0]-1):
+            if angle_array[i, j] - angle_array[i-1, j] >= np.pi/2.0:
+                angle_array[i, j] -= np.pi/2.0
+            elif angle_array[i, j] - angle_array[i-1, j] <= -np.pi/2.0:
+                angle_array[i, j] += np.pi/2.0
 
-	fig = plt.figure()
-	fig.set_size_inches(100, 1)
-	ax = plt.Axes(fig, [0., 0., 1., 1.])
-	ax.set_axis_off()
-	fig.add_axes(ax)
-	plt.set_cmap('plasma')
-	ax.imshow(angle_array.T, vmin=-np.pi/3, vmax=np.pi/3, aspect = 'auto')
-	plt.savefig("heatmap.png", dpi = 300)
+    fig = plt.figure()
+    fig.set_size_inches(100, 1)
+    ax = plt.Axes(fig, [0., 0., 1., 1.])
+    ax.set_axis_off()
+    fig.add_axes(ax)
+    plt.set_cmap('plasma')
+    ax.imshow(angle_array.T, vmin=-np.pi/3, vmax=np.pi/3, aspect = 'auto')
+    plt.savefig("heatmap.png", dpi = 300)
 
 def contiguous_regions(condition):
     """
