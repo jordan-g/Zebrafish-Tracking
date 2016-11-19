@@ -65,7 +65,7 @@ default_freeswimming_params = {'shrink_factor': 1.0,                            
                                'max_tail_body_dist': 30,                        # max. distance between the body center and the tail
                                'eye_resize_factor': 1,                          # factor by which to resize frame for reducing noise in eye position tracking
                                'interpolation': 'Nearest Neighbor',             # interpolation to use when resizing frame for eye tracking
-                               'tail_crop': [100, 100],                         # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
+                               'tail_crop': np.array([100, 100]),               # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
                                'media_type': None,                              # type of media that is tracked - "video" / "folder" / "image" / None
                                'media_path': "",                                # path to media that is tracked
                                'background': None,                              # background calculated for background subtraction
@@ -383,7 +383,7 @@ class Controller():
             gui_params = self.params['gui_params']
             
             # send signal to update image in preview window
-            self.preview_window.plot_image(image, self.params, self.tracking_results, new_load, new_frame, show_slider)
+            self.preview_window.plot_image(image, self.params, self.params['crop_params'][self.current_crop], self.tracking_results, new_load, new_frame, show_slider)
 
     def toggle_invert_image(self, checkbox):
         self.params['invert'] = checkbox.isChecked()
@@ -508,9 +508,6 @@ class Controller():
 
         # reshape current frame
         self.reshape_frame()
-
-        # generate thresholded frames
-        self.generate_thresholded_frames()
 
         # update the image preview
         self.update_preview(image=None, new_load=True, new_frame=True)
@@ -784,6 +781,12 @@ class FreeswimmingController(Controller):
             # update the image preview
             self.update_preview(image=None, new_load=False, new_frame=True)
 
+    def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
+        Controller.update_crop_from_selection(self, start_crop_coord, end_crop_coord)
+        
+        # generate thresholded frames
+        self.generate_thresholded_frames()
+
 class HeadfixedController(Controller):
     def __init__(self):
         # set path to where last used parameters are saved
@@ -837,6 +840,20 @@ class HeadfixedController(Controller):
 
         # update the image preview
         self.update_preview(image=None, new_load=False, new_frame=True)
+
+    def reshape_frame(self):
+        Controller.reshape_frame(self)
+
+        # reset headfixed tracking
+        tracking.clear_headfixed_tracking()
+
+    def update_tail_start_coords(self, rel_tail_start_coords):
+        self.params['tail_start_coords'] = tracking.get_absolute_tail_start_coords(rel_tail_start_coords,
+                                                                                   self.params['crop_params'][self.current_crop]['offset'],
+                                                                                   self.params['shrink_factor'])
+
+        # reset headfixed tracking
+        tracking.clear_headfixed_tracking()
 
     def update_params_from_gui(self):
         if self.current_frame != None:

@@ -60,11 +60,15 @@ class PlotQLabel(QLabel):
     def mouseReleaseEvent(self, event):
         if self.scale_factor:
             self.end_crop_coord = (int(round(event.y()/self.scale_factor)), int(round(event.x()/self.scale_factor)))
+
             print("user clicked {}.".format(self.end_crop_coord))
-            self.preview_window.draw_point(self.start_crop_coord, self.end_crop_coord)
+
             if self.end_crop_coord != self.start_crop_coord:
                 # finished selecting crop area; crop the image
                 self.preview_window.crop_selection(self.start_crop_coord, self.end_crop_coord)
+            else:
+                # draw tail start coordinate
+                self.preview_window.draw_tail_start(np.array(self.end_crop_coord))
 
 
     def set_scale_factor(self, scale_factor):
@@ -171,7 +175,7 @@ class PreviewWindow(QMainWindow):
         # add instruction text
         self.instructions_label.setText("Click & drag to select crop area.")
 
-    def plot_image(self, image, params, tracking_results, new_load=False, new_frame=False, show_slider=True):
+    def plot_image(self, image, params, crop_params, tracking_results, new_load=False, new_frame=False, show_slider=True):
         if new_load:
             if show_slider:
                 if not self.image_slider.isVisible():
@@ -189,9 +193,17 @@ class PreviewWindow(QMainWindow):
         self.image = image.copy()
 
         try:
-            tail_crop = params['tail_crop']
+            tail_crop = tracking.get_relative_tail_crop(params['tail_crop'], params['shrink_factor'])
         except KeyError:
             tail_crop = None
+
+        try:
+            tail_start_coords = tracking.get_relative_tail_start_coords(params['tail_start_coords'], crop_params['offset'], params['shrink_factor'])
+
+            # add tail start point to image
+            cv2.circle(image, (int(round(tail_start_coords[1])), int(round(tail_start_coords[0]))), 1, (180, 50, 180), -1)
+        except KeyError:
+            tail_start_coords = None
 
         if len(tracking_results) > 0:
             # get tracking coords
@@ -223,7 +235,7 @@ class PreviewWindow(QMainWindow):
         # update image label
         self.update_image_label(image)
 
-    def draw_crop_selection(self, start_crop_coord, end_crop_coord):
+    def draw_crop_selection(self, start_crop_coords, end_crop_coords):
         if self.selecting_crop and self.image != None:
             # convert image to rgb
             if len(self.image.shape) < 3:
@@ -235,7 +247,7 @@ class PreviewWindow(QMainWindow):
             overlay = image.copy()
 
             # draw crop selection overlay
-            cv2.rectangle(overlay, (start_crop_coord[1], start_crop_coord[0]), (end_crop_coord[1], end_crop_coord[0]), (255, 51, 0), -1)
+            cv2.rectangle(overlay, (start_crop_coords[1], start_crop_coords[0]), (end_crop_coords[1], end_crop_coords[0]), (255, 51, 0), -1)
 
             # overlay with the original image
             cv2.addWeighted(overlay, 0.5, image, 0.5, 0, image)
@@ -243,16 +255,18 @@ class PreviewWindow(QMainWindow):
             # update image label
             self.update_image_label(image)
 
-    def draw_point(self, start_crop_coord, end_crop_coord):
+    def draw_tail_start(self, rel_tail_start_coords):
         if self.controller.params['type'] == "headfixed":
-            self.controller.params['tail_start_coords'] = start_crop_coord
-            tracking.tailfuncs = None
+            # send new tail start coordinates to controller
+            self.controller.update_tail_start_coords(rel_tail_start_coords)
+
+            # clear instructions text
             self.instructions_label.setText("")
 
         if self.image != None:
             image = self.image
 
-            cv2.circle(image, (int(round(end_crop_coord[1]))-1, int(round(end_crop_coord[0]))-1), 1, (0, 255, 0), -1)
+            cv2.circle(image, (int(round(rel_tail_start_coords[1])), int(round(rel_tail_start_coords[0]))), 1, (180, 50, 180), -1)
 
             # update image label
             self.update_image_label(image)

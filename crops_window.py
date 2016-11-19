@@ -353,7 +353,7 @@ class HeadfixedCropsWindow(CropsWindow):
         self.setCentralWidget(self.main_widget)
 
         # set window buttons
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
 
         self.show()
 

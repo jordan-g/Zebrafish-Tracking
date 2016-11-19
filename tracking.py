@@ -33,11 +33,11 @@ except:
     xrange = range
 
 # headfixed tail tracking global variables
-fitted_tail = []
-tail_funcs   = None
-tail_brightness = None
-background_brightness  = None
-tail_length = None
+fitted_tail           = []
+tail_funcs            = None
+tail_brightness       = None
+background_brightness = None
+tail_length           = None
 
 cv2.setNumThreads(0) # avoids crashes when using multiprocessing with opencv
 
@@ -829,7 +829,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position):
 
     return tail_coords, spline_coords
 
-def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=2, smoothing_factor=3): # todo: make max radius & smoothing factor user settable
+def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=4, smoothing_factor=3): # todo: make max radius & smoothing factor user settable
     # get tail skeleton matrix
     skeleton_matrix = get_tail_skeleton_frame(tail_threshold_frame)
 
@@ -1043,7 +1043,7 @@ def find_unique_coords(coords, found_coords):
 # --- Headfixed tail tracking --- #
 
 def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # todo: make smoothing factor user settable
-    tail_start_coords = params['tail_start_coords']
+    tail_start_coords = get_relative_tail_start_coords(params['tail_start_coords'], crop_params['offset'], params['shrink_factor'])
     direction         = params['tail_direction']
     n_tail_points     = params['n_tail_points']
 
@@ -1288,6 +1288,15 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
 def calculate_tail_func(x, mu, sigma, scale, offset):
     return scale * np.exp(-(x-mu)**4/(2.0*sigma**2))**.2 + offset
 
+def clear_headfixed_tracking():
+    global fitted_tail, tail_funcs, tail_brightness, background_brightness, tail_length
+
+    fitted_tail           = []
+    tail_funcs            = None
+    tail_brightness       = None
+    background_brightness = None
+    tail_length           = None
+
 # --- Helper functions --- #
 
 def translate_interpolation(interpolation_string):
@@ -1391,6 +1400,15 @@ def simplify_body_threshold_frame(frame):
 
 def get_tail_skeleton_frame(tail_threshold_frame):
     return skeletonize(tail_threshold_frame).astype(np.uint8)
+
+def get_relative_tail_crop(tail_crop, shrink_factor):
+    return tail_crop*shrink_factor
+
+def get_relative_tail_start_coords(tail_start_coords, offset, shrink_factor):
+    return (tail_start_coords - offset)*shrink_factor
+
+def get_absolute_tail_start_coords(rel_tail_start_coords, offset, shrink_factor):
+    return rel_tail_start_coords/shrink_factor + offset
 
 def tryint(s):
     try:
