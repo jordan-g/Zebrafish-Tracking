@@ -44,7 +44,7 @@ default_headfixed_params = {'shrink_factor': 1.0,                               
                             'subtract_background': False,                       # whether to perform background subtraction
                             'tail_direction': "Right",                          # "right" / "left" / "up" / "down"
                             'media_type': None,                                 # type of media that is tracked - "video" / "folder" / "image" / None
-                            'media_path': "",                                   # path to media that is tracked
+                            'media_paths': [],                                  # paths to media that are tracked
                             'background': None,                                 # background calculated for background subtraction
                             'tail_start_coords': None,                          # (y, x) coordinates of the start of the tail
                             'use_multiprocessing': True,                        # whether to use multiprocessing
@@ -67,7 +67,7 @@ default_freeswimming_params = {'shrink_factor': 1.0,                            
                                'interpolation': 'Nearest Neighbor',             # interpolation to use when resizing frame for eye tracking
                                'tail_crop': np.array([100, 100]),               # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
                                'media_type': None,                              # type of media that is tracked - "video" / "folder" / "image" / None
-                               'media_path': "",                                # path to media that is tracked
+                               'media_paths': [],                               # paths to media that are tracked
                                'background': None,                              # background calculated for background subtraction
                                'use_multiprocessing': True,                     # whether to use multiprocessing
                                'gui_params': { 'show_body_threshold': False,    # show body threshold in preview window
@@ -92,11 +92,13 @@ class Controller():
         self.cropped_frame         = None
         self.frames                = None
         self.tracking_results      = []
-        self.current_crop          = -1
+        self.current_crop          = -1   # which crop is being looked at
+        self.current_media_number  = 0    # which media (from a loaded batch) is being looked at
         self.n_frames              = 0    # total number of frames to preview
         self.n                     = 0    # index of currently selected frame
         self.tracking_path         = None # path to where tracking data will be saved
         self.get_background_thread = None
+        self.track_media_thread    = None
         self.closing               = False
 
         # create preview window
@@ -110,47 +112,46 @@ class Controller():
         if media_type == "image":
             # ask the user to select an image
             if pyqt_version == 4:
-                media_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open image', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)'))
+                media_paths = [str(QFileDialog.getOpenFileName(self.param_window, 'Select image to open', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)'))]
             elif pyqt_version == 5:
-                media_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open image', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)')[0])
+                media_paths = [str(QFileDialog.getOpenFileName(self.param_window, 'Select image to open', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)')[0])]
         elif media_type == "folder":
             # ask the user to select a directory
-            media_path = str(QFileDialog.getExistingDirectory(self.param_window, 'Open folder'))
+            media_paths = [str(QFileDialog.getExistingDirectory(self.param_window, 'Select folder to open'))]
         elif media_type == "video":
-            # ask the user to select a video
+            # ask the user to select video(s)
             if pyqt_version == 4:
-                media_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open video', '', 'Videos (*.mov *.tif *.mp4 *.avi)'))
+                media_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select video(s) to open', '', 'Videos (*.mov *.tif *.mp4 *.avi)')
             elif pyqt_version == 5:
-                media_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open video', '', 'Videos (*.mov *.tif *.mp4 *.avi)')[0])
+                media_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select video(s) to open', '', 'Videos (*.mov *.tif *.mp4 *.avi)')[0]
 
-        if media_path != "":
+            # convert paths to str
+            media_paths = [ str(media_path) for media_path in media_paths ]
+
+        if len(media_paths) > 0 and media_paths[0] != '':
             # clear all crops
             self.clear_crops()
 
             # set params to defaults
-            self.params = self.default_params
+            self.params = self.default_params.copy()
 
             self.current_crop = -1
 
-            self.open_media(media_type, media_path)
+            self.open_media_batch(media_type, media_paths)
 
             self.create_crop()
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
 
-    def open_media(self, media_type, media_path): # todo: automatically determine tail direction for headfixed case
+    def open_media(self, media_type, media_path):
         # reset tracking results
         self.tracking_results = []
 
         if media_path not in ("", None):
-            # update media path parameter
-            self.params['media_path'] = media_path
-            self.params['media_type'] = media_type
-
             # load frames
             if media_type == "image":
-                self.frames = [tracking.load_frame_from_image(self.params['media_path'])]
+                self.frames = [tracking.load_frame_from_image(media_path)]
             elif media_type == "folder":
                 # get filenames of all frame images in the folder
                 frame_filenames = tracking.get_frame_filenames_from_folder(media_path)
@@ -166,9 +167,9 @@ class Controller():
 
                 # load frames from the folder
                 if self.params['background']!= None:
-                    self.frames, self.bg_sub_frames = tracking.load_frames_from_folder(self.params['media_path'], frame_filenames, frame_nums, background=self.params['background'])
+                    self.frames, self.bg_sub_frames = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, background=self.params['background'])
                 else:
-                    self.frames = tracking.load_frames_from_folder(self.params['media_path'], frame_filenames, frame_nums, None)
+                    self.frames = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, None)
             elif media_type == "video":
                 # get video info
                 fps, n_frames_total = tracking.get_video_info(media_path)
@@ -178,9 +179,9 @@ class Controller():
 
                 # load frames from the video
                 if self.params['background'] != None:
-                    self.frames, self.bg_sub_frames = tracking.load_frames_from_video(self.params['media_path'], None, frame_nums, background=self.params['background'])
+                    self.frames, self.bg_sub_frames = tracking.load_frames_from_video(media_path, None, frame_nums, background=self.params['background'])
                 else:
-                    self.frames = tracking.load_frames_from_video(self.params['media_path'], None, frame_nums, background=None)
+                    self.frames = tracking.load_frames_from_video(media_path, None, frame_nums, background=None)
 
             if self.frames == None:
                 # no frames found; end here
@@ -195,8 +196,8 @@ class Controller():
 
             if self.params['type'] == "headfixed":
                 # determine tail direction
-                total_luminosities = [np.sum(self.current_frame[-1, :]), np.sum(self.current_frame[0, :]),
-                                      np.sum(self.current_frame[:, -1]), np.sum(self.current_frame[:, 0])]
+                total_luminosities = [np.sum(self.current_frame[-1:-10, :]), np.sum(self.current_frame[0:10, :]),
+                                      np.sum(self.current_frame[:, -1:-10]), np.sum(self.current_frame[:, 0:10])]
 
                 self.params['tail_direction'] = tail_direction_options[np.argmax(total_luminosities)]
 
@@ -205,6 +206,10 @@ class Controller():
             # get background
             if media_type != "image":
                 if self.params['background'] == None:
+                    self.param_window.param_controls["subtract_background"].setEnabled(False)
+                    self.param_window.open_background_action.setEnabled(False)
+                    self.param_window.save_background_action.setEnabled(False)
+
                     if self.get_background_thread != None:
                         # another thread is already calculating a background; don't let it affect the GUI
                         self.get_background_thread.progress.disconnect(self.update_background_subtract_progress)
@@ -215,7 +220,7 @@ class Controller():
 
                     # create new thread to calculate the background
                     self.get_background_thread = GetBackgroundThread(self.param_window)
-                    self.get_background_thread.set_parameters(self.params['media_path'], media_type)
+                    self.get_background_thread.set_parameters(self.params['media_paths'][0], media_type)
 
                     # set callback function to be called when the background has been calculated
                     self.get_background_thread.finished.connect(self.background_calculated)
@@ -233,6 +238,23 @@ class Controller():
             self.crops_window.set_gui_disabled(False)
             self.param_window.set_gui_disabled(False)
 
+    def open_media_batch(self, media_type, media_paths): #todo: complete this
+        # update media paths & type parameters
+        self.params['media_paths'] = media_paths
+        self.params['media_type']  = media_type
+
+        # update current media number
+        self.current_media_number = 0
+
+        # update loaded media label
+        if len(media_paths) > 1:
+            self.param_window.loaded_media_label.setText("Loaded <b>{} {}s</b>.".format(len(media_paths), media_type))
+        else:
+            self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
+
+        # open the first media from the batch
+        self.open_media(media_type, media_paths[self.current_media_number])
+
     def background_calculated(self, background):
         if self.current_frame.shape == background.shape:
             print("Background calculated.")
@@ -248,9 +270,23 @@ class Controller():
                 self.param_window.param_controls["subtract_background"].setEnabled(True)
                 self.param_window.param_controls["subtract_background"].setText("Subtract background")
 
+                self.param_window.open_background_action.setEnabled(True)
+                self.param_window.save_background_action.setEnabled(True)
+
+    def media_tracked(self, tracking_time):
+        self.param_window.tracking_progress_label.setText("Tracking completed in <b>{:.3f}s</b>.".format(tracking_time))
+        
+        self.param_window.toggle_analysis_window_button.setEnabled(True)
+
     def update_background_subtract_progress(self, percent):
         self.param_window.param_controls["subtract_background"].setText("Subtract background (Calculating...{}%)".format(percent))
     
+    def update_media_tracking_progress(self, media_type, media_number, percent):
+        if len(self.params['media_paths']) > 1:
+            self.param_window.tracking_progress_label.setText("Tracking <b>{} {}</b>: {}%.".format(media_type, media_number+1, percent))
+        else:
+            self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>: {}%.".format(os.path.basename(self.params['media_paths'][0]), percent))
+
     def load_params(self, params_path=None):
         if params_path == None:
             # ask the user to select a path
@@ -267,7 +303,7 @@ class Controller():
             self.current_crop = -1
 
             # re-open media path specified in the loaded params
-            self.open_media(self.params['media_type'], self.params['media_path'])
+            self.open_media_batch(self.params['media_type'], self.params['media_paths'])
 
             # create tabs for all saved crops
             for j in range(len(self.params['crop_params'])):
@@ -305,9 +341,8 @@ class Controller():
         if self.tracking_path != None:
             self.analysis_window.show()
 
-            # analyze tracking data if it's available
-            if os.path.isfile(os.path.join(os.path.dirname(self.tracking_path), "crop_0_tracking_data.npz")):
-                self.analysis_window.load_data(os.path.dirname(self.tracking_path))
+            # analyze tracking data
+            self.analysis_window.load_data(os.path.dirname(self.tracking_path))
 
     def switch_frame(self, n, new_load=False):
         if n != self.n:
@@ -444,31 +479,44 @@ class Controller():
             self.update_preview(image=None, new_load=False, new_frame=False)
 
     def track_media(self):
+        # get save path
         if self.params['media_type'] == "image":
-            # get save path
             self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
-
-            tracking_func = tracking.open_and_track_image
         elif self.params['media_type'] == "folder":
-            # get save path
             self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
-
-            tracking_func = tracking.open_and_track_folder
-
         elif self.params['media_type'] == "video":
-            # get save path
             self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
 
-            tracking_func = tracking.open_and_track_video
+        # track media
+        if self.track_media_thread != None:
+            # another thread is already tracking something; don't let it affect the GUI
+            self.track_media_thread.progress.disconnect(self.update_media_tracking_progress)
+            self.track_media_thread.finished.disconnect(self.media_tracked)
 
-        if self.tracking_path != "":
-            # spawn thread to track image
-            t = threading.Thread(target=tracking_func, args=(self.params, self.tracking_path))
-            t.start()
+        # create new thread to track the media
+        self.track_media_thread = TrackMediaThread(self.param_window)
+        self.track_media_thread.set_parameters(self.params, self.tracking_path)
+
+        # set callback function to be called when the media has been tracked
+        self.track_media_thread.finished.connect(self.media_tracked)
+
+        # set callback function to be called as the media is being tracked (to show progress)
+        self.track_media_thread.progress.connect(self.update_media_tracking_progress)
+
+        if len(self.params['media_paths']) > 1:
+            self.param_window.tracking_progress_label.setText("Tracking <b>{} 1</b>: 0%.".format(self.params['media_type']))
+        else:
+            self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>: 0%.".format(os.path.basename(self.params['media_paths'][0])))
+
+        # start thread
+        self.track_media_thread.start()
 
     def save_background(self):
         if self.params['background'] != None:
-            save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '', 'Images (*.jpg *.tif *.png)'))
+            if pyqt_version == 4:
+                save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '{}_background'.format(os.path.splitext(self.params['media_paths'][0])[0]), 'Images (*.png *.tif *.jpg)'))
+            elif pyqt_version == 5:
+                save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '{}_background'.format(os.path.splitext(self.params['media_paths'][0])[0]), 'Images (*.png *.tif *.jpg)')[0])
             if not (save_path.endswith('.jpg') or save_path.endswith('.tif') or save_path.endswith('.png')):
                 save_path += ".png"
             cv2.imwrite(save_path, self.params['background'])
@@ -479,10 +527,11 @@ class Controller():
                 background_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open image', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)'))
             elif pyqt_version == 5:
                 background_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open image', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)')[0])
-
+            print(background_path)
             background = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
 
             if background.shape == self.current_frame.shape:
+                print("hey")
                 self.params['background'] = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
                 self.background_calculated(self.params['background'])
 
@@ -505,6 +554,9 @@ class Controller():
 
         # update crop gui
         self.crops_window.update_gui_from_params(self.params['crop_params'])
+
+        # reset headfixed tracking
+        tracking.clear_headfixed_tracking()
 
         # reshape current frame
         self.reshape_frame()
@@ -783,7 +835,7 @@ class FreeswimmingController(Controller):
 
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
         Controller.update_crop_from_selection(self, start_crop_coord, end_crop_coord)
-        
+
         # generate thresholded frames
         self.generate_thresholded_frames()
 
@@ -838,14 +890,14 @@ class HeadfixedController(Controller):
         # reshape current frame
         self.reshape_frame()
 
+        # reset headfixed tracking
+        tracking.clear_headfixed_tracking()
+
         # update the image preview
         self.update_preview(image=None, new_load=False, new_frame=True)
 
     def reshape_frame(self):
         Controller.reshape_frame(self)
-
-        # reset headfixed tracking
-        tracking.clear_headfixed_tracking()
 
     def update_tail_start_coords(self, rel_tail_start_coords):
         self.params['tail_start_coords'] = tracking.get_absolute_tail_start_coords(rel_tail_start_coords,
@@ -898,13 +950,37 @@ class GetBackgroundThread(QThread):
         self.media_type = media_type
 
     def run(self):
-        # do some functionality
         if self.media_type == "folder":
             background = tracking.get_background_from_folder(self.media_path, None, None, False, progress_signal=self.progress)
         elif self.media_type == "video":
             background = tracking.get_background_from_video(self.media_path, None, None, False, progress_signal=self.progress)
         
         self.finished.emit(background)
+
+class TrackMediaThread(QThread):
+    finished = Signal(float)
+    progress = Signal(str, int, int)
+
+    def set_parameters(self, params, tracking_path):
+        self.params = params
+        self.tracking_path = tracking_path
+
+    def run(self):
+        if self.params['media_type'] == "image":
+            tracking_func = tracking.open_and_track_image
+        elif self.params['media_type'] == "folder":
+            tracking_func = tracking.open_and_track_folder
+        elif self.params['media_type'] == "video":
+            tracking_func = tracking.open_and_track_video_batch
+
+        if self.tracking_path != "":
+            start_time = time.time()
+
+            tracking_func(self.params, self.tracking_path, progress_signal=self.progress)
+
+            end_time = time.time()
+
+            self.finished.emit(end_time - start_time)
 
 # --- Helper functions --- #
 def split_evenly(n, m, start=0):

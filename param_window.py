@@ -71,43 +71,73 @@ class ParamWindow(QMainWindow):
 
     def create_menubar(self):
         # create actions
-        open_image = QAction(QIcon('open.png'), 'Open Image', self)
-        open_image.setShortcut('Ctrl+O')
-        open_image.setStatusTip('Open an image')
-        open_image.triggered.connect(lambda:self.controller.select_and_open_media("image"))
+        self.open_image_action = QAction('Open Image', self)
+        self.open_image_action.setShortcut('Ctrl+O')
+        self.open_image_action.setStatusTip('Open an image.')
+        self.open_image_action.triggered.connect(lambda:self.controller.select_and_open_media("image"))
 
-        open_folder = QAction(QIcon('open.png'), 'Open Folder', self)
-        open_folder.setShortcut('Ctrl+Shift+O')
-        open_folder.setStatusTip('Open a folder of images')
-        open_folder.triggered.connect(lambda:self.controller.select_and_open_media("folder"))
+        self.open_folder_action = QAction('Open Folder', self)
+        self.open_folder_action.setShortcut('Ctrl+Shift+O')
+        self.open_folder_action.setStatusTip('Open a folder of images.')
+        self.open_folder_action.triggered.connect(lambda:self.controller.select_and_open_media("folder"))
 
-        open_video = QAction(QIcon('open.png'), 'Open Video', self)
-        open_video.setShortcut('Ctrl+Alt+O')
-        open_video.setStatusTip('Open a video')
-        open_video.triggered.connect(lambda:self.controller.select_and_open_media("video"))
+        self.open_video_action = QAction('Open Video(s)', self)
+        self.open_video_action.setShortcut('Ctrl+Alt+O')
+        self.open_video_action.setStatusTip('Open one or more videos.')
+        self.open_video_action.triggered.connect(lambda:self.controller.select_and_open_media("video"))
 
-        track_frame = QAction(QIcon('open.png'), 'Track Frame', self)
-        track_frame.setShortcut('Ctrl+T')
-        track_frame.setStatusTip('Track current frame')
-        track_frame.triggered.connect(self.controller.track_frame)
+        self.save_params_action = QAction('Save Parameters', self)
+        self.save_params_action.setShortcuts(['Ctrl+S'])
+        self.save_params_action.setStatusTip('Quick-save the current parameters.')
+        self.save_params_action.triggered.connect(self.controller.save_params)
 
-        save_params = QAction(QIcon('save.png'), 'Save Parameters', self)
-        save_params.setShortcuts(['Ctrl+S'])
-        save_params.setStatusTip('Save parameters')
-        save_params.triggered.connect(self.controller.save_params)
+        self.track_frame_action = QAction('Track Frame', self)
+        self.track_frame_action.setShortcut('Ctrl+T')
+        self.track_frame_action.setStatusTip('Track the currently previewed frame.')
+        self.track_frame_action.triggered.connect(self.controller.track_frame)
+
+        self.track_all_action = QAction('Track All Media', self)
+        self.track_all_action.setShortcut('Ctrl+Shift+T')
+        self.track_all_action.setStatusTip('Track all of the currently loaded media.')
+        self.track_all_action.triggered.connect(self.controller.track_media)
 
         # create menu bar & add actions
         menubar  = self.menuBar()
         file_menu = menubar.addMenu('&File')
-        file_menu.addAction(open_folder)
-        file_menu.addAction(open_video)
-        file_menu.addAction(open_image)
-        file_menu.addAction(save_params)
-        file_menu.addAction(track_frame)
+        file_menu.addAction(self.open_image_action)
+        file_menu.addAction(self.open_folder_action)
+        file_menu.addAction(self.open_video_action)
+        file_menu.addAction(self.save_params_action)
+        file_menu.addAction(self.track_frame_action)
+        file_menu.addAction(self.track_all_action)
+
+        self.open_background_action = QAction('Open Background...', self)
+        self.open_background_action.setShortcut('Ctrl+Alt+B')
+        self.open_background_action.setStatusTip('Open a saved background.')
+        self.open_background_action.triggered.connect(self.controller.load_background)
+        self.open_background_action.setEnabled(False)
+
+        self.save_background_action = QAction('Save Background...', self)
+        self.save_background_action.setShortcut('Ctrl+B')
+        self.save_background_action.setStatusTip('Save the currently calculated background.')
+        self.save_background_action.triggered.connect(self.controller.save_background)
+        self.save_background_action.setEnabled(False)
+
+        background_menu = menubar.addMenu('&Background')
+        background_menu.addAction(self.open_background_action)
+        background_menu.addAction(self.save_background_action)
 
     def create_param_controls_layout(self):
         # initialize parameter controls variable
         self.param_controls = None
+
+        # create loaded media label
+        self.loaded_media_label = QLabel("No media loaded.")
+        self.main_layout.addWidget(self.loaded_media_label)
+
+        # create tracking progress label
+        self.tracking_progress_label = QLabel("")
+        self.main_layout.addWidget(self.tracking_progress_label)
 
         # create invalid parameters label
         self.invalid_params_label = QLabel("")
@@ -207,6 +237,7 @@ class ParamWindow(QMainWindow):
         self.toggle_analysis_window_button = QPushButton(u'Analyse\u2026', self)
         self.toggle_analysis_window_button.setMaximumWidth(180)
         self.toggle_analysis_window_button.clicked.connect(self.controller.toggle_analysis_window)
+        self.toggle_analysis_window_button.setEnabled(False)
         button_layout_4.addWidget(self.toggle_analysis_window_button)
 
     def set_gui_disabled(self, disabled_bool):

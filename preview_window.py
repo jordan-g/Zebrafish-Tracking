@@ -194,7 +194,8 @@ class PreviewWindow(QMainWindow):
 
         try:
             tail_crop = tracking.get_relative_tail_crop(params['tail_crop'], params['shrink_factor'])
-        except KeyError:
+        except KeyError as error:
+            # print(error)
             tail_crop = None
 
         try:
@@ -202,7 +203,8 @@ class PreviewWindow(QMainWindow):
 
             # add tail start point to image
             cv2.circle(image, (int(round(tail_start_coords[1])), int(round(tail_start_coords[0]))), 1, (180, 50, 180), -1)
-        except KeyError:
+        except (KeyError, TypeError) as error:
+            # print(error)
             tail_start_coords = None
 
         if len(tracking_results) > 0:

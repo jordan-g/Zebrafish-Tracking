@@ -38,6 +38,7 @@ tail_funcs            = None
 tail_brightness       = None
 background_brightness = None
 tail_length           = None
+n_frames_tracked      = 0
 
 cv2.setNumThreads(0) # avoids crashes when using multiprocessing with opencv
 
@@ -63,6 +64,7 @@ def load_frame_from_image(image_path, background=None):
         return frame
 
 def load_frames_from_folder(folder_path, frame_filenames, frame_nums, background=None):
+    print("Loading frames from {}...".format(folder_path))
     if frame_filenames == None and folder_path != None:
         # get filenames of all frame images in the folder
         frame_filenames = get_frame_filenames_from_folder(folder_path)
@@ -101,6 +103,8 @@ def load_frames_from_folder(folder_path, frame_filenames, frame_nums, background
 
         # add to frames list
         frames.append(frame)
+
+    print("{} frames loaded.".format(n_frames_total))
 
     if background != None:
         return frames, bg_sub_frames
@@ -311,14 +315,14 @@ def subtract_background_from_frames(frames, background):
 def subtract_background_from_frame(frame, background):
     # subtract background from frame
     bg_sub_frame = frame - background
-    bg_sub_frame[bg_sub_frame <= 0] = 255
+    bg_sub_frame[bg_sub_frame < 10] = 255
 
     return bg_sub_frame
 
 # --- Tracking --- #
 
-def open_and_track_image(params, tracking_dir):
-    image_path          = params['media_path']
+def open_and_track_image(params, tracking_dir, progress_signal=None):
+    image_path          = params['media_paths'][0]
     subtract_background = params['subtract_background']
     background          = params['background']
     shrink_factor       = crop_params['shrink_factor']
@@ -353,7 +357,7 @@ def open_and_track_image(params, tracking_dir):
         # save the new frame
         cv2.imwrite(os.path.join(tracking_dir, "crop_{}.png".format(k)), tracked_frame)
 
-def track_frames(params, frames):
+def track_frames(params, progress_signal, n_frames_tracked, n_frames_total, media_number, frames):
     crop_params   = params['crop_params']
     tracking_type = params['type']
     n_tail_points = params['n_tail_points']
@@ -394,14 +398,25 @@ def track_frames(params, frames):
             if coords[0] != None:
                 tail_coords_array[k, frame_number, :, :coords[0].shape[1]]    = coords[0]
                 spline_coords_array[k, frame_number, :, :coords[1].shape[1]]  = coords[1]
-            heading_angle_array[k, frame_number, :]                       = coords[2]
-            body_position_array[k, frame_number, :]                       = coords[3]
-            eye_coords_array[k, frame_number, :, :]                       = coords[4]
+
+            heading_angle_array[k, frame_number, :] = coords[2]
+            body_position_array[k, frame_number, :] = coords[3]
+            eye_coords_array[k, frame_number, :, :] = coords[4]
+
+        if progress_signal and frame_number + 1 % 50 == 0:
+            # send an update signal to the controller
+            percent_complete = int(100.0*(n_frames_tracked + frame_number)/n_frames_total)
+            progress_signal.emit(params['media_type'], media_number, percent_complete)
+
+    if progress_signal:
+        # send an update signal to the controller
+        percent_complete = int(100*(n_frames_tracked + n_frames)/n_frames_total)
+        progress_signal.emit(params['media_type'], media_number, percent_complete)
 
     return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array
 
-def open_and_track_folder(params, tracking_dir): # todo: add video creation from tracking data
-    folder_path         = params['media_path']
+def open_and_track_folder(params, tracking_dir, progress_signal=None): # todo: add video creation from tracking data
+    folder_path         = params['media_paths'][0]
     subtract_background = params['subtract_background']
     background          = params['background']
     crop_params         = params['crop_params']
@@ -409,6 +424,9 @@ def open_and_track_folder(params, tracking_dir): # todo: add video creation from
     save_video          = params['save_video']
     saved_video_fps     = params['saved_video_fps']
     use_multiprocessing = params['use_multiprocessing']
+
+    global n_frames_tracked
+    n_frames_tracked = 0
 
     # start timer
     start_time = time.time()
@@ -433,7 +451,7 @@ def open_and_track_folder(params, tracking_dir): # todo: add video creation from
     eye_coords_array     = np.zeros((n_crops, n_frames_total, 2, 2)) + np.nan
 
     # split frame numbers into big chunks - we keep only one big chunk of frames in memory at a time
-    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), 3000)
+    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), 1000)
 
     for frame_nums in big_split_frame_nums:
         # load this big chunk of frames
@@ -458,28 +476,32 @@ def open_and_track_folder(params, tracking_dir): # todo: add video creation from
             # create a pool of workers
             pool = multiprocessing.Pool(None)
 
-            # define callback function for workers
-            def log_result(result):
-                result_list.append(result)
-
             # have workers process each chunk
-            func = partial(track_frames, params)
-            pool.map_async(func, split_frames, callback=log_result)
+            func = partial(track_frames, params, None, None, None, None)
+            for frame_subset in split_frames:
+                result_list.append(pool.apply_async(func, [frame_subset]).get())
+                n_frames_tracked += len(frame_subset)
+                
+                if progress_signal:
+                    # send an update signal to the controller
+                    percent_complete = int(100*n_frames_tracked/n_frames_total)
+                    progress_signal.emit("folder", 0, percent_complete)
+
             pool.close()
             pool.join()
 
-            n_chunks = len(result_list[0])
+            n_chunks = len(result_list)
 
             # add results to tracking data arrays
-            tail_coords_array[:, frame_nums, :, :]    = np.concatenate([result_list[0][i][0] for i in range(n_chunks)], axis=1)
-            spline_coords_array[:, frame_nums, :, :]  = np.concatenate([result_list[0][i][1] for i in range(n_chunks)], axis=1)
-            heading_angle_array[:, frame_nums, :]     = np.concatenate([result_list[0][i][2] for i in range(n_chunks)], axis=1)
-            body_position_array[:, frame_nums, :]     = np.concatenate([result_list[0][i][3] for i in range(n_chunks)], axis=1)
-            eye_coords_array[:, frame_nums, :, :]     = np.concatenate([result_list[0][i][4] for i in range(n_chunks)], axis=1)
+            tail_coords_array[:, frame_nums, :, :]    = np.concatenate([result_list[i][0] for i in range(n_chunks)], axis=1)
+            spline_coords_array[:, frame_nums, :, :]  = np.concatenate([result_list[i][1] for i in range(n_chunks)], axis=1)
+            heading_angle_array[:, frame_nums, :]     = np.concatenate([result_list[i][2] for i in range(n_chunks)], axis=1)
+            body_position_array[:, frame_nums, :]     = np.concatenate([result_list[i][3] for i in range(n_chunks)], axis=1)
+            eye_coords_array[:, frame_nums, :, :]     = np.concatenate([result_list[i][4] for i in range(n_chunks)], axis=1)
         else:
             # track this big chunk of frames and add results to tracking data arrays
             (tail_coords_small_array, spline_coords_small_array,
-             heading_angle_small_array, body_position_small_array, eye_coords_small_array) = track_frames(params, frames)
+             heading_angle_small_array, body_position_small_array, eye_coords_small_array) = track_frames(params, progress_signal, n_frames_tracked, n_frames_total, 0, frames)
 
             tail_coords_array[:, frame_nums, :, :]    = tail_coords_small_array
             spline_coords_array[:, frame_nums, :, :]  = spline_coords_small_array
@@ -492,7 +514,7 @@ def open_and_track_folder(params, tracking_dir): # todo: add video creation from
         os.makedirs(tracking_dir)
 
     # save tracking data
-    np.savez(os.path.join(tracking_dir, "tracking_data.npz"),
+    np.savez(os.path.join(tracking_dir, "{}_tracking.npz".format(os.path.splitext(os.path.basename(folder_path))[0])),
                           tail_coords=tail_coords_array, spline_coords=spline_coords_array,
                           heading_angle=heading_angle_array, body_position=body_position_array,
                           eye_coords=eye_coords_array, params=params)
@@ -503,8 +525,7 @@ def open_and_track_folder(params, tracking_dir): # todo: add video creation from
     # print total tracking time
     print("Finished tracking. Total time: {}s.".format(end_time - start_time))
 
-def open_and_track_video(params, tracking_dir): # todo: add video creation from tracking data
-    video_path          = params['media_path']
+def open_and_track_video(video_path, params, tracking_dir, video_number=0, progress_signal=None): # todo: add video creation from tracking data
     subtract_background = params['subtract_background']
     background          = params['background']
     crop_params         = params['crop_params']
@@ -513,6 +534,9 @@ def open_and_track_video(params, tracking_dir): # todo: add video creation from 
     saved_video_fps     = params['saved_video_fps']
     use_multiprocessing = params['use_multiprocessing']
     n_crops             = len(params['crop_params'])
+
+    global n_frames_tracked
+    n_frames_tracked = 0
 
     # start timer
     start_time = time.time()
@@ -539,7 +563,7 @@ def open_and_track_video(params, tracking_dir): # todo: add video creation from 
     eye_coords_array     = np.zeros((n_crops, n_frames_total, 2, 2)) + np.nan
 
     # split frame numbers into big chunks - we keep only one big chunk of frames in memory at a time
-    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), 3000)
+    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), 5000)
 
     for frame_nums in big_split_frame_nums:
         # load this big chunk of frames
@@ -564,41 +588,45 @@ def open_and_track_video(params, tracking_dir): # todo: add video creation from 
             # create a pool of workers
             pool = multiprocessing.Pool(None)
 
-            # define callback function for workers
-            def log_result(result):
-                result_list.append(result)
-
             # have workers process each chunk
-            func = partial(track_frames, params)
-            pool.map_async(func, split_frames, callback=log_result)
+            func = partial(track_frames, params, None, None, None, None)
+            for frame_subset in split_frames:
+                result_list.append(pool.apply_async(func, [frame_subset]).get())
+                n_frames_tracked += len(frame_subset)
+                
+                if progress_signal:
+                    # send an update signal to the controller
+                    percent_complete = int(100*n_frames_tracked/n_frames_total)
+                    progress_signal.emit("video", video_number, percent_complete)
+
             pool.close()
             pool.join()
 
-            n_chunks = len(result_list[0])
+            n_chunks = len(result_list)
 
             # add results to tracking data arrays
-            tail_coords_array[:, frame_nums, :, :]    = np.concatenate([result_list[0][i][0] for i in range(n_chunks)], axis=1)
-            spline_coords_array[:, frame_nums, :, :]  = np.concatenate([result_list[0][i][1] for i in range(n_chunks)], axis=1)
-            heading_angle_array[:, frame_nums, :]     = np.concatenate([result_list[0][i][2] for i in range(n_chunks)], axis=1)
-            body_position_array[:, frame_nums, :]     = np.concatenate([result_list[0][i][3] for i in range(n_chunks)], axis=1)
-            eye_coords_array[:, frame_nums, :, :]     = np.concatenate([result_list[0][i][4] for i in range(n_chunks)], axis=1)
+            tail_coords_array[:, frame_nums, :, :]   = np.concatenate([result_list[i][0] for i in range(n_chunks)], axis=1)
+            spline_coords_array[:, frame_nums, :, :] = np.concatenate([result_list[i][1] for i in range(n_chunks)], axis=1)
+            heading_angle_array[:, frame_nums, :]    = np.concatenate([result_list[i][2] for i in range(n_chunks)], axis=1)
+            body_position_array[:, frame_nums, :]    = np.concatenate([result_list[i][3] for i in range(n_chunks)], axis=1)
+            eye_coords_array[:, frame_nums, :, :]    = np.concatenate([result_list[i][4] for i in range(n_chunks)], axis=1)
         else:
             # track this big chunk of frames and add results to tracking data arrays
             (tail_coords_small_array, spline_coords_small_array,
-             heading_angle_small_array, body_position_small_array, eye_coords_small_array) = track_frames(params, frames)
+             heading_angle_small_array, body_position_small_array, eye_coords_small_array) = track_frames(params, progress_signal, n_frames_tracked, n_frames_total, 0, frames)
 
-            tail_coords_array[:, frame_nums, :, :]    = tail_coords_small_array
-            spline_coords_array[:, frame_nums, :, :]  = spline_coords_small_array
-            heading_angle_array[:, frame_nums, :]     = heading_angle_small_array
-            body_position_array[:, frame_nums, :]     = body_position_small_array
-            eye_coords_array[:, frame_nums, :, :]     = eye_coords_small_array
+            tail_coords_array[:, frame_nums, :, :]   = tail_coords_small_array
+            spline_coords_array[:, frame_nums, :, :] = spline_coords_small_array
+            heading_angle_array[:, frame_nums, :]    = heading_angle_small_array
+            body_position_array[:, frame_nums, :]    = body_position_small_array
+            eye_coords_array[:, frame_nums, :, :]    = eye_coords_small_array
     
     # set directory for saving tracking data
     if not os.path.exists(tracking_dir):
         os.makedirs(tracking_dir)
 
     # save tracking data
-    np.savez(os.path.join(tracking_dir, "tracking_data.npz"),
+    np.savez(os.path.join(tracking_dir, "{}_tracking.npz".format(os.path.splitext(os.path.basename(video_path))[0])),
                           tail_coords=tail_coords_array, spline_coords=spline_coords_array,
                           heading_angle=heading_angle_array, body_position=body_position_array,
                           eye_coords=eye_coords_array, params=params)
@@ -608,6 +636,13 @@ def open_and_track_video(params, tracking_dir): # todo: add video creation from 
 
     # print total tracking time
     print("Finished tracking. Total time: {}s.".format(end_time - start_time))
+
+def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
+    video_paths = params['media_paths']
+
+    # track each video with the same parameters
+    for i in range(len(video_paths)):
+        open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal)
 
 def track_cropped_frame(frame, params, crop_params):
     tracking_type = params['type']
@@ -1234,7 +1269,7 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
         swidths = np.lib.pad(swidths, [0, 5], mode='edge')
 
         # compute functions that profile the tail
-        tail_funcs = [ calculate_tail_func(np.arange(-guess_tail_width, guess_tail_width+1), 0, swidth, 1, 0) for swidth in swidths]
+        tail_funcs = [ calculate_tail_func(np.arange(-guess_tail_width, guess_tail_width), 0, swidth, 1, 0) for swidth in swidths]
 
     # append fitted tail to list of tail fits
     fitted_tail.append(np.copy(frame_fit[:count]))
