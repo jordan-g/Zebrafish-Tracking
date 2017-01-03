@@ -15,11 +15,11 @@ if use_pyside:
 else:
     try:
         from PyQt4.QtCore import Signal, Qt, QThread
-        from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
+        from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout
     except:
         from PyQt5.QtCore import Signal, Qt, QThread
         from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
-        from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
+        from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout
 
 # options for dropdown selectors for interpolation
 eye_resize_factor_options = [i for i in range(1, 9)]
@@ -181,6 +181,7 @@ class ParamWindow(QMainWindow):
         self.save_button = QPushButton(u'\u2713 Save', self)
         self.save_button.setMaximumWidth(80)
         self.save_button.clicked.connect(self.controller.save_params)
+        self.save_button.setToolTip("Quick-save the current parameters. Use 'Reload' to load these parameters later.")
         button_layout_1.addWidget(self.save_button)
 
         self.track_button = QPushButton(u'\u279E Track', self)
@@ -338,13 +339,16 @@ class ParamWindow(QMainWindow):
         textbox = self.param_controls[textbox_label]
         textbox.setText(str(float(value)))
 
-    def add_checkbox(self, label, description, toggle_func, checked, parent):
+    def add_checkbox(self, label, description, toggle_func, checked, parent, row=-1, column=-1):
         # make checkbox & add to layout
         checkbox = QCheckBox(description)
         checkbox.setObjectName(label)
         checkbox.setChecked(checked)
         checkbox.clicked.connect(lambda:toggle_func(checkbox))
-        parent.addWidget(checkbox)
+        if column == -1:
+            parent.addWidget(checkbox)
+        else:
+            parent.addWidget(checkbox, row, column) 
 
         # add to list of crop or global controls
         self.param_controls[label] = checkbox
@@ -372,12 +376,18 @@ class HeadfixedParamWindow(ParamWindow):
         ParamWindow.__init__(self, controller)
 
     def create_param_controls(self, params):
+        # create layout for checkboxes
+        self.checkbox_layout = QGridLayout()
+        self.checkbox_layout.setColumnStretch(0, 1)
+        self.checkbox_layout.setColumnStretch(1, 1)
+        self.main_layout.addLayout(self.checkbox_layout)
+
         # add checkboxes - (key, description, function to call, initial value, parent layout)
-        self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.main_layout)
-        self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.main_layout)
-        self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.main_layout)
-        self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.main_layout)
-        self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.main_layout)
+        self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.checkbox_layout, 0, 0)
+        self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.checkbox_layout, 1, 0)
+        self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 2, 0)
+        self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 0, 1)
+        self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 1, 1)
 
         # add sliders - (key, description, start, end, initial value, parent layout)
         self.add_slider('shrink_factor', 'Shrink factor:', 1, 10, self.controller.update_params_from_gui, 10.0*params['shrink_factor'], self.form_layout, multiplier=10.0)
@@ -410,19 +420,25 @@ class FreeswimmingParamWindow(ParamWindow):
         ParamWindow.__init__(self, controller)
 
     def create_param_controls(self, params):
+        # create layout for checkboxes
+        self.checkbox_layout = QGridLayout()
+        self.checkbox_layout.setColumnStretch(0, 1)
+        self.checkbox_layout.setColumnStretch(1, 1)
+        self.main_layout.addLayout(self.checkbox_layout)
+
         # add checkboxes - (key, description, function to call, initial value, parent layout)
-        self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.main_layout)
-        self.add_checkbox('show_body_threshold', "Show body threshold", self.controller.toggle_threshold_image, params['gui_params']['show_body_threshold'], self.main_layout)
-        self.add_checkbox('show_eye_threshold', "Show eye threshold", self.controller.toggle_threshold_image, params['gui_params']['show_eye_threshold'], self.main_layout)
-        self.add_checkbox('show_tail_threshold', "Show tail threshold", self.controller.toggle_threshold_image, params['gui_params']['show_tail_threshold'], self.main_layout)
-        self.add_checkbox('show_tail_skeleton', "Show tail skeleton", self.controller.toggle_threshold_image, params['gui_params']['show_tail_skeleton'], self.main_layout)
-        self.add_checkbox('track_tail', "Track tail", self.controller.toggle_tail_tracking, params['track_tail'], self.main_layout)
-        self.add_checkbox('track_eyes', "Track eyes", self.controller.toggle_eye_tracking, params['track_eyes'], self.main_layout)
-        self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.main_layout)
-        self.add_checkbox('adjust_thresholds', 'Adjust thresholds', self.controller.toggle_adjust_thresholds, params['adjust_thresholds'], self.main_layout)
-        self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.main_layout)
-        self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.main_layout)
-        self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.main_layout)
+        self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.checkbox_layout, 0, 0)
+        self.add_checkbox('show_body_threshold', "Show body threshold", self.controller.toggle_threshold_image, params['gui_params']['show_body_threshold'], self.checkbox_layout, 1, 0)
+        self.add_checkbox('show_eye_threshold', "Show eye threshold", self.controller.toggle_threshold_image, params['gui_params']['show_eye_threshold'], self.checkbox_layout, 2, 0)
+        self.add_checkbox('show_tail_threshold', "Show tail threshold", self.controller.toggle_threshold_image, params['gui_params']['show_tail_threshold'], self.checkbox_layout, 3, 0)
+        self.add_checkbox('show_tail_skeleton', "Show tail skeleton", self.controller.toggle_threshold_image, params['gui_params']['show_tail_skeleton'], self.checkbox_layout, 4, 0)
+        self.add_checkbox('track_tail', "Track tail", self.controller.toggle_tail_tracking, params['track_tail'], self.checkbox_layout, 5, 0)
+        self.add_checkbox('track_eyes', "Track eyes", self.controller.toggle_eye_tracking, params['track_eyes'], self.checkbox_layout, 0, 1)
+        self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.checkbox_layout, 1, 1)
+        self.add_checkbox('adjust_thresholds', 'Adjust thresholds', self.controller.toggle_adjust_thresholds, params['adjust_thresholds'], self.checkbox_layout, 2, 1)
+        self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 3, 1)
+        self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 4, 1)
+        self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 5, 1)
 
         # add sliders - (key, description, start, end, initial value, parent layout)
         self.add_slider('shrink_factor', 'Shrink factor:', 1, 10, self.controller.update_params_from_gui, 10.0*params['shrink_factor'], self.form_layout, multiplier=10.0)

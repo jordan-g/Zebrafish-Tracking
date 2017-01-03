@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import glob
 
 def open_saved_data(save_dir=None):
     # load first crop
     try:
-        npzfile = np.load(os.path.join(save_dir, "tracking_data.npz"))
+        npzfile = np.load(glob.glob(os.path.join(save_dir, "*.npz"))[0])
 
         tail_coords_array   = npzfile['tail_coords']
         spline_coords_array = npzfile['spline_coords']
@@ -31,6 +32,7 @@ def open_saved_data(save_dir=None):
     return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array, params
 
 def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_position_array):
+    print("hi")
     # get number of crops, frames & tail points
     n_crops       = tail_coords_array.shape[0]
     n_frames      = tail_coords_array.shape[1]
@@ -69,6 +71,8 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
 
             # get an angle between 0 and 2*pi
             tail_angle_array[k, :, j] = np.arctan2(dot, det)
+
+            print(j, tail_angle_array[k, 772, j], tail_angle_array[k, 773, j])
 
             # correct for abrupt jumps in angle due to vectors switching quadrants between frames
             for i in range(1, n_frames):

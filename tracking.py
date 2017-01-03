@@ -403,17 +403,22 @@ def track_frames(params, progress_signal, n_frames_tracked, n_frames_total, medi
             body_position_array[k, frame_number, :] = coords[3]
             eye_coords_array[k, frame_number, :, :] = coords[4]
 
-        if progress_signal and frame_number + 1 % 50 == 0:
+        if progress_signal and (frame_number + 1) % 50 == 0:
             # send an update signal to the controller
-            percent_complete = int(100.0*(n_frames_tracked + frame_number)/n_frames_total)
+            percent_complete = int(100.0*(n_frames_tracked.value + frame_number)/n_frames_total)
             progress_signal.emit(params['media_type'], media_number, percent_complete)
+
+            n_frames_tracked.value += 50
 
     if progress_signal:
         # send an update signal to the controller
-        percent_complete = int(100*(n_frames_tracked + n_frames)/n_frames_total)
+        percent_complete = int(100*(n_frames_tracked.value + n_frames)/n_frames_total)
         progress_signal.emit(params['media_type'], media_number, percent_complete)
 
     return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array
+
+def track_some_frames(frames, params, frame_nums):
+    return track_frames(params, None, None, None, None, frames[frame_nums])
 
 def open_and_track_folder(params, tracking_dir, progress_signal=None): # todo: add video creation from tracking data
     folder_path         = params['media_paths'][0]
@@ -451,7 +456,15 @@ def open_and_track_folder(params, tracking_dir, progress_signal=None): # todo: a
     eye_coords_array     = np.zeros((n_crops, n_frames_total, 2, 2)) + np.nan
 
     # split frame numbers into big chunks - we keep only one big chunk of frames in memory at a time
-    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), 1000)
+    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), 3000)
+
+    if use_multiprocessing:
+        # create a pool of workers
+        pool = multiprocessing.Pool(None)
+
+    if progress_signal:
+        # send an update signal to the controller
+        progress_signal.emit("folder", 0, 0)
 
     for frame_nums in big_split_frame_nums:
         # load this big chunk of frames
@@ -468,46 +481,42 @@ def open_and_track_folder(params, tracking_dir, progress_signal=None): # todo: a
 
         if use_multiprocessing:
             # split frames into small chunks - we let multiple processes deal with a chunk at a time
-            split_frames = yield_chunks_from_list(frames, 50)
-
-            # initialize multiprocessing result list
-            result_list = []
-
-            # create a pool of workers
-            pool = multiprocessing.Pool(None)
+            split_frames = yield_chunks_from_list(frames, 10)
 
             # have workers process each chunk
-            func = partial(track_frames, params, None, None, None, None)
-            for frame_subset in split_frames:
-                result_list.append(pool.apply_async(func, [frame_subset]).get())
-                n_frames_tracked += len(frame_subset)
-                
-                if progress_signal:
-                    # send an update signal to the controller
-                    percent_complete = int(100*n_frames_tracked/n_frames_total)
-                    progress_signal.emit("folder", 0, percent_complete)
+            result_list = pool.map_async(partial(track_frames, params, None, None, None, None), split_frames).get()
 
-            pool.close()
-            pool.join()
+            n_frames_tracked += len(frame_nums)
+
+            if progress_signal:
+                # send an update signal to the controller
+                percent_complete = int(100*n_frames_tracked/n_frames_total)
+                progress_signal.emit("folder", 0, percent_complete)
 
             n_chunks = len(result_list)
 
             # add results to tracking data arrays
-            tail_coords_array[:, frame_nums, :, :]    = np.concatenate([result_list[i][0] for i in range(n_chunks)], axis=1)
-            spline_coords_array[:, frame_nums, :, :]  = np.concatenate([result_list[i][1] for i in range(n_chunks)], axis=1)
-            heading_angle_array[:, frame_nums, :]     = np.concatenate([result_list[i][2] for i in range(n_chunks)], axis=1)
-            body_position_array[:, frame_nums, :]     = np.concatenate([result_list[i][3] for i in range(n_chunks)], axis=1)
-            eye_coords_array[:, frame_nums, :, :]     = np.concatenate([result_list[i][4] for i in range(n_chunks)], axis=1)
+            tail_coords_array[:, frame_nums, :, :]   = np.concatenate([result_list[i][0] for i in range(n_chunks)], axis=1)
+            spline_coords_array[:, frame_nums, :, :] = np.concatenate([result_list[i][1] for i in range(n_chunks)], axis=1)
+            heading_angle_array[:, frame_nums, :]    = np.concatenate([result_list[i][2] for i in range(n_chunks)], axis=1)
+            body_position_array[:, frame_nums, :]    = np.concatenate([result_list[i][3] for i in range(n_chunks)], axis=1)
+            eye_coords_array[:, frame_nums, :, :]    = np.concatenate([result_list[i][4] for i in range(n_chunks)], axis=1)
         else:
             # track this big chunk of frames and add results to tracking data arrays
             (tail_coords_small_array, spline_coords_small_array,
              heading_angle_small_array, body_position_small_array, eye_coords_small_array) = track_frames(params, progress_signal, n_frames_tracked, n_frames_total, 0, frames)
+
+            n_frames_tracked += len(frame_nums)
 
             tail_coords_array[:, frame_nums, :, :]    = tail_coords_small_array
             spline_coords_array[:, frame_nums, :, :]  = spline_coords_small_array
             heading_angle_array[:, frame_nums, :]     = heading_angle_small_array
             body_position_array[:, frame_nums, :]     = body_position_small_array
             eye_coords_array[:, frame_nums, :, :]     = eye_coords_small_array
+
+    if use_multiprocessing:
+        pool.close()
+        pool.join()
     
     # set directory for saving tracking data
     if not os.path.exists(tracking_dir):
@@ -563,7 +572,15 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     eye_coords_array     = np.zeros((n_crops, n_frames_total, 2, 2)) + np.nan
 
     # split frame numbers into big chunks - we keep only one big chunk of frames in memory at a time
-    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), 5000)
+    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), 3000)
+
+    if use_multiprocessing:
+        # create a pool of workers
+        pool = multiprocessing.Pool(None)
+
+    if progress_signal:
+        # send an update signal to the controller
+        progress_signal.emit("video", video_number, 0)
 
     for frame_nums in big_split_frame_nums:
         # load this big chunk of frames
@@ -580,27 +597,17 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
         if use_multiprocessing:
             # split frames into small chunks - we let multiple processes deal with a chunk at a time
-            split_frames = yield_chunks_from_list(frames, 50)
-
-            # initialize multiprocessing result list
-            result_list = []
-
-            # create a pool of workers
-            pool = multiprocessing.Pool(None)
+            split_frames = yield_chunks_from_list(frames, 10)
 
             # have workers process each chunk
-            func = partial(track_frames, params, None, None, None, None)
-            for frame_subset in split_frames:
-                result_list.append(pool.apply_async(func, [frame_subset]).get())
-                n_frames_tracked += len(frame_subset)
-                
-                if progress_signal:
-                    # send an update signal to the controller
-                    percent_complete = int(100*n_frames_tracked/n_frames_total)
-                    progress_signal.emit("video", video_number, percent_complete)
+            result_list = pool.map_async(partial(track_frames, params, None, None, None, None), split_frames).get()
 
-            pool.close()
-            pool.join()
+            n_frames_tracked += len(frame_nums)
+
+            if progress_signal:
+                # send an update signal to the controller
+                percent_complete = int(100*n_frames_tracked/n_frames_total)
+                progress_signal.emit("video", video_number, percent_complete)
 
             n_chunks = len(result_list)
 
@@ -620,6 +627,10 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
             heading_angle_array[:, frame_nums, :]    = heading_angle_small_array
             body_position_array[:, frame_nums, :]    = body_position_small_array
             eye_coords_array[:, frame_nums, :, :]    = eye_coords_small_array
+
+    if use_multiprocessing:
+        pool.close()
+        pool.join()
     
     # set directory for saving tracking data
     if not os.path.exists(tracking_dir):
@@ -638,7 +649,23 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     print("Finished tracking. Total time: {}s.".format(end_time - start_time))
 
 def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
-    video_paths = params['media_paths']
+    video_paths         = params['media_paths']
+    # subtract_background = params['subtract_background']
+    # background          = params['background']
+
+    # # open the video
+    # try:
+    #     cap = cv2.VideoCapture(video_path)
+    # except:
+    #     print("Error: Could not open video.")
+    #     return
+
+    # if subtract_background and background == None:
+    #     # get background
+    #     background = get_background_from_video(video_path, cap)
+
+    # # store first frame of the first video
+    # source_frame = load_frames_from_video(video_paths[0], None, [0], background)
 
     # track each video with the same parameters
     for i in range(len(video_paths)):
@@ -847,7 +874,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position):
         
         while tail_coords == None and i < 8:
             #  create a thresholded frame using new threshold
-            tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i])
+            tail_threshold_frame = get_threshold_frame(tail_crop_frame, tail_thresholds[i])
 
             # get tail coordinates
             tail_coords, spline_coords = get_freeswimming_tail_coords(tail_threshold_frame, rel_body_position,
@@ -871,13 +898,13 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
     # get coordinates of nonzero points of thresholded image
     nonzeros = np.nonzero(skeleton_matrix)
 
-    # zero out pixels that are close to body
-    for (r, c) in zip(nonzeros[0], nonzeros[1]):
-        if np.sqrt((r - body_position[0])**2 + (c - body_position[1])**2) < min_tail_body_dist:
-            skeleton_matrix[r, c] = 0
+    # # zero out pixels that are close to body
+    # for (r, c) in zip(nonzeros[0], nonzeros[1]):
+    #     if np.sqrt((r - body_position[0])**2 + (c - body_position[1])**2) < min_tail_body_dist:
+    #         skeleton_matrix[r, c] = 0
 
     # get an ordered list of coordinates of the tail, from one end to the other
-    tail_coords = get_ordered_tail_coords(skeleton_matrix, max_r, body_position, max_tail_body_dist, n_tail_points)
+    tail_coords = get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body_dist, max_tail_body_dist, n_tail_points)
 
     if tail_coords == None:
         # couldn't get tail coordinates; end here.
@@ -953,7 +980,7 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
 
     return tail_coords, spline_coords
 
-def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, max_tail_body_dist, min_n_tail_points):
+def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body_dist, max_tail_body_dist, min_n_tail_points):
     # get size of matrix
     y_size = skeleton_matrix.shape[0]
     x_size = skeleton_matrix.shape[1]
@@ -983,7 +1010,7 @@ def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, max_tail_body
                 # if the number of non-zero points in the neighborhood is at least 2
                 # (ie. there's at least one direction to move in along the tail),
                 # set this to our tail starting point.
-                if np.sum(nonzero_neighborhood) >= 2:
+                if np.sum(nonzero_neighborhood) == 2:
                     tail_start_coords = np.array([r, c])
                     closest_body_distance = body_distance
 
@@ -994,9 +1021,15 @@ def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, max_tail_body
     # walk along the tail
     found_coords = walk_along_tail(tail_start_coords, max_r, skeleton_matrix)
 
-    if len(found_coords) < min_n_tail_points:
-        # we didn't manage to get the full tail; try moving along the tail in reverse
-        found_coords = walk_along_tail(found_coords[-1], max_r, skeleton_matrix)
+    # if len(found_coords) < min_n_tail_points:
+    #     print("try again")
+    #     # we didn't manage to get the full tail; try moving along the tail in reverse
+    #     found_coords = walk_along_tail(found_coords[-1], max_r, skeleton_matrix)
+
+    # zero out pixels that are close to body and eyes
+    for i in range(len(found_coords)-1, -1, -1):
+        if np.sqrt((found_coords[i][0] - body_position[0])**2 + (found_coords[i][1] - body_position[1])**2) < min_tail_body_dist:
+            del found_coords[i]
 
     if len(found_coords) < min_n_tail_points:
         # we still didn't get enough tail points; give up here.

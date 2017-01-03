@@ -76,7 +76,7 @@ default_freeswimming_params = {'shrink_factor': 1.0,                            
                                                'show_tail_skeleton': False,     # show tail skeleton in preview window
                                                'auto_track': False }}           # automatically track a frame when you switch to it
 
-max_n_frames = 100 # maximum # of frames to load for previewing
+max_n_frames = 200 # maximum # of frames to load for previewing
 
 class Controller():
     def __init__(self, default_params, default_crop_params):
