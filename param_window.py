@@ -131,9 +131,23 @@ class ParamWindow(QMainWindow):
         # initialize parameter controls variable
         self.param_controls = None
 
+        top_layout = QHBoxLayout()
+        self.main_layout.addLayout(top_layout)
+
         # create loaded media label
         self.loaded_media_label = QLabel("No media loaded.")
-        self.main_layout.addWidget(self.loaded_media_label)
+        top_layout.addWidget(self.loaded_media_label)
+
+        # add media switching buttons
+        self.prev_media_button = QPushButton('<')
+        self.prev_media_button.clicked.connect(self.controller.prev_media)
+        self.prev_media_button.setToolTip("Switch to previous loaded media.")
+        top_layout.addWidget(self.prev_media_button)
+
+        self.next_media_button = QPushButton('>')
+        self.next_media_button.clicked.connect(self.controller.next_media)
+        self.next_media_button.setToolTip("Switch to next loaded media.")
+        top_layout.addWidget(self.next_media_button)
 
         # create tracking progress label
         self.tracking_progress_label = QLabel("")

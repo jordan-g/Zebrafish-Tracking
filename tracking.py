@@ -111,7 +111,10 @@ def load_frames_from_folder(folder_path, frame_filenames, frame_nums, background
     else:
         return frames
 
-def load_frames_from_video(video_path, cap, frame_nums, background=None):
+def load_frames_from_video(video_path, cap, frame_nums, background=None, offset=None):
+    if offset != None:
+        transform = np.float32([[1, 0, -offset[0]], [0, 1, -offset[1]]])
+
     if cap == None and video_path != None:
         new_cap = True # creating a new capture object; we will release it at the end
 
@@ -156,13 +159,27 @@ def load_frames_from_video(video_path, cap, frame_nums, background=None):
             if len(frame.shape) >= 3:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            # add to frames list
-            frames.append(frame)
+            if offset != None:
+                offset_frame = cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
+
+                # add to frames list
+                frames.append(offset_frame)
+            else:
+                # add to frames list
+                frames.append(frame)
 
             if background != None:
                 # subtract background from frame
                 bg_sub_frame = subtract_background_from_frame(frame, background)
-                bg_sub_frames.append(bg_sub_frame)
+
+                if offset != None:
+                    offset_bg_sub_frame = cv2.warpAffine(bg_sub_frame, transform, (bg_sub_frame.shape[1], bg_sub_frame.shape[0]), borderValue=255)
+                    
+                    # add to frames list
+                    bg_sub_frames.append(offset_bg_sub_frame)
+                else:
+                    # add to frames list
+                    bg_sub_frames.append(bg_sub_frame)
 
     if new_cap:
         # release the capture object
@@ -650,26 +667,38 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
 def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
     video_paths         = params['media_paths']
-    # subtract_background = params['subtract_background']
-    # background          = params['background']
-
-    # # open the video
-    # try:
-    #     cap = cv2.VideoCapture(video_path)
-    # except:
-    #     print("Error: Could not open video.")
-    #     return
-
-    # if subtract_background and background == None:
-    #     # get background
-    #     background = get_background_from_video(video_path, cap)
-
-    # # store first frame of the first video
-    # source_frame = load_frames_from_video(video_paths[0], None, [0], background)
 
     # track each video with the same parameters
     for i in range(len(video_paths)):
         open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal)
+
+def get_video_batch_align_offsets(params):
+    video_paths = params['media_paths']
+
+    # open the first video
+    try:
+        cap = cv2.VideoCapture(video_paths[0])
+    except:
+        print("Error: Could not open video.")
+        return
+
+    # store first frame of the first video
+    source_frame = load_frames_from_video(video_paths[0], None, [0], None)[0]
+
+    batch_offsets = [None]
+
+    for k in range(1, len(video_paths)):
+        first_frame = load_frames_from_video(video_paths[k], None, [0], None)[0]
+
+        transform = cv2.estimateRigidTransform(source_frame, first_frame, False)
+
+        print(transform)
+
+        offset = transform[:, 2]
+
+        batch_offsets.append(offset)
+
+    return batch_offsets
 
 def track_cropped_frame(frame, params, crop_params):
     tracking_type = params['type']

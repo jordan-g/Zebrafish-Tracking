@@ -45,9 +45,10 @@ default_headfixed_params = {'shrink_factor': 1.0,                               
                             'tail_direction': "Right",                          # "right" / "left" / "up" / "down"
                             'media_type': None,                                 # type of media that is tracked - "video" / "folder" / "image" / None
                             'media_paths': [],                                  # paths to media that are tracked
-                            'background': None,                                 # background calculated for background subtraction
+                            'backgrounds': None,                                # backgrounds calculated for background subtraction
                             'tail_start_coords': None,                          # (y, x) coordinates of the start of the tail
                             'use_multiprocessing': True,                        # whether to use multiprocessing
+                            'batch_offsets': None,
                             'gui_params': { 'auto_track': False }}              # automatically track a frame when you switch to it
 
 default_freeswimming_params = {'shrink_factor': 1.0,                            # factor by which to shrink the original frame
@@ -68,8 +69,9 @@ default_freeswimming_params = {'shrink_factor': 1.0,                            
                                'tail_crop': np.array([100, 100]),               # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
                                'media_type': None,                              # type of media that is tracked - "video" / "folder" / "image" / None
                                'media_paths': [],                               # paths to media that are tracked
-                               'background': None,                              # background calculated for background subtraction
+                               'backgrounds': None,                             # backgrounds calculated for background subtraction
                                'use_multiprocessing': True,                     # whether to use multiprocessing
+                               'batch_offsets': None,
                                'gui_params': { 'show_body_threshold': False,    # show body threshold in preview window
                                                'show_eye_threshold': False,     # show eye threshold in preview window
                                                'show_tail_threshold': False,    # show tail threshold in preview window
@@ -93,7 +95,7 @@ class Controller():
         self.frames                = None
         self.tracking_results      = []
         self.current_crop          = -1   # which crop is being looked at
-        self.current_media_number  = 0    # which media (from a loaded batch) is being looked at
+        self.curr_media_num        = 0    # which media (from a loaded batch) is being looked at
         self.n_frames              = 0    # total number of frames to preview
         self.n                     = 0    # index of currently selected frame
         self.tracking_path         = None # path to where tracking data will be saved
@@ -151,7 +153,7 @@ class Controller():
         if media_path not in ("", None):
             # load frames
             if media_type == "image":
-                self.frames = [tracking.load_frame_from_image(media_path)]
+                self.frames[self.curr_media_num] = [tracking.load_frame_from_image(media_path)]
             elif media_type == "folder":
                 # get filenames of all frame images in the folder
                 frame_filenames = tracking.get_frame_filenames_from_folder(media_path)
@@ -166,10 +168,10 @@ class Controller():
                 frame_nums = split_evenly(n_frames_total, max_n_frames)
 
                 # load frames from the folder
-                if self.params['background']!= None:
-                    self.frames, self.bg_sub_frames = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, background=self.params['background'])
+                if self.params['backgrounds'][self.curr_media_num] != None:
+                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, background=self.params['backgrounds'][self.curr_media_num])
                 else:
-                    self.frames = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, None)
+                    self.frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, None, offset=self.params['batch_offsets'][self.curr_media_num])
             elif media_type == "video":
                 # get video info
                 fps, n_frames_total = tracking.get_video_info(media_path)
@@ -178,10 +180,10 @@ class Controller():
                 frame_nums = split_evenly(n_frames_total, max_n_frames)
 
                 # load frames from the video
-                if self.params['background'] != None:
-                    self.frames, self.bg_sub_frames = tracking.load_frames_from_video(media_path, None, frame_nums, background=self.params['background'])
+                if self.params['backgrounds'][self.curr_media_num] != None:
+                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=self.params['backgrounds'][self.curr_media_num], offset=self.params['batch_offsets'][self.curr_media_num])
                 else:
-                    self.frames = tracking.load_frames_from_video(media_path, None, frame_nums, background=None)
+                    self.frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=None, offset=self.params['batch_offsets'][self.curr_media_num])
 
             if self.frames == None:
                 # no frames found; end here
@@ -189,10 +191,10 @@ class Controller():
                 return
 
             # set current frame to first frame
-            self.current_frame = self.frames[0]
+            self.current_frame = self.frames[self.curr_media_num][0]
 
             # get number of frames
-            self.n_frames = len(self.frames)
+            self.n_frames = len(self.frames[self.curr_media_num])
 
             if self.params['type'] == "headfixed":
                 # determine tail direction
@@ -205,7 +207,7 @@ class Controller():
             
             # get background
             if media_type != "image":
-                if self.params['background'] == None:
+                if self.params['backgrounds'][self.curr_media_num] == None:
                     self.param_window.param_controls["subtract_background"].setEnabled(False)
                     self.param_window.open_background_action.setEnabled(False)
                     self.param_window.save_background_action.setEnabled(False)
@@ -220,7 +222,7 @@ class Controller():
 
                     # create new thread to calculate the background
                     self.get_background_thread = GetBackgroundThread(self.param_window)
-                    self.get_background_thread.set_parameters(self.params['media_paths'][0], media_type)
+                    self.get_background_thread.set_parameters(self.params['media_paths'][self.curr_media_num], media_type, self.curr_media_num)
 
                     # set callback function to be called when the background has been calculated
                     self.get_background_thread.finished.connect(self.background_calculated)
@@ -232,7 +234,7 @@ class Controller():
                     self.get_background_thread.start()
                 else:
                     # background is already calculated; call the callback function
-                    self.background_calculated(self.params['background'])
+                    self.background_calculated(self.params['backgrounds'][self.curr_media_num], self.curr_media_num)
 
             # enable gui controls
             self.crops_window.set_gui_disabled(False)
@@ -242,29 +244,76 @@ class Controller():
         # update media paths & type parameters
         self.params['media_paths'] = media_paths
         self.params['media_type']  = media_type
+        self.params['backgrounds'] = [None]*len(media_paths)
+
+        self.frames        = [[]]*len(media_paths)
+        self.bg_sub_frames = [[]]*len(media_paths)
 
         # update current media number
-        self.current_media_number = 0
+        self.curr_media_num = 0
 
         # update loaded media label
         if len(media_paths) > 1:
-            self.param_window.loaded_media_label.setText("Loaded <b>{} {}s</b>.".format(len(media_paths), media_type))
+            self.param_window.loaded_media_label.setText("Loaded <b>{} {}s</b>. Showing #{}.".format(len(media_paths), media_type, self.curr_media_num+1))
         else:
             self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
 
-        # open the first media from the batch
-        self.open_media(media_type, media_paths[self.current_media_number])
+        self.params['batch_offsets'] = tracking.get_video_batch_align_offsets(self.params)
 
-    def background_calculated(self, background):
+        # open the first media from the batch
+        self.open_media(media_type, media_paths[self.curr_media_num])
+
+    def prev_media(self):
+        if self.curr_media_num != 0:
+            media_paths = self.params['media_paths']
+            media_type  = self.params['media_type']
+            
+            # update current media number
+            self.curr_media_num -= 1
+
+            # update loaded media label
+            if len(media_paths) > 1:
+                self.param_window.loaded_media_label.setText("Loaded <b>{} {}s</b>. Showing #{}.".format(len(media_paths), media_type, self.curr_media_num+1))
+            else:
+                self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
+
+            # open the first media from the batch
+            self.open_media(media_type, media_paths[self.curr_media_num])
+
+            # switch to first frame
+            self.switch_frame(0, new_load=True)
+
+    def next_media(self):
+        if self.curr_media_num != len(self.params['media_paths'])-1:
+            media_paths = self.params['media_paths']
+            media_type  = self.params['media_type']
+            
+            # update current media number
+            self.curr_media_num += 1
+
+            # update loaded media label
+            if len(media_paths) > 1:
+                self.param_window.loaded_media_label.setText("Loaded <b>{} {}s</b>. Showing #{}.".format(len(media_paths), media_type, self.curr_media_num+1))
+            else:
+                self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
+
+            # open the first media from the batch
+            self.open_media(media_type, media_paths[self.curr_media_num])
+
+            # switch to first frame
+            self.switch_frame(0, new_load=True)
+
+    def background_calculated(self, background, media_num):
+        print(media_num)
         if self.current_frame.shape == background.shape:
             print("Background calculated.")
 
             # update params
-            self.params['background'] = background
+            self.params['backgrounds'][media_num] = background
 
-            if self.params['background'] != None:
+            if self.params['backgrounds'][media_num] != None:
                 # generate background subtracted frames
-                self.bg_sub_frames = tracking.subtract_background_from_frames(self.frames, self.params['background'])
+                self.bg_sub_frames[media_num] = tracking.subtract_background_from_frames(self.frames[media_num], self.params['backgrounds'][media_num])
 
                 # update "Subtract background" text and enable checkbox in param window
                 self.param_window.param_controls["subtract_background"].setEnabled(True)
@@ -358,7 +407,7 @@ class Controller():
             frames = self.bg_sub_frames
         else:
             frames = self.frames
-        self.current_frame = frames[self.n]
+        self.current_frame = frames[self.curr_media_num][self.n]
 
         # reshape the image (shrink, crop & invert)
         self.reshape_frame()
@@ -382,6 +431,7 @@ class Controller():
         self.tracking_results = []
 
         if self.current_frame != None:
+            print(self.current_frame)
             # get params of currently selected crop
             current_crop_params = self.params['crop_params'][self.current_crop]
 
@@ -456,7 +506,7 @@ class Controller():
         self.params['track_eyes'] = checkbox.isChecked()
 
     def toggle_subtract_background(self, checkbox):
-        if self.params['background'] != None:
+        if self.params['backgrounds'][self.curr_media_num] != None:
             self.params['subtract_background'] = checkbox.isChecked()
 
             # reshape the image
@@ -512,14 +562,14 @@ class Controller():
         self.track_media_thread.start()
 
     def save_background(self):
-        if self.params['background'] != None:
+        if self.params['backgrounds'][self.curr_media_num] != None:
             if pyqt_version == 4:
                 save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '{}_background'.format(os.path.splitext(self.params['media_paths'][0])[0]), 'Images (*.png *.tif *.jpg)'))
             elif pyqt_version == 5:
                 save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '{}_background'.format(os.path.splitext(self.params['media_paths'][0])[0]), 'Images (*.png *.tif *.jpg)')[0])
             if not (save_path.endswith('.jpg') or save_path.endswith('.tif') or save_path.endswith('.png')):
                 save_path += ".png"
-            cv2.imwrite(save_path, self.params['background'])
+            cv2.imwrite(save_path, self.params['backgrounds'][self.curr_media_num])
 
     def load_background(self):
         if self.current_frame != None:
@@ -532,8 +582,8 @@ class Controller():
 
             if background.shape == self.current_frame.shape:
                 print("hey")
-                self.params['background'] = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
-                self.background_calculated(self.params['background'])
+                self.params['backgrounds'][self.curr_media_num] = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
+                self.background_calculated(self.params['backgrounds'][self.curr_media_num], self.curr_media_num)
 
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
         # get start & end coordinates - end_add adds a pixel to the end coordinates (for a more accurate crop)
@@ -942,12 +992,13 @@ class HeadfixedController(Controller):
             self.update_preview(image=None, new_load=False, new_frame=True)
 
 class GetBackgroundThread(QThread):
-    finished = Signal(np.ndarray)
+    finished = Signal(np.ndarray, int)
     progress = Signal(int)
 
-    def set_parameters(self, media_path, media_type):
+    def set_parameters(self, media_path, media_type, media_num):
         self.media_path = media_path
         self.media_type = media_type
+        self.media_num  = media_num
 
     def run(self):
         if self.media_type == "folder":
@@ -955,7 +1006,7 @@ class GetBackgroundThread(QThread):
         elif self.media_type == "video":
             background = tracking.get_background_from_video(self.media_path, None, None, False, progress_signal=self.progress)
         
-        self.finished.emit(background)
+        self.finished.emit(background, self.media_num)
 
 class TrackMediaThread(QThread):
     finished = Signal(float)
