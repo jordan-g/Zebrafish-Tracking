@@ -699,7 +699,7 @@ def get_video_batch_align_offsets(params):
 
         transform = cv2.estimateRigidTransform(source_frame, first_frame, False)
 
-        print(transform)
+        # print(transform)
 
         offset = transform[:, 2]
 

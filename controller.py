@@ -326,6 +326,12 @@ class Controller():
                     self.param_window.param_controls["subtract_background"].setEnabled(True)
                     self.param_window.param_controls["subtract_background"].setText("Subtract background")
 
+                    if self.params['subtract_background'] == True:
+                        self.param_window.param_controls["subtract_background"].setChecked(True)
+
+                        # reshape the image
+                        self.switch_frame(self.n)
+
                 self.param_window.open_background_action.setEnabled(True)
                 self.param_window.save_background_action.setEnabled(True)
 
@@ -410,11 +416,11 @@ class Controller():
             self.n = n
 
         # set current frame
-        if self.params['subtract_background']:
+        if self.params['subtract_background'] and self.bg_sub_frames[self.curr_media_num] != None:
             frames = self.bg_sub_frames
         else:
             frames = self.frames
-        print(self.curr_media_num)
+        # print(self.curr_media_num)
         self.current_frame = frames[self.curr_media_num][self.n]
 
         # reshape the image (shrink, crop & invert)
@@ -439,7 +445,7 @@ class Controller():
         self.tracking_results = []
 
         if self.current_frame != None:
-            print(self.current_frame)
+            # print(self.current_frame)
             # get params of currently selected crop
             current_crop_params = self.params['crop_params'][self.current_crop]
 
@@ -585,11 +591,11 @@ class Controller():
                 background_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open image', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)'))
             elif pyqt_version == 5:
                 background_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open image', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)')[0])
-            print(background_path)
+            # print(background_path)
             background = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
 
             if background.shape == self.current_frame.shape:
-                print("hey")
+                # print("hey")
                 self.params['backgrounds'][self.curr_media_num] = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
                 self.background_calculated(self.params['backgrounds'][self.curr_media_num], self.curr_media_num)
 
