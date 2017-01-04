@@ -169,9 +169,9 @@ class Controller():
 
                 # load frames from the folder
                 if self.params['backgrounds'][self.curr_media_num] != None:
-                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, background=self.params['backgrounds'][self.curr_media_num])
+                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, background=self.params['backgrounds'][self.curr_media_num], batch_offset=self.params['batch_offsets'][self.curr_media_num])
                 else:
-                    self.frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, None, offset=self.params['batch_offsets'][self.curr_media_num])
+                    self.frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, None, batch_offset=self.params['batch_offsets'][self.curr_media_num])
             elif media_type == "video":
                 # get video info
                 fps, n_frames_total = tracking.get_video_info(media_path)
@@ -181,9 +181,9 @@ class Controller():
 
                 # load frames from the video
                 if self.params['backgrounds'][self.curr_media_num] != None:
-                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=self.params['backgrounds'][self.curr_media_num], offset=self.params['batch_offsets'][self.curr_media_num])
+                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=self.params['backgrounds'][self.curr_media_num], batch_offset=self.params['batch_offsets'][self.curr_media_num])
                 else:
-                    self.frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=None, offset=self.params['batch_offsets'][self.curr_media_num])
+                    self.frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=None, batch_offset=self.params['batch_offsets'][self.curr_media_num])
 
             if self.frames == None:
                 # no frames found; end here
@@ -246,8 +246,8 @@ class Controller():
         self.params['media_type']  = media_type
         self.params['backgrounds'] = [None]*len(media_paths)
 
-        self.frames        = [[]]*len(media_paths)
-        self.bg_sub_frames = [[]]*len(media_paths)
+        self.frames        = [None]*len(media_paths)
+        self.bg_sub_frames = [None]*len(media_paths)
 
         # update current media number
         self.curr_media_num = 0
@@ -277,8 +277,9 @@ class Controller():
             else:
                 self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
 
-            # open the first media from the batch
-            self.open_media(media_type, media_paths[self.curr_media_num])
+            if self.frames[self.curr_media_num] == None:
+                # open the previous media from the batch
+                self.open_media(media_type, media_paths[self.curr_media_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -297,8 +298,9 @@ class Controller():
             else:
                 self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
 
-            # open the first media from the batch
-            self.open_media(media_type, media_paths[self.curr_media_num])
+            if self.frames[self.curr_media_num] == None:
+                # open the next media from the batch
+                self.open_media(media_type, media_paths[self.curr_media_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)

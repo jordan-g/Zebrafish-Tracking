@@ -111,9 +111,9 @@ def load_frames_from_folder(folder_path, frame_filenames, frame_nums, background
     else:
         return frames
 
-def load_frames_from_video(video_path, cap, frame_nums, background=None, offset=None):
-    if offset != None:
-        transform = np.float32([[1, 0, -offset[0]], [0, 1, -offset[1]]])
+def load_frames_from_video(video_path, cap, frame_nums, background=None, batch_offset=None):
+    if batch_offset != None:
+        transform = np.float32([[1, 0, -batch_offset[0]], [0, 1, -batch_offset[1]]])
 
     if cap == None and video_path != None:
         new_cap = True # creating a new capture object; we will release it at the end
@@ -159,7 +159,7 @@ def load_frames_from_video(video_path, cap, frame_nums, background=None, offset=
             if len(frame.shape) >= 3:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            if offset != None:
+            if batch_offset != None:
                 offset_frame = cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
             else:
                 offset_frame = frame
@@ -171,7 +171,7 @@ def load_frames_from_video(video_path, cap, frame_nums, background=None, offset=
                 # subtract background from frame
                 bg_sub_frame = subtract_background_from_frame(offset_frame, background)
 
-                if offset != None:
+                if batch_offset != None:
                     offset_bg_sub_frame = cv2.warpAffine(bg_sub_frame, transform, (bg_sub_frame.shape[1], bg_sub_frame.shape[0]), borderValue=255)
                 else:
                     offset_bg_sub_frame = bg_sub_frame
