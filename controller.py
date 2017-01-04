@@ -205,36 +205,10 @@ class Controller():
 
                 self.param_window.update_gui_from_params(self.params)
             
-            # get background
             if media_type != "image":
-                if self.params['backgrounds'][self.curr_media_num] == None:
-                    self.param_window.param_controls["subtract_background"].setEnabled(False)
-                    self.param_window.open_background_action.setEnabled(False)
-                    self.param_window.save_background_action.setEnabled(False)
-
-                    if self.get_background_thread != None:
-                        # another thread is already calculating a background; don't let it affect the GUI
-                        self.get_background_thread.progress.disconnect(self.update_background_subtract_progress)
-                        self.get_background_thread.finished.disconnect(self.background_calculated)
-
-                    # update "Subtract background" text in param window
-                    self.param_window.param_controls["subtract_background"].setText("Subtract background (Calculating...)")
-
-                    # create new thread to calculate the background
-                    self.get_background_thread = GetBackgroundThread(self.param_window)
-                    self.get_background_thread.set_parameters(self.params['media_paths'][self.curr_media_num], media_type, self.curr_media_num, self.params['batch_offsets'][self.curr_media_num])
-
-                    # set callback function to be called when the background has been calculated
-                    self.get_background_thread.finished.connect(self.background_calculated)
-
-                    # set callback function to be called as the background is being calculated (to show progress)
-                    self.get_background_thread.progress.connect(self.update_background_subtract_progress)
-
-                    # start thread
-                    self.get_background_thread.start()
-                else:
-                    # background is already calculated; call the callback function
-                    self.background_calculated(self.params['backgrounds'][self.curr_media_num], self.curr_media_num)
+                if self.params['backgrounds'][self.curr_media_num] != None:
+                    # generate background subtracted frames
+                    self.bg_sub_frames[self.curr_media_num] = tracking.subtract_background_from_frames(self.frames[self.curr_media_num], self.params['backgrounds'][self.curr_media_num])
 
             # enable gui controls
             self.crops_window.set_gui_disabled(False)
@@ -259,6 +233,41 @@ class Controller():
             self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
 
         self.params['batch_offsets'] = tracking.get_video_batch_align_offsets(self.params)
+
+        # get background
+        if media_type != "image":
+            self.param_window.param_controls["subtract_background"].setEnabled(False)
+            self.param_window.open_background_action.setEnabled(False)
+            self.param_window.save_background_action.setEnabled(False)
+
+            # update "Subtract background" text in param window
+            self.param_window.param_controls["subtract_background"].setText("Subtract background (0%)")
+
+            for k in range(len(media_paths)):
+                if self.params['backgrounds'][k] == None:
+                    # if self.get_background_thread != None:
+                    #     # another thread is already calculating a background; don't let it affect the GUI
+                    #     self.get_background_thread.progress.disconnect(self.update_background_subtract_progress)
+                    #     self.get_background_thread.finished.disconnect(self.background_calculated)
+
+                    # # update "Subtract background" text in param window
+                    # self.param_window.param_controls["subtract_background"].setText("Subtract background (Calculating...)")
+
+                    # create new thread to calculate the background
+                    self.get_background_thread = GetBackgroundThread(self.param_window)
+                    self.get_background_thread.set_parameters(self.params['media_paths'][k], media_type, k, self.params['batch_offsets'][k])
+
+                    # set callback function to be called when the background has been calculated
+                    self.get_background_thread.finished.connect(self.background_calculated)
+
+                    # set callback function to be called as the background is being calculated (to show progress)
+                    # self.get_background_thread.progress.connect(self.update_background_subtract_progress)
+
+                    # start thread
+                    self.get_background_thread.start()
+                else:
+                    # background is already calculated; call the callback function
+                    self.background_calculated(self.params['backgrounds'][k], k)
 
         # open the first media from the batch
         self.open_media(media_type, media_paths[self.curr_media_num])
@@ -314,12 +323,21 @@ class Controller():
             self.params['backgrounds'][media_num] = background
 
             if self.params['backgrounds'][media_num] != None:
-                # generate background subtracted frames
-                self.bg_sub_frames[media_num] = tracking.subtract_background_from_frames(self.frames[media_num], self.params['backgrounds'][media_num])
+                if self.frames[media_num] != None and self.bg_sub_frames[media_num] == None:
+                    # generate background subtracted frames
+                    self.bg_sub_frames[media_num] = tracking.subtract_background_from_frames(self.frames[media_num], self.params['backgrounds'][media_num])
 
-                # update "Subtract background" text and enable checkbox in param window
-                self.param_window.param_controls["subtract_background"].setEnabled(True)
-                self.param_window.param_controls["subtract_background"].setText("Subtract background")
+                n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
+                n_backgrounds_total      = len(self.params['backgrounds'])
+                percent                  = int(100*n_backgrounds_calculated/n_backgrounds_total)
+                print(n_backgrounds_calculated)
+                print(self.params['backgrounds'] != None)
+                if percent != 100:
+                    self.param_window.param_controls["subtract_background"].setText("Subtract background ({}%)".format(percent))
+                else:
+                    # update "Subtract background" text and enable checkbox in param window
+                    self.param_window.param_controls["subtract_background"].setEnabled(True)
+                    self.param_window.param_controls["subtract_background"].setText("Subtract background")
 
                 self.param_window.open_background_action.setEnabled(True)
                 self.param_window.save_background_action.setEnabled(True)
