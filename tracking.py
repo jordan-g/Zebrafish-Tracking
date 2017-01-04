@@ -559,13 +559,14 @@ def open_and_track_folder(params, tracking_dir, progress_signal=None): # todo: a
 
 def open_and_track_video(video_path, params, tracking_dir, video_number=0, progress_signal=None): # todo: add video creation from tracking data
     subtract_background = params['subtract_background']
-    background          = params['background']
+    background          = params['backgrounds'][video_number]
     crop_params         = params['crop_params']
     n_tail_points       = params['n_tail_points']
     save_video          = params['save_video']
     saved_video_fps     = params['saved_video_fps']
     use_multiprocessing = params['use_multiprocessing']
     n_crops             = len(params['crop_params'])
+    batch_offset        = params['batch_offsets'][video_number]
 
     global n_frames_tracked
     n_frames_tracked = 0
@@ -585,7 +586,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
     if subtract_background and background == None:
         # get background
-        background = get_background_from_video(video_path, cap)
+        background = get_background_from_video(video_path, cap, batch_offset=batch_offset)
 
     # initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
@@ -608,11 +609,11 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     for frame_nums in big_split_frame_nums:
         # load this big chunk of frames
         if subtract_background:
-            frames, bg_sub_frames = load_frames_from_video(video_path, cap, frame_nums, background)
+            frames, bg_sub_frames = load_frames_from_video(video_path, cap, frame_nums, background, batch_offset)
 
             frames = bg_sub_frames
         else:
-            frames = load_frames_from_video(video_path, cap, frame_nums, None)
+            frames = load_frames_from_video(video_path, cap, frame_nums, None, batch_offset)
 
         if params['invert']:
             # invert the frames

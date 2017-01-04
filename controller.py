@@ -245,23 +245,12 @@ class Controller():
 
             for k in range(len(media_paths)):
                 if self.params['backgrounds'][k] == None:
-                    # if self.get_background_thread != None:
-                    #     # another thread is already calculating a background; don't let it affect the GUI
-                    #     self.get_background_thread.progress.disconnect(self.update_background_subtract_progress)
-                    #     self.get_background_thread.finished.disconnect(self.background_calculated)
-
-                    # # update "Subtract background" text in param window
-                    # self.param_window.param_controls["subtract_background"].setText("Subtract background (Calculating...)")
-
                     # create new thread to calculate the background
                     self.get_background_thread = GetBackgroundThread(self.param_window)
                     self.get_background_thread.set_parameters(self.params['media_paths'][k], media_type, k, self.params['batch_offsets'][k])
 
                     # set callback function to be called when the background has been calculated
                     self.get_background_thread.finished.connect(self.background_calculated)
-
-                    # set callback function to be called as the background is being calculated (to show progress)
-                    # self.get_background_thread.progress.connect(self.update_background_subtract_progress)
 
                     # start thread
                     self.get_background_thread.start()
@@ -315,9 +304,8 @@ class Controller():
             self.switch_frame(0, new_load=True)
 
     def background_calculated(self, background, media_num):
-        print(media_num)
         if self.current_frame.shape == background.shape:
-            print("Background calculated.")
+            print("Background #{} calculated.".format(media_num))
 
             # update params
             self.params['backgrounds'][media_num] = background
@@ -330,8 +318,7 @@ class Controller():
                 n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
                 n_backgrounds_total      = len(self.params['backgrounds'])
                 percent                  = int(100*n_backgrounds_calculated/n_backgrounds_total)
-                print(n_backgrounds_calculated)
-                print(self.params['backgrounds'] != None)
+
                 if percent != 100:
                     self.param_window.param_controls["subtract_background"].setText("Subtract background ({}%)".format(percent))
                 else:
