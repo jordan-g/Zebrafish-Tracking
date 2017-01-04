@@ -161,25 +161,23 @@ def load_frames_from_video(video_path, cap, frame_nums, background=None, offset=
 
             if offset != None:
                 offset_frame = cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
-
-                # add to frames list
-                frames.append(offset_frame)
             else:
-                # add to frames list
-                frames.append(frame)
+                offset_frame = frame
+
+            # add to frames list
+            frames.append(offset_frame)
 
             if background != None:
                 # subtract background from frame
-                bg_sub_frame = subtract_background_from_frame(frame, background)
+                bg_sub_frame = subtract_background_from_frame(offset_frame, background)
 
                 if offset != None:
                     offset_bg_sub_frame = cv2.warpAffine(bg_sub_frame, transform, (bg_sub_frame.shape[1], bg_sub_frame.shape[0]), borderValue=255)
-                    
-                    # add to frames list
-                    bg_sub_frames.append(offset_bg_sub_frame)
                 else:
-                    # add to frames list
-                    bg_sub_frames.append(bg_sub_frame)
+                    offset_bg_sub_frame = bg_sub_frame
+
+                # add to frames list
+                bg_sub_frames.append(offset_bg_sub_frame)
 
     if new_cap:
         # release the capture object
@@ -248,7 +246,10 @@ def get_background_from_folder(folder_path, frame_filenames=None, frame_nums=Non
     else:
         return background
 
-def get_background_from_video(video_path, cap, frame_nums=None, save_frames=False, progress_signal=None):
+def get_background_from_video(video_path, cap, frame_nums=None, save_frames=False, progress_signal=None, batch_offset=None):
+    if batch_offset != None:
+        transform = np.float32([[1, 0, -batch_offset[0]], [0, 1, -batch_offset[1]]])
+
     if cap == None and video_path != None:
         new_cap = True # creating a new capture object; we will release it at the end
 
@@ -298,16 +299,21 @@ def get_background_from_video(video_path, cap, frame_nums=None, save_frames=Fals
             if len(frame.shape) >= 3:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+            if batch_offset != None:
+                offset_frame = cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
+            else:
+                offset_frame = frame
+
             if save_frames:
                 # add to frames list
-                frames.append(frame)
+                frames.append(offset_frame)
 
             # update background
             if background == None:
-                background = frame
+                background = offset_frame
             else:
-                mask = np.less(background, frame)
-                background[mask] = frame[mask]
+                mask = np.less(background, offset_frame)
+                background[mask] = offset_frame[mask]
 
     if new_cap:
         # release the capture object
@@ -675,20 +681,20 @@ def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
 def get_video_batch_align_offsets(params):
     video_paths = params['media_paths']
 
-    # open the first video
-    try:
-        cap = cv2.VideoCapture(video_paths[0])
-    except:
-        print("Error: Could not open video.")
-        return
+    # # open the first video
+    # try:
+    #     cap = cv2.VideoCapture(video_paths[0])
+    # except:
+    #     print("Error: Could not open video.")
+    #     return
 
     # store first frame of the first video
-    source_frame = load_frames_from_video(video_paths[0], None, [0], None)[0]
+    source_frame = load_frames_from_video(video_paths[0], None, [1], None)[0]
 
     batch_offsets = [None]
 
     for k in range(1, len(video_paths)):
-        first_frame = load_frames_from_video(video_paths[k], None, [0], None)[0]
+        first_frame = load_frames_from_video(video_paths[k], None, [1], None)[0]
 
         transform = cv2.estimateRigidTransform(source_frame, first_frame, False)
 

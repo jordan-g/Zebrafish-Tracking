@@ -222,7 +222,7 @@ class Controller():
 
                     # create new thread to calculate the background
                     self.get_background_thread = GetBackgroundThread(self.param_window)
-                    self.get_background_thread.set_parameters(self.params['media_paths'][self.curr_media_num], media_type, self.curr_media_num)
+                    self.get_background_thread.set_parameters(self.params['media_paths'][self.curr_media_num], media_type, self.curr_media_num, self.params['batch_offsets'][self.curr_media_num])
 
                     # set callback function to be called when the background has been calculated
                     self.get_background_thread.finished.connect(self.background_calculated)
@@ -407,6 +407,7 @@ class Controller():
             frames = self.bg_sub_frames
         else:
             frames = self.frames
+        print(self.curr_media_num)
         self.current_frame = frames[self.curr_media_num][self.n]
 
         # reshape the image (shrink, crop & invert)
@@ -995,16 +996,17 @@ class GetBackgroundThread(QThread):
     finished = Signal(np.ndarray, int)
     progress = Signal(int)
 
-    def set_parameters(self, media_path, media_type, media_num):
-        self.media_path = media_path
-        self.media_type = media_type
-        self.media_num  = media_num
+    def set_parameters(self, media_path, media_type, media_num, batch_offset):
+        self.media_path   = media_path
+        self.media_type   = media_type
+        self.media_num    = media_num
+        self.batch_offset = batch_offset
 
     def run(self):
         if self.media_type == "folder":
-            background = tracking.get_background_from_folder(self.media_path, None, None, False, progress_signal=self.progress)
+            background = tracking.get_background_from_folder(self.media_path, None, None, False, progress_signal=self.progress, batch_offset=self.batch_offset)
         elif self.media_type == "video":
-            background = tracking.get_background_from_video(self.media_path, None, None, False, progress_signal=self.progress)
+            background = tracking.get_background_from_video(self.media_path, None, None, False, progress_signal=self.progress, batch_offset=self.batch_offset)
         
         self.finished.emit(background, self.media_num)
 
