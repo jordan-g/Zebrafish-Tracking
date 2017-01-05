@@ -225,6 +225,8 @@ class Controller():
         self.frames        = [None]*len(media_paths)
         self.bg_sub_frames = [None]*len(media_paths)
 
+        self.param_window.clear_media_list()
+
         # update current media number
         self.curr_media_num = 0
 

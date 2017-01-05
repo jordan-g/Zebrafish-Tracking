@@ -60,6 +60,8 @@ class ParamWindow(QMainWindow):
         # self.media_list.currentRowChanged.connect(self.controller.switch_media)
         self.left_layout.addWidget(self.media_list)
 
+        self.media_list_items = []
+
         # self.media_list_buttons = QHBoxLayout(self)
         # self.left_layout.addLayout(self.media_list_buttons)
 
@@ -104,8 +106,13 @@ class ParamWindow(QMainWindow):
         
         self.show()
 
+    def clear_media_list(self):
+        for k in range(len(self.media_list_items)-1, -1, -1):
+            self.media_list.takeItem(k)
+            del self.media_list_items[k]
+
     def add_media_item(self, item_name):
-        list_item = QListWidgetItem(item_name, self.media_list)
+        self.media_list_items.append(QListWidgetItem(item_name, self.media_list))
 
     def change_selected_media_row(self, row_number):
         self.media_list.setCurrentRow(row_number)
