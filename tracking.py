@@ -707,6 +707,10 @@ def get_video_batch_align_offsets(params):
 
     return batch_offsets
 
+def apply_align_offset_to_frame(frame, batch_offset):
+    transform = np.float32([[1, 0, -batch_offset[0]], [0, 1, -batch_offset[1]]])
+    return cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
+
 def track_cropped_frame(frame, params, crop_params):
     tracking_type = params['type']
 

@@ -48,7 +48,8 @@ default_headfixed_params = {'shrink_factor': 1.0,                               
                             'backgrounds': None,                                # backgrounds calculated for background subtraction
                             'tail_start_coords': None,                          # (y, x) coordinates of the start of the tail
                             'use_multiprocessing': True,                        # whether to use multiprocessing
-                            'batch_offsets': None,
+                            'align_batches': False,                             # whether to perform spatial alignment of batches of media
+                            'batch_offsets': None,                              # spatial alignment offsets
                             'gui_params': { 'auto_track': False }}              # automatically track a frame when you switch to it
 
 default_freeswimming_params = {'shrink_factor': 1.0,                            # factor by which to shrink the original frame
@@ -71,7 +72,8 @@ default_freeswimming_params = {'shrink_factor': 1.0,                            
                                'media_paths': [],                               # paths to media that are tracked
                                'backgrounds': None,                             # backgrounds calculated for background subtraction
                                'use_multiprocessing': True,                     # whether to use multiprocessing
-                               'batch_offsets': None,
+                               'align_batches': False,                          # whether to perform spatial alignment of batches of media
+                               'batch_offsets': None,                           # spatial alignment offsets
                                'gui_params': { 'show_body_threshold': False,    # show body threshold in preview window
                                                'show_eye_threshold': False,     # show eye threshold in preview window
                                                'show_tail_threshold': False,    # show tail threshold in preview window
@@ -169,9 +171,9 @@ class Controller():
 
                 # load frames from the folder
                 if self.params['backgrounds'][self.curr_media_num] != None:
-                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, background=self.params['backgrounds'][self.curr_media_num], batch_offset=self.params['batch_offsets'][self.curr_media_num])
+                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, background=self.params['backgrounds'][self.curr_media_num])
                 else:
-                    self.frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, None, batch_offset=self.params['batch_offsets'][self.curr_media_num])
+                    self.frames[self.curr_media_num] = tracking.load_frames_from_folder(media_path, frame_filenames, frame_nums, None)
             elif media_type == "video":
                 # get video info
                 fps, n_frames_total = tracking.get_video_info(media_path)
@@ -181,9 +183,9 @@ class Controller():
 
                 # load frames from the video
                 if self.params['backgrounds'][self.curr_media_num] != None:
-                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=self.params['backgrounds'][self.curr_media_num], batch_offset=self.params['batch_offsets'][self.curr_media_num])
+                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=self.params['backgrounds'][self.curr_media_num])
                 else:
-                    self.frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=None, batch_offset=self.params['batch_offsets'][self.curr_media_num])
+                    self.frames[self.curr_media_num] = tracking.load_frames_from_video(media_path, None, frame_nums, background=None)
 
             if self.frames == None:
                 # no frames found; end here
@@ -247,7 +249,7 @@ class Controller():
                 if self.params['backgrounds'][k] == None:
                     # create new thread to calculate the background
                     self.get_background_thread = GetBackgroundThread(self.param_window)
-                    self.get_background_thread.set_parameters(self.params['media_paths'][k], media_type, k, self.params['batch_offsets'][k])
+                    self.get_background_thread.set_parameters(self.params['media_paths'][k], media_type, k)
 
                     # set callback function to be called when the background has been calculated
                     self.get_background_thread.finished.connect(self.background_calculated)
@@ -420,8 +422,11 @@ class Controller():
             frames = self.bg_sub_frames
         else:
             frames = self.frames
-        # print(self.curr_media_num)
-        self.current_frame = frames[self.curr_media_num][self.n]
+
+        if self.params['align_batches'] == True and self.params['batch_offsets'][self.curr_media_num] != None:
+            self.current_frame = tracking.apply_align_offset_to_frame(frames[self.curr_media_num][self.n], self.params['batch_offsets'][self.curr_media_num])
+        else:
+            self.current_frame = frames[self.curr_media_num][self.n]
 
         # reshape the image (shrink, crop & invert)
         self.reshape_frame()
@@ -525,6 +530,12 @@ class Controller():
 
             # reshape the image
             self.switch_frame(self.n)
+
+    def toggle_align_batches(self, checkbox):
+        self.params['align_batches'] = checkbox.isChecked()
+
+        # reshape the image
+        self.switch_frame(self.n)
 
     def toggle_multiprocessing(self, checkbox):
         self.params['use_multiprocessing'] = checkbox.isChecked()
@@ -1009,17 +1020,16 @@ class GetBackgroundThread(QThread):
     finished = Signal(np.ndarray, int)
     progress = Signal(int)
 
-    def set_parameters(self, media_path, media_type, media_num, batch_offset):
+    def set_parameters(self, media_path, media_type, media_num):
         self.media_path   = media_path
         self.media_type   = media_type
         self.media_num    = media_num
-        self.batch_offset = batch_offset
 
     def run(self):
         if self.media_type == "folder":
-            background = tracking.get_background_from_folder(self.media_path, None, None, False, progress_signal=self.progress, batch_offset=self.batch_offset)
+            background = tracking.get_background_from_folder(self.media_path, None, None, False, progress_signal=self.progress)
         elif self.media_type == "video":
-            background = tracking.get_background_from_video(self.media_path, None, None, False, progress_signal=self.progress, batch_offset=self.batch_offset)
+            background = tracking.get_background_from_video(self.media_path, None, None, False, progress_signal=self.progress)
         
         self.finished.emit(background, self.media_num)
 
