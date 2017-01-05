@@ -15,11 +15,11 @@ if use_pyside:
 else:
     try:
         from PyQt4.QtCore import Signal, Qt, QThread
-        from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout
+        from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem
     except:
         from PyQt5.QtCore import Signal, Qt, QThread
         from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
-        from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout
+        from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem
 
 # options for dropdown selectors for interpolation
 eye_resize_factor_options = [i for i in range(1, 9)]
@@ -43,10 +43,45 @@ class ParamWindow(QMainWindow):
         self.main_widget = QWidget(self)
         self.main_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
 
-        self.main_layout = QVBoxLayout(self.main_widget)
-        self.main_layout.setAlignment(Qt.AlignTop)
-        self.main_layout.addStretch(1)
-        self.main_layout.setSpacing(5)
+        self.main_layout = QGridLayout(self.main_widget)
+
+        # create left widget & layout
+        self.left_widget = QWidget(self)
+        self.left_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        self.main_layout.addWidget(self.left_widget, 0, 0)
+
+        self.left_layout = QVBoxLayout(self.left_widget)
+        self.left_layout.setAlignment(Qt.AlignTop)
+        self.left_layout.addStretch(1)
+        self.left_layout.setSpacing(5)
+
+        self.media_list = QListWidget(self)
+        self.media_list.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        # self.media_list.currentRowChanged.connect(self.controller.switch_media)
+        self.left_layout.addWidget(self.media_list)
+
+        # self.media_list_buttons = QHBoxLayout(self)
+        # self.left_layout.addLayout(self.media_list_buttons)
+
+        # self.add_media_button = QPushButton('+')
+        # self.add_media_button.clicked.connect(self.controller.select_and_open_media)
+        # self.add_media_button.setToolTip("Add media.")
+        # self.media_list_buttons.addWidget(self.add_media_button)
+
+        # self.remove_media_button = QPushButton('-')
+        # self.remove_media_button.clicked.connect(self.controller.remove_media)
+        # self.remove_media_button.setToolTip("Remove selected media.")
+        # self.media_list_buttons.addWidget(self.remove_media_button)
+
+        # create right widget & layout
+        self.right_widget = QWidget(self)
+        self.right_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        self.main_layout.addWidget(self.right_widget, 0, 1)
+
+        self.right_layout = QVBoxLayout(self.right_widget)
+        self.right_layout.setAlignment(Qt.AlignTop)
+        self.right_layout.addStretch(1)
+        self.right_layout.setSpacing(5)
 
         # set main widget to be the central widget
         self.setCentralWidget(self.main_widget)
@@ -68,6 +103,12 @@ class ParamWindow(QMainWindow):
         self.set_gui_disabled(True)
         
         self.show()
+
+    def add_media_item(self, item_name):
+        list_item = QListWidgetItem(item_name, self.media_list)
+
+    def change_selected_media_row(self, row_number):
+        self.media_list.setCurrentRow(row_number)
 
     def create_menubar(self):
         # create actions
@@ -132,7 +173,7 @@ class ParamWindow(QMainWindow):
         self.param_controls = None
 
         top_layout = QHBoxLayout()
-        self.main_layout.addLayout(top_layout)
+        self.right_layout.addLayout(top_layout)
 
         # create loaded media label
         self.loaded_media_label = QLabel("No media loaded.")
@@ -151,17 +192,17 @@ class ParamWindow(QMainWindow):
 
         # create tracking progress label
         self.tracking_progress_label = QLabel("")
-        self.main_layout.addWidget(self.tracking_progress_label)
+        self.right_layout.addWidget(self.tracking_progress_label)
 
         # create invalid parameters label
         self.invalid_params_label = QLabel("")
         self.invalid_params_label.setStyleSheet("font-weight: bold; color: red;")
-        self.main_layout.addWidget(self.invalid_params_label)
+        self.right_layout.addWidget(self.invalid_params_label)
 
         # create form layout for param controls with textboxes
         self.form_layout = QFormLayout()
         self.form_layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
-        self.main_layout.addLayout(self.form_layout)
+        self.right_layout.addLayout(self.form_layout)
 
         # create dict for storing all parameter controls
         self.param_controls = {}
@@ -174,22 +215,22 @@ class ParamWindow(QMainWindow):
         button_layout_1 = QHBoxLayout()
         button_layout_1.setSpacing(5)
         button_layout_1.addStretch(1)
-        self.main_layout.addLayout(button_layout_1)
+        self.right_layout.addLayout(button_layout_1)
 
         button_layout_2 = QHBoxLayout()
         button_layout_2.setSpacing(5)
         button_layout_2.addStretch(1)
-        self.main_layout.addLayout(button_layout_2)
+        self.right_layout.addLayout(button_layout_2)
 
         button_layout_3 = QHBoxLayout()
         button_layout_3.setSpacing(5)
         button_layout_3.addStretch(1)
-        self.main_layout.addLayout(button_layout_3)
+        self.right_layout.addLayout(button_layout_3)
 
         button_layout_4 = QHBoxLayout()
         button_layout_4.setSpacing(5)
         button_layout_4.addStretch(1)
-        self.main_layout.addLayout(button_layout_4)
+        self.right_layout.addLayout(button_layout_4)
 
         # add buttons
         self.save_button = QPushButton(u'\u2713 Save', self)
@@ -394,7 +435,7 @@ class HeadfixedParamWindow(ParamWindow):
         self.checkbox_layout = QGridLayout()
         self.checkbox_layout.setColumnStretch(0, 1)
         self.checkbox_layout.setColumnStretch(1, 1)
-        self.main_layout.addLayout(self.checkbox_layout)
+        self.right_layout.addLayout(self.checkbox_layout)
 
         # add checkboxes - (key, description, function to call, initial value, parent layout)
         self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.checkbox_layout, 0, 0)
@@ -439,7 +480,7 @@ class FreeswimmingParamWindow(ParamWindow):
         self.checkbox_layout = QGridLayout()
         self.checkbox_layout.setColumnStretch(0, 1)
         self.checkbox_layout.setColumnStretch(1, 1)
-        self.main_layout.addLayout(self.checkbox_layout)
+        self.right_layout.addLayout(self.checkbox_layout)
 
         # add checkboxes - (key, description, function to call, initial value, parent layout)
         self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.checkbox_layout, 0, 0)

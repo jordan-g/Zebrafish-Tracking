@@ -260,6 +260,10 @@ class Controller():
                     # background is already calculated; call the callback function
                     self.background_calculated(self.params['backgrounds'][k], k)
 
+                self.param_window.add_media_item(os.path.basename(self.params['media_paths'][k]))
+
+        self.param_window.change_selected_media_row(self.curr_media_num)
+
         # open the first media from the batch
         self.open_media(media_type, media_paths[self.curr_media_num])
 
@@ -284,6 +288,8 @@ class Controller():
             # switch to first frame
             self.switch_frame(0, new_load=True)
 
+            self.param_window.change_selected_media_row(self.curr_media_num)
+
     def next_media(self):
         if self.curr_media_num != len(self.params['media_paths'])-1:
             media_paths = self.params['media_paths']
@@ -304,6 +310,8 @@ class Controller():
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
+
+            self.param_window.change_selected_media_row(self.curr_media_num)
 
     def background_calculated(self, background, media_num):
         if self.current_frame.shape == background.shape:
