@@ -141,7 +141,7 @@ class Controller():
                 media_types = ["video"]*len(media_paths)
 
             self.open_media_batch(media_types, media_paths)
-            print(self.first_load)
+
             if self.first_load:
                 self.create_crop()
 

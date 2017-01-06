@@ -47,16 +47,12 @@ class ParamWindow(QMainWindow):
 
         # create left widget & layout
         self.left_widget = QWidget(self)
-        self.left_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
         self.main_layout.addWidget(self.left_widget, 0, 0)
 
         self.left_layout = QVBoxLayout(self.left_widget)
         self.left_layout.setAlignment(Qt.AlignTop)
-        self.left_layout.addStretch(1)
-        self.left_layout.setSpacing(5)
 
         self.media_list = QListWidget(self)
-        self.media_list.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
         self.media_list.currentRowChanged.connect(self.controller.switch_media)
         self.left_layout.addWidget(self.media_list)
 
