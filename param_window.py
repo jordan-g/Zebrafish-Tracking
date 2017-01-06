@@ -57,23 +57,25 @@ class ParamWindow(QMainWindow):
 
         self.media_list = QListWidget(self)
         self.media_list.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
-        # self.media_list.currentRowChanged.connect(self.controller.switch_media)
+        self.media_list.currentRowChanged.connect(self.controller.switch_media)
         self.left_layout.addWidget(self.media_list)
 
         self.media_list_items = []
 
-        # self.media_list_buttons = QHBoxLayout(self)
-        # self.left_layout.addLayout(self.media_list_buttons)
+        self.media_list_buttons = QHBoxLayout(self)
+        self.left_layout.addLayout(self.media_list_buttons)
 
-        # self.add_media_button = QPushButton('+')
-        # self.add_media_button.clicked.connect(self.controller.select_and_open_media)
-        # self.add_media_button.setToolTip("Add media.")
-        # self.media_list_buttons.addWidget(self.add_media_button)
+        self.add_media_button = QPushButton('+')
+        self.add_media_button.clicked.connect(self.controller.select_and_open_media)
+        self.add_media_button.setToolTip("Add media.")
+        self.add_media_button.setMaximumWidth(50)
+        self.media_list_buttons.addWidget(self.add_media_button)
 
-        # self.remove_media_button = QPushButton('-')
-        # self.remove_media_button.clicked.connect(self.controller.remove_media)
-        # self.remove_media_button.setToolTip("Remove selected media.")
-        # self.media_list_buttons.addWidget(self.remove_media_button)
+        self.remove_media_button = QPushButton('-')
+        self.remove_media_button.clicked.connect(self.controller.remove_media)
+        self.remove_media_button.setToolTip("Remove selected media.")
+        self.add_media_button.setMaximumWidth(50)
+        self.media_list_buttons.addWidget(self.remove_media_button)
 
         # create right widget & layout
         self.right_widget = QWidget(self)
@@ -114,8 +116,16 @@ class ParamWindow(QMainWindow):
     def add_media_item(self, item_name):
         self.media_list_items.append(QListWidgetItem(item_name, self.media_list))
 
+    def remove_media_item(self, item_num):
+        self.media_list.blockSignals(True)
+        self.media_list.takeItem(item_num)
+        del self.media_list_items[item_num]
+        self.media_list.blockSignals(False)
+
     def change_selected_media_row(self, row_number):
+        self.media_list.blockSignals(True)
         self.media_list.setCurrentRow(row_number)
+        self.media_list.blockSignals(False)
 
     def create_menubar(self):
         # create actions
@@ -234,11 +244,6 @@ class ParamWindow(QMainWindow):
         button_layout_3.addStretch(1)
         self.right_layout.addLayout(button_layout_3)
 
-        button_layout_4 = QHBoxLayout()
-        button_layout_4.setSpacing(5)
-        button_layout_4.addStretch(1)
-        self.right_layout.addLayout(button_layout_4)
-
         # add buttons
         self.save_button = QPushButton(u'\u2713 Save', self)
         self.save_button.setMaximumWidth(80)
@@ -257,51 +262,36 @@ class ParamWindow(QMainWindow):
         self.track_all_button.setStyleSheet("font-weight: bold")
         button_layout_1.addWidget(self.track_all_button)
 
-        self.open_image_button = QPushButton('+ Image', self)
-        self.open_image_button.setMaximumWidth(90)
-        self.open_image_button.clicked.connect(lambda:self.controller.select_and_open_media("image"))
-        button_layout_2.addWidget(self.open_image_button)
-
-        self.open_folder_button = QPushButton('+ Folder', self)
-        self.open_folder_button.setMaximumWidth(90)
-        self.open_folder_button.clicked.connect(lambda:self.controller.select_and_open_media("folder"))
-        button_layout_2.addWidget(self.open_folder_button)
-
-        self.open_video_button = QPushButton('+ Video', self)
-        self.open_video_button.setMaximumWidth(90)
-        self.open_video_button.clicked.connect(lambda:self.controller.select_and_open_media("video"))
-        button_layout_2.addWidget(self.open_video_button)
-
         self.reload_last_save_button = QPushButton(u'\u27AA Reload', self)
         self.reload_last_save_button.setMaximumWidth(90)
         self.reload_last_save_button.clicked.connect(self.controller.load_last_params)
-        button_layout_3.addWidget(self.reload_last_save_button)
+        button_layout_2.addWidget(self.reload_last_save_button)
 
         self.load_params_button = QPushButton(u'Load Params\u2026', self)
         self.load_params_button.setMaximumWidth(180)
         self.load_params_button.clicked.connect(self.controller.load_params)
-        button_layout_3.addWidget(self.load_params_button)
+        button_layout_2.addWidget(self.load_params_button)
 
         self.save_params_button = QPushButton(u'Save Params\u2026', self)
         self.save_params_button.setMaximumWidth(180)
         self.save_params_button.clicked.connect(self.controller.save_params)
-        button_layout_3.addWidget(self.save_params_button)
+        button_layout_2.addWidget(self.save_params_button)
 
         self.load_background_button = QPushButton(u'Load Background', self)
         self.load_background_button.setMaximumWidth(180)
         self.load_background_button.clicked.connect(self.controller.load_background)
-        button_layout_4.addWidget(self.load_background_button)
+        button_layout_3.addWidget(self.load_background_button)
 
         self.save_background_button = QPushButton(u'Save Background', self)
         self.save_background_button.setMaximumWidth(180)
         self.save_background_button.clicked.connect(self.controller.save_background)
-        button_layout_4.addWidget(self.save_background_button)
+        button_layout_3.addWidget(self.save_background_button)
 
         self.toggle_analysis_window_button = QPushButton(u'Analyse\u2026', self)
         self.toggle_analysis_window_button.setMaximumWidth(180)
         self.toggle_analysis_window_button.clicked.connect(self.controller.toggle_analysis_window)
         self.toggle_analysis_window_button.setEnabled(False)
-        button_layout_4.addWidget(self.toggle_analysis_window_button)
+        button_layout_3.addWidget(self.toggle_analysis_window_button)
 
     def set_gui_disabled(self, disabled_bool):
         for param_control in self.param_controls.values():

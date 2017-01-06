@@ -43,9 +43,9 @@ default_headfixed_params = {'shrink_factor': 1.0,                               
                             'n_tail_points': 30,                                # number of tail points to use
                             'subtract_background': False,                       # whether to perform background subtraction
                             'tail_direction': "Right",                          # "right" / "left" / "up" / "down"
-                            'media_type': None,                                 # type of media that is tracked - "video" / "folder" / "image" / None
+                            'media_types': [],                                  # types of media that are tracked - "video" / "folder" / "image"
                             'media_paths': [],                                  # paths to media that are tracked
-                            'backgrounds': None,                                # backgrounds calculated for background subtraction
+                            'backgrounds': [],                                  # backgrounds calculated for background subtraction
                             'tail_start_coords': None,                          # (y, x) coordinates of the start of the tail
                             'use_multiprocessing': True,                        # whether to use multiprocessing
                             'align_batches': False,                             # whether to perform spatial alignment of batches of media
@@ -68,9 +68,9 @@ default_freeswimming_params = {'shrink_factor': 1.0,                            
                                'eye_resize_factor': 1,                          # factor by which to resize frame for reducing noise in eye position tracking
                                'interpolation': 'Nearest Neighbor',             # interpolation to use when resizing frame for eye tracking
                                'tail_crop': np.array([100, 100]),               # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
-                               'media_type': None,                              # type of media that is tracked - "video" / "folder" / "image" / None
+                               'media_types': [],                               # types of media that are tracked - "video" / "folder" / "image"
                                'media_paths': [],                               # paths to media that are tracked
-                               'backgrounds': None,                             # backgrounds calculated for background subtraction
+                               'backgrounds': [],                               # backgrounds calculated for background subtraction
                                'use_multiprocessing': True,                     # whether to use multiprocessing
                                'align_batches': False,                          # whether to perform spatial alignment of batches of media
                                'batch_offsets': None,                           # spatial alignment offsets
@@ -94,7 +94,8 @@ class Controller():
         self.current_frame         = None
         self.shrunken_frame        = None
         self.cropped_frame         = None
-        self.frames                = None
+        self.frames                = []
+        self.bg_sub_frames         = []
         self.tracking_results      = []
         self.current_crop          = -1   # which crop is being looked at
         self.curr_media_num        = 0    # which media (from a loaded batch) is being looked at
@@ -104,6 +105,8 @@ class Controller():
         self.get_background_thread = None
         self.track_media_thread    = None
         self.closing               = False
+        self.first_load            = True
+        self.background_calc_paths = []
 
         # create preview window
         self.preview_window  = PreviewWindow(self)
@@ -112,38 +115,37 @@ class Controller():
         self.analysis_window = AnalysisWindow(self)
         self.analysis_window.hide()
 
-    def select_and_open_media(self, media_type):
-        if media_type == "image":
-            # ask the user to select an image
-            if pyqt_version == 4:
-                media_paths = [str(QFileDialog.getOpenFileName(self.param_window, 'Select image to open', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)'))]
-            elif pyqt_version == 5:
-                media_paths = [str(QFileDialog.getOpenFileName(self.param_window, 'Select image to open', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)')[0])]
-        elif media_type == "folder":
-            # ask the user to select a directory
-            media_paths = [str(QFileDialog.getExistingDirectory(self.param_window, 'Select folder to open'))]
-        elif media_type == "video":
-            # ask the user to select video(s)
-            if pyqt_version == 4:
-                media_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select video(s) to open', '', 'Videos (*.mov *.tif *.mp4 *.avi)')
-            elif pyqt_version == 5:
-                media_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select video(s) to open', '', 'Videos (*.mov *.tif *.mp4 *.avi)')[0]
+    def select_and_open_media(self):
+        if pyqt_version == 4:
+            media_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select media to track', '', 'Videos (*.mov *.tif *.mp4 *.avi);; Images (*.jpg  *.jpeg *.tif *.tiff *.png)')
+        elif pyqt_version == 5:
+            media_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select media to track', '', 'Videos (*.mov *.tif *.mp4 *.avi);; Images (*.jpg  *.jpeg *.tif *.tiff *.png)')[0]
 
             # convert paths to str
             media_paths = [ str(media_path) for media_path in media_paths ]
 
         if len(media_paths) > 0 and media_paths[0] != '':
-            # clear all crops
-            self.clear_crops()
+            need_to_clear_crops = self.first_load and len(self.params['media_paths']) == 0
+            if need_to_clear_crops:
+                print("yooo")
+                # clear all crops
+                self.clear_crops()
 
-            # set params to defaults
-            self.params = self.default_params.copy()
+                # set params to defaults
+                self.params = self.default_params.copy()
 
-            self.current_crop = -1
+                self.current_crop = -1
 
-            self.open_media_batch(media_type, media_paths)
+            if media_paths[0].endswith('.jpg') or media_paths[0].endswith('.jpeg') or media_paths[0].endswith('.tif') or media_paths[0].endswith('.tiff') or media_paths[0].endswith('.png'):
+                media_types = ["image"]*len(media_paths)
+            else:
+                media_types = ["video"]*len(media_paths)
 
-            self.create_crop()
+            self.open_media_batch(media_types, media_paths)
+            print(need_to_clear_crops)
+            if need_to_clear_crops:
+                print("yooo")
+                self.create_crop()
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -216,30 +218,38 @@ class Controller():
             self.crops_window.set_gui_disabled(False)
             self.param_window.set_gui_disabled(False)
 
-    def open_media_batch(self, media_type, media_paths): #todo: complete this
-        # update media paths & type parameters
-        self.params['media_paths'] = media_paths
-        self.params['media_type']  = media_type
-        self.params['backgrounds'] = [None]*len(media_paths)
+    def open_media_batch(self, media_types, media_paths): #todo: complete this
+        self.first_load = self.first_load or len(self.params['media_paths']) == 0
 
-        self.frames        = [None]*len(media_paths)
-        self.bg_sub_frames = [None]*len(media_paths)
+        if (self.first_load and len(self.params['media_paths']) == 0) or not self.first_load:
+            # update media paths & type parameters
+            self.params['media_paths'] += media_paths
+            self.params['media_types'] += media_types
+            self.params['backgrounds'] += [None]*len(media_paths)
 
-        self.param_window.clear_media_list()
+        self.frames        += [None]*len(media_paths)
+        self.bg_sub_frames += [None]*len(media_paths)
 
-        # update current media number
-        self.curr_media_num = 0
+        if self.first_load:
+            # update current media number
+            self.curr_media_num = 0
 
         # update loaded media label
-        if len(media_paths) > 1:
-            self.param_window.loaded_media_label.setText("Loaded <b>{} {}s</b>. Showing #{}.".format(len(media_paths), media_type, self.curr_media_num+1))
+        if len(self.params['media_paths']) > 1:
+            self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(self.params['media_paths']), self.curr_media_num+1))
         else:
-            self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
+            self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(self.params['media_paths'][0])))
 
         self.params['batch_offsets'] = tracking.get_video_batch_align_offsets(self.params)
 
-        # get background
-        if media_type != "image":
+        if self.first_load:
+            # open the first media from the batch
+            self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
+
+            self.first_load = False
+
+        # get backgrounds
+        if media_types[0] != "image":
             self.param_window.param_controls["subtract_background"].setEnabled(False)
             self.param_window.open_background_action.setEnabled(False)
             self.param_window.save_background_action.setEnabled(False)
@@ -247,11 +257,13 @@ class Controller():
             # update "Subtract background" text in param window
             self.param_window.param_controls["subtract_background"].setText("Subtract background (0%)")
 
-            for k in range(len(media_paths)):
+            for k in range(len(self.params['media_paths']) - len(media_paths), len(self.params['media_paths'])):
                 if self.params['backgrounds'][k] == None:
                     # create new thread to calculate the background
                     self.get_background_thread = GetBackgroundThread(self.param_window)
-                    self.get_background_thread.set_parameters(self.params['media_paths'][k], media_type, k)
+                    self.get_background_thread.set_parameters(self.params['media_paths'][k], self.params['media_types'][k], k)
+
+                    self.background_calc_paths.append(self.params['media_paths'][k])
 
                     # set callback function to be called when the background has been calculated
                     self.get_background_thread.finished.connect(self.background_calculated)
@@ -260,32 +272,29 @@ class Controller():
                     self.get_background_thread.start()
                 else:
                     # background is already calculated; call the callback function
-                    self.background_calculated(self.params['backgrounds'][k], k)
+                    self.background_calculated(self.params['backgrounds'][k], self.params['media_paths'][k])
 
                 self.param_window.add_media_item(os.path.basename(self.params['media_paths'][k]))
 
         self.param_window.change_selected_media_row(self.curr_media_num)
 
-        # open the first media from the batch
-        self.open_media(media_type, media_paths[self.curr_media_num])
-
     def prev_media(self):
         if self.curr_media_num != 0:
             media_paths = self.params['media_paths']
-            media_type  = self.params['media_type']
+            media_types = self.params['media_types']
             
             # update current media number
             self.curr_media_num -= 1
 
             # update loaded media label
             if len(media_paths) > 1:
-                self.param_window.loaded_media_label.setText("Loaded <b>{} {}s</b>. Showing #{}.".format(len(media_paths), media_type, self.curr_media_num+1))
+                self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(media_paths), self.curr_media_num+1))
             else:
                 self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
 
             if self.frames[self.curr_media_num] == None:
                 # open the previous media from the batch
-                self.open_media(media_type, media_paths[self.curr_media_num])
+                self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -295,29 +304,82 @@ class Controller():
     def next_media(self):
         if self.curr_media_num != len(self.params['media_paths'])-1:
             media_paths = self.params['media_paths']
-            media_type  = self.params['media_type']
+            media_types = self.params['media_types']
             
             # update current media number
             self.curr_media_num += 1
 
             # update loaded media label
             if len(media_paths) > 1:
-                self.param_window.loaded_media_label.setText("Loaded <b>{} {}s</b>. Showing #{}.".format(len(media_paths), media_type, self.curr_media_num+1))
+                self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(media_paths), self.curr_media_num+1))
             else:
                 self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
 
             if self.frames[self.curr_media_num] == None:
                 # open the next media from the batch
-                self.open_media(media_type, media_paths[self.curr_media_num])
+                self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
 
             self.param_window.change_selected_media_row(self.curr_media_num)
 
-    def background_calculated(self, background, media_num):
-        if self.current_frame.shape == background.shape:
-            print("Background #{} calculated.".format(media_num))
+    def switch_media(self, media_num):
+        if 0 <= media_num <= len(self.params['media_paths'])-1:
+            media_paths = self.params['media_paths']
+            media_types = self.params['media_types']
+
+            # update current media number
+            self.curr_media_num = media_num
+
+            # update loaded media label
+            if len(media_paths) > 1:
+                self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(media_paths), self.curr_media_num+1))
+            else:
+                self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
+
+            if self.frames[self.curr_media_num] == None:
+                # open the next media from the batch
+                self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
+
+            # switch to first frame
+            self.switch_frame(0, new_load=True)
+
+    def remove_media(self):
+        self.background_calc_paths.remove(self.params['media_paths'][self.curr_media_num])
+
+        del self.params['media_paths'][self.curr_media_num]
+        del self.params['media_types'][self.curr_media_num]
+        del self.params['backgrounds'][self.curr_media_num]
+        del self.params['batch_offsets'][self.curr_media_num]
+        del self.frames[self.curr_media_num]
+        del self.bg_sub_frames[self.curr_media_num]
+
+        self.param_window.remove_media_item(self.curr_media_num)
+
+        if self.curr_media_num != 0:
+            self.curr_media_num -= 1
+
+        if self.frames[self.curr_media_num] == None:
+            # open the next media from the batch
+            self.open_media(self.params['media_types'][self.curr_media_num], self.params['media_paths'][self.curr_media_num])
+
+            # switch to first frame
+            self.switch_frame(0, new_load=True)
+
+        # update loaded media label
+        if len(self.params['media_paths']) > 1:
+            self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(self.params['media_paths']), self.curr_media_num+1))
+        elif len(self.params['media_paths']) > 0:
+            self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(self.params['media_paths'][0])))
+        else:
+            self.param_window.loaded_media_label.setText("No media loaded.")
+
+    def background_calculated(self, background, media_path):
+        if self.current_frame.shape == background.shape and media_path in self.background_calc_paths:
+            print("Background for {} calculated.".format(media_path))
+
+            media_num = self.params['media_paths'].index(media_path)
 
             # update params
             self.params['backgrounds'][media_num] = background
@@ -377,7 +439,7 @@ class Controller():
             self.current_crop = -1
 
             # re-open media path specified in the loaded params
-            self.open_media_batch(self.params['media_type'], self.params['media_paths'])
+            self.open_media_batch(self.params['media_types'], self.params['media_paths'])
 
             # create tabs for all saved crops
             for j in range(len(self.params['crop_params'])):
@@ -1027,7 +1089,7 @@ class HeadfixedController(Controller):
             self.update_preview(image=None, new_load=False, new_frame=True)
 
 class GetBackgroundThread(QThread):
-    finished = Signal(np.ndarray, int)
+    finished = Signal(np.ndarray, str)
     progress = Signal(int)
 
     def set_parameters(self, media_path, media_type, media_num):
@@ -1041,7 +1103,7 @@ class GetBackgroundThread(QThread):
         elif self.media_type == "video":
             background = tracking.get_background_from_video(self.media_path, None, None, False, progress_signal=self.progress)
         
-        self.finished.emit(background, self.media_num)
+        self.finished.emit(background, self.media_path)
 
 class TrackMediaThread(QThread):
     finished = Signal(float)
