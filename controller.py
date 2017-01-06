@@ -125,9 +125,8 @@ class Controller():
             media_paths = [ str(media_path) for media_path in media_paths ]
 
         if len(media_paths) > 0 and media_paths[0] != '':
-            need_to_clear_crops = self.first_load and len(self.params['media_paths']) == 0
-            if need_to_clear_crops:
-                print("yooo")
+            # need_to_clear_crops = self.first_load and len(self.params['media_paths']) == 0
+            if self.first_load:
                 # clear all crops
                 self.clear_crops()
 
@@ -142,10 +141,11 @@ class Controller():
                 media_types = ["video"]*len(media_paths)
 
             self.open_media_batch(media_types, media_paths)
-            print(need_to_clear_crops)
-            if need_to_clear_crops:
-                print("yooo")
+            print(self.first_load)
+            if self.first_load:
                 self.create_crop()
+
+                self.first_load = False
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -245,8 +245,6 @@ class Controller():
         if self.first_load:
             # open the first media from the batch
             self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
-
-            self.first_load = False
 
         # get backgrounds
         if media_types[0] != "image":
@@ -357,15 +355,23 @@ class Controller():
 
         self.param_window.remove_media_item(self.curr_media_num)
 
-        if self.curr_media_num != 0:
+        if self.curr_media_num != 0 or len(self.params['media_paths']) == 0:
             self.curr_media_num -= 1
 
-        if self.frames[self.curr_media_num] == None:
-            # open the next media from the batch
-            self.open_media(self.params['media_types'][self.curr_media_num], self.params['media_paths'][self.curr_media_num])
+        if self.curr_media_num != -1:
+            if self.frames[self.curr_media_num] == None:
+                # open the next media from the batch
+                self.open_media(self.params['media_types'][self.curr_media_num], self.params['media_paths'][self.curr_media_num])
 
-            # switch to first frame
-            self.switch_frame(0, new_load=True)
+                # switch to first frame
+                self.switch_frame(0, new_load=True)
+        else:
+            self.first_load = True
+            self.param_window.param_controls["subtract_background"].setText("Subtract background")
+            self.param_window.set_gui_disabled(True)
+            self.clear_crops()
+
+        print(self.params['media_paths'], self.curr_media_num)
 
         # update loaded media label
         if len(self.params['media_paths']) > 1:
@@ -440,6 +446,8 @@ class Controller():
 
             # re-open media path specified in the loaded params
             self.open_media_batch(self.params['media_types'], self.params['media_paths'])
+
+            self.first_load = False
 
             # create tabs for all saved crops
             for j in range(len(self.params['crop_params'])):

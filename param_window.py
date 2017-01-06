@@ -68,14 +68,27 @@ class ParamWindow(QMainWindow):
         self.add_media_button = QPushButton('+')
         self.add_media_button.clicked.connect(self.controller.select_and_open_media)
         self.add_media_button.setToolTip("Add media.")
-        self.add_media_button.setMaximumWidth(50)
+        # self.add_media_button.setMaximumWidth(50)
         self.media_list_buttons.addWidget(self.add_media_button)
 
         self.remove_media_button = QPushButton('-')
         self.remove_media_button.clicked.connect(self.controller.remove_media)
         self.remove_media_button.setToolTip("Remove selected media.")
-        self.add_media_button.setMaximumWidth(50)
+        # self.remove_media_button.setMaximumWidth(50)
         self.media_list_buttons.addWidget(self.remove_media_button)
+
+        # add media switching buttons
+        self.prev_media_button = QPushButton('<')
+        self.prev_media_button.clicked.connect(self.controller.prev_media)
+        self.prev_media_button.setToolTip("Switch to previous loaded media.")
+        # self.prev_media_button.setMaximumWidth(50)
+        self.media_list_buttons.addWidget(self.prev_media_button)
+
+        self.next_media_button = QPushButton('>')
+        self.next_media_button.clicked.connect(self.controller.next_media)
+        self.next_media_button.setToolTip("Switch to next loaded media.")
+        # self.next_media_button.setMaximumWidth(50)
+        self.media_list_buttons.addWidget(self.next_media_button)
 
         # create right widget & layout
         self.right_widget = QWidget(self)
@@ -195,17 +208,6 @@ class ParamWindow(QMainWindow):
         # create loaded media label
         self.loaded_media_label = QLabel("No media loaded.")
         top_layout.addWidget(self.loaded_media_label)
-
-        # add media switching buttons
-        self.prev_media_button = QPushButton('<')
-        self.prev_media_button.clicked.connect(self.controller.prev_media)
-        self.prev_media_button.setToolTip("Switch to previous loaded media.")
-        top_layout.addWidget(self.prev_media_button)
-
-        self.next_media_button = QPushButton('>')
-        self.next_media_button.clicked.connect(self.controller.next_media)
-        self.next_media_button.setToolTip("Switch to next loaded media.")
-        top_layout.addWidget(self.next_media_button)
 
         # create tracking progress label
         self.tracking_progress_label = QLabel("")
