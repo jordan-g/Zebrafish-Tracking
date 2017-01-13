@@ -267,7 +267,7 @@ class ParamWindow(QMainWindow):
 
         self.load_params_button = QPushButton(u'Load Params\u2026', self)
         self.load_params_button.setMaximumWidth(180)
-        self.load_params_button.clicked.connect(self.controller.load_params)
+        self.load_params_button.clicked.connect(lambda:self.controller.load_params(None))
         button_layout_2.addWidget(self.load_params_button)
 
         self.save_params_button = QPushButton(u'Save Params\u2026', self)

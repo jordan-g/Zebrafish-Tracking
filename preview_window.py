@@ -199,7 +199,7 @@ class PreviewWindow(QMainWindow):
             tail_crop = None
 
         try:
-            tail_start_coords = tracking.get_relative_tail_start_coords(params['tail_start_coords'], crop_params['offset'], params['shrink_factor'])
+            tail_start_coords = tracking.get_relative_coords(params['tail_start_coords'], crop_params['offset'], params['shrink_factor'])
 
             # add tail start point to image
             cv2.circle(image, (int(round(tail_start_coords[1])), int(round(tail_start_coords[0]))), 1, (180, 50, 180), -1)
@@ -221,9 +221,9 @@ class PreviewWindow(QMainWindow):
                 eye_coords     = None
 
             # add tracking to image
-            image = tracking.add_tracking_to_frame(image, tracking_results)
+            image = tracking.add_tracking_to_frame(image, tracking_results, cropped=True)
 
-            if tail_crop != None and eye_coords != None:
+            if tail_crop != None and body_position != None:
                 # copy image
                 overlay = image.copy()
 

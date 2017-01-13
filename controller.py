@@ -269,6 +269,8 @@ class Controller():
                     # start thread
                     self.get_background_thread.start()
                 else:
+                    self.background_calc_paths.append(self.params['media_paths'][k])
+                    
                     # background is already calculated; call the callback function
                     self.background_calculated(self.params['backgrounds'][k], self.params['media_paths'][k])
 
@@ -382,6 +384,7 @@ class Controller():
             self.param_window.loaded_media_label.setText("No media loaded.")
 
     def background_calculated(self, background, media_path):
+        print("hi")
         if self.current_frame.shape == background.shape and media_path in self.background_calc_paths:
             print("Background for {} calculated.".format(media_path))
 
@@ -398,6 +401,8 @@ class Controller():
                 n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
                 n_backgrounds_total      = len(self.params['backgrounds'])
                 percent                  = int(100*n_backgrounds_calculated/n_backgrounds_total)
+
+                print(n_backgrounds_calculated, n_backgrounds_total)
 
                 if percent != 100:
                     self.param_window.param_controls["subtract_background"].setText("Subtract background ({}%)".format(percent))
@@ -430,9 +435,10 @@ class Controller():
             self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>: {}%.".format(os.path.basename(self.params['media_paths'][0]), percent))
 
     def load_params(self, params_path=None):
+        print(params_path)
         if params_path == None:
             # ask the user to select a path
-            params_path = str(QFileDialog.getOpenFileName(self, 'Open saved parameters', ''))
+            params_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open saved parameters', '')[0])
 
         if params_path not in ("", None):
             # load params from saved file
@@ -625,6 +631,7 @@ class Controller():
 
     def track_frame(self):
         if self.current_frame != None:
+            # print(self.current_frame, self.shrunken_frame)
             # get params from gui
             self.update_params_from_gui()
 
@@ -635,12 +642,7 @@ class Controller():
 
     def track_media(self):
         # get save path
-        if self.params['media_type'] == "image":
-            self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
-        elif self.params['media_type'] == "folder":
-            self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
-        elif self.params['media_type'] == "video":
-            self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
+        self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
 
         # track media
         if self.track_media_thread != None:
@@ -1122,12 +1124,7 @@ class TrackMediaThread(QThread):
         self.tracking_path = tracking_path
 
     def run(self):
-        if self.params['media_type'] == "image":
-            tracking_func = tracking.open_and_track_image
-        elif self.params['media_type'] == "folder":
-            tracking_func = tracking.open_and_track_folder
-        elif self.params['media_type'] == "video":
-            tracking_func = tracking.open_and_track_video_batch
+        tracking_func = tracking.open_and_track_video_batch
 
         if self.tracking_path != "":
             start_time = time.time()
