@@ -1057,7 +1057,7 @@ class HeadfixedController(Controller):
         Controller.reshape_frame(self)
 
     def update_tail_start_coords(self, rel_tail_start_coords):
-        self.params['tail_start_coords'] = tracking.get_absolute_tail_start_coords(rel_tail_start_coords,
+        self.params['tail_start_coords'] = tracking.get_absolute_coords(rel_tail_start_coords,
                                                                                    self.params['crop_params'][self.current_crop]['offset'],
                                                                                    self.params['shrink_factor'])
 

@@ -143,7 +143,7 @@ def load_frames_from_video(video_path, cap, frame_nums, background=None, batch_o
     if frame_nums == None:
         frame_nums = range(n_frames_total)
 
-    print(n_frames_total)
+    # print(n_frames_total)
 
     n_frames = len(frame_nums) # number of frames to use for the background
 
@@ -154,18 +154,25 @@ def load_frames_from_video(video_path, cap, frame_nums, background=None, batch_o
         # initialize list of background subtracted frames
         bg_sub_frames = []
 
-    try:
-        cap.set(cv2.CV_CAP_PROP_POS_FRAMES, frame_nums[0]-1)
-    except:
-        cap.set(1, frame_nums[0]-1)
+    # check whether frame numbers are sequential (ie. [1, 2, 3, ...])
+    # or not (ie. [20, 30, 40, ...])
+    frame_nums_are_sequential = frame_nums == list(range(frame_nums[0], frame_nums[-1]+1))
+
+    if frame_nums_are_sequential:
+        # frame numbers are sequential - just set frame position once
+        try:
+            cap.set(cv2.CV_CAP_PROP_POS_FRAMES, frame_nums[0]-1)
+        except:
+            cap.set(1, frame_nums[0]-1)
 
     for frame_num in frame_nums:
-        # get the frame
-        # try:
-        #     cap.set(cv2.CV_CAP_PROP_POS_FRAMES, frame_num-1)
-        # except:
-        #     cap.set(1, frame_num-1)
-        _, frame = cap.read()
+        if not frame_nums_are_sequential:  
+            # frame numbers are not sequential - set frame position
+            try:
+                cap.set(cv2.CV_CAP_PROP_POS_FRAMES, frame_num-1)
+            except:
+                cap.set(1, frame_num-1)
+            _, frame = cap.read()
 
         if frame != None:
             # convert to greyscale
@@ -952,12 +959,6 @@ def track_freeswimming_tail(frame, params, crop_params, body_position):
     # crop the frame to the tail
     tail_crop_frame = frame[tail_crop_coords[0, 0]:tail_crop_coords[0, 1], tail_crop_coords[1, 0]:tail_crop_coords[1, 1]]
 
-    # print("tail crop", tail_crop)
-    # print("body_position", body_position)
-    # print("frame", frame, frame.shape)
-    # print("tail crop coords", tail_crop_coords)
-    # print("tail crop frame", tail_crop_frame)
-
     # create a thresholded frame
     tail_threshold_frame = get_threshold_frame(tail_crop_frame, tail_threshold)
 
@@ -966,7 +967,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position):
                                                               min_tail_body_dist, max_tail_body_dist,
                                                               n_tail_points)
 
-    if tail_coords == None and adjust_thresholds:
+    if adjust_thresholds and tail_coords == None:
         # initialize counter
         i = 0
         
