@@ -64,13 +64,11 @@ class ParamWindow(QMainWindow):
         self.add_media_button = QPushButton('+')
         self.add_media_button.clicked.connect(self.controller.select_and_open_media)
         self.add_media_button.setToolTip("Add media.")
-        # self.add_media_button.setMaximumWidth(50)
         self.media_list_buttons.addWidget(self.add_media_button)
 
         self.remove_media_button = QPushButton('-')
         self.remove_media_button.clicked.connect(self.controller.remove_media)
         self.remove_media_button.setToolTip("Remove selected media.")
-        # self.remove_media_button.setMaximumWidth(50)
         self.media_list_buttons.addWidget(self.remove_media_button)
 
         # add media switching buttons
@@ -284,12 +282,6 @@ class ParamWindow(QMainWindow):
         self.save_background_button.setMaximumWidth(180)
         self.save_background_button.clicked.connect(self.controller.save_background)
         button_layout_3.addWidget(self.save_background_button)
-
-        self.toggle_analysis_window_button = QPushButton(u'Analyse\u2026', self)
-        self.toggle_analysis_window_button.setMaximumWidth(180)
-        self.toggle_analysis_window_button.clicked.connect(self.controller.toggle_analysis_window)
-        self.toggle_analysis_window_button.setEnabled(False)
-        button_layout_3.addWidget(self.toggle_analysis_window_button)
 
     def set_gui_disabled(self, disabled_bool):
         for param_control in self.param_controls.values():

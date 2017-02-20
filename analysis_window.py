@@ -15,17 +15,18 @@ if use_pyside:
 else:
     try:
         from PyQt4.QtCore import Signal, Qt, QThread
-        from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
+        from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QStackedWidget, QTabBar
         from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
         from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
-
+        pyqt_version = 4
     except:
         from PyQt5.QtCore import Signal, Qt, QThread
         from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
-        from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
+        from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QStackedWidget, QTabBar
 
         from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
         from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+        pyqt_version = 5
 
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
@@ -36,11 +37,11 @@ import scipy
 import scipy.stats
 import peakdetect
 
-default_params = {'deriv_threshold': 1.0 # threshold to use for angle derivative when finding tail bouts
-                 }
+default_params = {'deriv_threshold': 1.0, # threshold to use for angle derivative when finding tail bouts
+                  'tracking_paths': [] }
 
 class MplCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
+    def __init__(self, parent=None, width=3, height=3, dpi=75):
         # make figure
         fig = Figure(figsize=(width, height), dpi=dpi)
 
@@ -51,7 +52,6 @@ class MplCanvas(FigureCanvas):
         FigureCanvas.__init__(self, fig)
 
         # set background to match window background
-        self.setStyleSheet('background: #e2e2e2;')
         fig.patch.set_visible(False)
 
         # set tight layout
@@ -64,7 +64,7 @@ class MplCanvas(FigureCanvas):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.updateGeometry()
 
-    def plot_tail_angle_array(self, array, bouts=None, maxes_y=None, maxes_x=None, mins_y=None, mins_x=None, freqs=None, keep_xlim=False):
+    def plot_tail_angle_array(self, array, bouts=None, peak_points=None, valley_points=None, frequencies=None, keep_xlim=True):
         self.axes.cla()
 
         if keep_xlim:
@@ -74,14 +74,14 @@ class MplCanvas(FigureCanvas):
         # plot data
         self.axes.plot(array)
 
-        if freqs != None:
+        if frequencies is not None:
             # overlay frequencies
-            self.axes.plot(freqs, 'k')
+            self.axes.plot(frequencies, 'k')
 
-        if maxes_y != None:
-            # overlay min & max peaks
-            self.axes.plot(maxes_x, maxes_y, 'g.')
-            self.axes.plot(mins_x, mins_y, 'r.')
+        if peak_points is not None and valley_points is not None:
+            # overlay peak & valley points
+            self.axes.plot(peak_points[0], peak_points[1], 'g.')
+            self.axes.plot(valley_points[0], valley_points[1], 'r.')
 
         if bouts != None:
             # overlay bouts
@@ -94,36 +94,120 @@ class MplCanvas(FigureCanvas):
 
         self.draw()
 
-    def plot_heading_angle_array(self, array, keep_xlim=False):
+    def plot_heading_angle_array(self, array, keep_xlims=True):
         self.axes.cla()
 
-        if keep_xlim:
+        if keep_xlims:
             # store existing xlim
             xlim = self.axes.get_xlim()
 
         # plot data
         self.axes.plot(array)
 
-        if keep_xlim:
+        if keep_xlims:
             # restore previous xlim
             self.axes.set_xlim(xlim)
 
         self.draw()
 
-class AnalysisWindow(QMainWindow):
-    def __init__(self, parent):
+class PlotWindow(QMainWindow):
+    def __init__(self, parent, controller):
         # create window
         QMainWindow.__init__(self)
-        
-        self.setAttribute(Qt.WA_DeleteOnClose)
-        self.setWindowTitle("Plot Window")
-        self.setGeometry(100, 200, 900, 600)
+        self.setWindowTitle("Plot")
+        self.setGeometry(600, 200, 10, 10)
+
+        # set controller
+        self.controller = controller
+
+        # set parent's plot_window to point to self
+        parent.plot_window = self
+
+        # create main widget & layout
+        self.main_widget = QWidget(self)
+        self.main_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        self.main_layout = QVBoxLayout(self.main_widget)
+
+        # create plot canvas
+        self.plot_canvas  = MplCanvas(None, width=10, height=5, dpi=75)
+        self.main_layout.addWidget(self.plot_canvas)
+
+        # create matplotlib's toolbar but hide it
+        self.mpl_plot_toolbar = NavigationToolbar(self.plot_canvas, self)
+        self.mpl_plot_toolbar.hide()
+
+        # create toolbar
+        self.create_plot_toolbar(self.main_layout)
+
+        # set central widget
+        self.setCentralWidget(self.main_widget)
+
+        # set window titlebar buttons
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+
+        self.show()
+
+    def create_plot_toolbar(self, parent_layout):
+        # create buttons
+        zoom_button = QPushButton('Zoom')
+        zoom_button.clicked.connect(self.mpl_plot_toolbar.zoom)
+         
+        pan_button = QPushButton('Pan')
+        pan_button.clicked.connect(self.mpl_plot_toolbar.pan)
+         
+        home_button = QPushButton('Home')
+        home_button.clicked.connect(self.mpl_plot_toolbar.home)
+
+        save_button = QPushButton('Save')
+        save_button.clicked.connect(self.mpl_plot_toolbar.save_figure)
+
+        # create button layout
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(5)
+        button_layout.addStretch(1)
+
+        # add buttons to button layout
+        button_layout.addWidget(zoom_button)
+        button_layout.addWidget(pan_button)
+        button_layout.addWidget(home_button)
+        button_layout.addWidget(save_button)
+
+        # add button layout to parent layout
+        parent_layout.addLayout(button_layout)
+
+    def plot_tail_angle_array(self, array, bouts=None, peak_points=None, valley_points=None, frequencies=None, keep_xlim=True):
+        self.plot_canvas.plot_tail_angle_array(self, array, bouts, peak_points, valley_points, frequencies, keep_xlim)
+
+    def plot_heading_angle_array(self, array, keep_xlim=True):
+        self.plot_canvas.plot_heading_angle_array(self, array, keep_xlim)
+
+class Controller():
+    def __init__(self, default_params):
+        # set parameters
+        self.default_params = default_params
+        self.params         = self.default_params
 
         # initialize variables
-        self.tail_angle_array                   = None
-        self.heading_angle_array                = None
+        self.current_crop      = -1   # which crop is being looked at
+        self.curr_tracking_num = 0    # which tracking data (from a loaded batch) is being looked at
+        self.n_frames          = 0    # total number of frames to preview
+        self.n                 = 0    # index of currently selected frame
+        self.first_load        = True
+
+        # intialize analysis variables
+        self.smoothing_window_width = 10
+        self.threshold              = 0.01
+        self.min_width              = 30
+
+        self.tail_angle_arrays                  = []
+        self.heading_angle_arrays               = []
+        self.body_position_arrays               = []
+        self.eye_position_arrays                = []
+        self.tail_end_angle_arrays              = []
+        self.tracking_params                    = []
+        self.tracking_paths                     = None
         self.smoothed_abs_deriv_abs_angle_array = None
-        self.speed_array                        = None
+        self.speed_arrays                       = None
         self.bouts                              = None
         self.peak_maxes_y                       = None
         self.peak_maxes_x                       = None
@@ -132,64 +216,397 @@ class AnalysisWindow(QMainWindow):
         self.freqs                              = None
         self.tracking_params_window             = None
 
-        # initialize lists for storing GUI controls
-        self.crop_tab_layouts  = []
-        self.crop_tab_widgets  = []
-        self.tail_tab_layouts  = []
-        self.tail_tab_widgets  = []
-        self.head_tab_layouts  = []
-        self.head_tab_widgets  = []
-        self.tail_toolbars     = []
-        self.head_toolbars     = []
-        self.tail_canvases     = []
-        self.head_canvases     = []
-        self.plot_tabs_widgets = []
-        self.plot_tabs_layouts = []
+        self.analysis_window = AnalysisWindow(None, self)
+        self.plot_window     = PlotWindow(self.analysis_window, self)
 
-        self.n_crops          = 0
-        self.current_crop_num = -1
+    def select_and_open_tracking_files(self):
+        if pyqt_version == 4:
+            tracking_paths = QFileDialog.getOpenFileNames(self.analysis_window, 'Select tracking files', '', 'Numpy (*.npz)')
+        elif pyqt_version == 5:
+            tracking_paths = QFileDialog.getOpenFileNames(self.analysis_window, 'Select tracking files', '', 'Numpy (*.npz)')[0]
 
-        self.smoothing_window_width = 10
-        self.threshold              = 0.01
-        self.min_width              = 30
+            # convert paths to str
+            tracking_paths = [ str(tracking_path) for tracking_path in tracking_paths ]
+
+        if len(tracking_paths) > 0 and tracking_paths[0] != '':
+            if self.first_load:
+                # clear all crops
+                self.clear_crops()
+
+                # set params to defaults
+                self.params = self.default_params.copy()
+
+                self.current_crop = -1
+
+            self.open_tracking_file_batch(tracking_paths)
+
+            if self.first_load:
+                self.first_load = False
+
+    def open_tracking_file_batch(self, tracking_paths):
+        self.first_load = self.first_load or len(self.params['tracking_paths']) == 0
+
+        if (self.first_load and len(self.params['tracking_paths']) == 0) or not self.first_load:
+            # update tracking paths & type parameters
+            self.params['tracking_paths'] += tracking_paths
+
+        self.tail_angle_arrays     += [None]*len(tracking_paths)
+        self.heading_angle_arrays  += [None]*len(tracking_paths)
+        self.body_position_arrays  += [None]*len(tracking_paths)
+        self.eye_position_arrays   += [None]*len(tracking_paths)
+        self.tail_end_angle_arrays += [None]*len(tracking_paths)
+        self.tracking_params       += [None]*len(tracking_paths)
+
+        if self.first_load:
+            # update current tracking data number
+            self.curr_tracking_num = 0
+
+            # open the first tracking file from the batch
+            self.open_tracking_file(tracking_paths[self.curr_tracking_num])
+
+        for k in range(len(self.params['tracking_paths']) - len(tracking_paths), len(self.params['tracking_paths'])):
+            self.analysis_window.add_tracking_item(os.path.basename(self.params['tracking_paths'][k]))
+
+        # self.analysis_window.change_selected_tracking_row(self.curr_tracking_num)
+        self.analysis_window.switch_tracking_item(self.curr_tracking_num)
+        
+    def open_tracking_file(self, tracking_path):
+        print("Loading {}".format(tracking_path))
+
+        # load saved tracking data
+        (tail_coords_array, spline_coords_array,
+         heading_angle_array, body_position_array,
+         eye_coords_array, tracking_params) = an.open_saved_data(tracking_path)
+
+        # calculate tail angles
+        if tracking_params['type'] == "freeswimming" and tracking_params['track_tail']:
+            heading_angle_array = an.fix_heading_angles(heading_angle_array)
+            tail_angle_array = an.get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_position_array)
+        elif tracking_params['type'] == "headfixed":
+            tail_angle_array = an.get_headfixed_tail_angles(tail_coords_array, tracking_params['tail_direction'])
+        else:
+            tail_angle_array = None
+
+        if tail_angle_array != None:
+            # get array of average angle of the last few points of the tail
+            tail_end_angle_array = np.mean(tail_angle_array[:, :, -3:], axis=-1)
+        else:
+            tail_end_angle_array = None
+
+        # print(self.curr_tracking_num, heading_angle_array)
+
+        self.tail_angle_arrays[self.curr_tracking_num]     = tail_angle_array
+        self.tail_end_angle_arrays[self.curr_tracking_num] = tail_end_angle_array
+        self.heading_angle_arrays[self.curr_tracking_num]  = heading_angle_array
+        self.body_position_arrays[self.curr_tracking_num]  = body_position_array
+        self.eye_position_arrays[self.curr_tracking_num]   = eye_coords_array
+        self.tracking_params[self.curr_tracking_num]       = tracking_params
+
+    def create_crops(self, n_crops):
+        # self.current_crop = n_crops - 1
+
+        self.analysis_window.create_crops()
+
+    def change_crop(self, index):
+        print("Changing crop", index)
+        self.current_crop = index
+        self.analysis_window.change_plot_type()
+
+    def clear_crops(self):
+        pass
+
+    def remove_tracking_file(self):
+        pass
+
+    def prev_tracking_file(self):
+        pass
+
+    def next_tracking_file(self):
+        pass
+
+    def switch_tracking_file(self, tracking_num):
+        if 0 <= tracking_num <= len(self.params['tracking_paths'])-1:
+            tracking_paths = self.params['tracking_paths']
+
+            # update current media number
+            self.curr_tracking_num = tracking_num
+
+            if self.tracking_params[self.curr_tracking_num] == None:
+                # open the next media from the batch
+                self.open_tracking_file(tracking_paths[self.curr_tracking_num])
+
+            # self.analysis_window.switch_tracking_widget(tracking_num)
+            self.analysis_window.switch_tracking_item(tracking_num)
+
+    def track_bouts(self):
+        if len(self.tail_angle_arrays) > 0:
+            # get params
+            self.smoothing_window_width = int(self.analysis_window.smoothing_window_param_box.text())
+            self.threshold = float(self.analysis_window.threshold_param_box.text())
+            self.min_width = int(self.analysis_window.min_width_param_box.text())
+
+            # get smoothed derivative
+            abs_angle_array = np.abs(self.tail_end_angle_arrays[self.curr_tracking_num][self.current_crop])
+            deriv_abs_angle_array = np.gradient(abs_angle_array)
+            abs_deriv_abs_angle_array = np.abs(deriv_abs_angle_array)
+            normpdf = scipy.stats.norm.pdf(range(-int(self.smoothing_window_width/2),int(self.smoothing_window_width/2)),0,3)
+            self.smoothed_abs_deriv_abs_angle_array =  np.convolve(abs_deriv_abs_angle_array,  normpdf/np.sum(normpdf),mode='valid')
+
+            # calculate bout periods
+            self.bouts = an.contiguous_regions(self.smoothed_abs_deriv_abs_angle_array > self.threshold)
+
+            # remove bouts that don't have the minimum bout length
+            for i in range(self.bouts.shape[0]-1, -1, -1):
+                if self.bouts[i, 1] - self.bouts[i, 0] < self.min_width:
+                    self.bouts = np.delete(self.bouts, (i), 0)
+
+            # update plot
+            self.analysis_window.change_plot_type(bouts=self.bouts, keep_limits=True)
+            # self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop], self.bouts, keep_limits=True)
+
+    def track_freqs(self):
+        if self.bouts != None:
+            # initiate bout maxima & minima coord lists
+            self.peak_maxes_y = []
+            self.peak_maxes_x = []
+            self.peak_mins_y = []
+            self.peak_mins_x = []
+
+            # initiate instantaneous frequency array
+            self.freqs = np.zeros(self.tail_angle_arrays[self.curr_tracking_num].shape[0])
+
+            for i in range(self.bouts.shape[0]):
+                # get local maxima & minima
+                peak_max, peak_min = peakdetect.peakdet(self.tail_end_angle_arrays[self.curr_tracking_num][self.current_crop][self.bouts[i, 0]:self.bouts[i, 1]], 0.02)
+
+                # change local coordinates (relative to the start of the bout) to global coordinates
+                peak_max[:, 0] += self.bouts[i, 0]
+                peak_min[:, 0] += self.bouts[i, 0]
+
+                # add to the bout maxima & minima coord lists
+                self.peak_maxes_y += list(peak_max[:, 1])
+                self.peak_maxes_x += list(peak_max[:, 0])
+                self.peak_mins_y += list(peak_min[:, 1])
+                self.peak_mins_x += list(peak_min[:, 0])
+
+            # calculate instantaneous frequencies
+            for i in range(len(self.peak_maxes_x)-1):
+                self.freqs[self.peak_maxes_x[i]:self.peak_maxes_x[i+1]] = 1.0/(self.peak_maxes_x[i+1] - self.peak_maxes_x[i])
+
+            # update plot
+            # self.smoothed_deriv_checkbox.setChecked(False)
+            # self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop], self.bouts, self.peak_maxes_y, self.peak_maxes_x, self.peak_mins_y, self.peak_mins_x, self.freqs, keep_limits=True)
+            
+            # update plot
+            self.analysis_window.change_plot_type(bouts=self.bouts, peak_maxes_y=self.peak_maxes_y, peak_maxes_x=self.peak_maxes_x, peak_mins_y=self.peak_mins_y, peak_mins_x=self.peak_mins_x, freqs=self.freqs, keep_limits=True)
+
+    def close_all(self):
+        self.analysis_window.close()
+        self.plot_window.close()
+
+class AnalysisWindow(QMainWindow):
+    def __init__(self, parent, controller):
+        # create window
+        QMainWindow.__init__(self)
+
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.setWindowTitle("Tracking Analysis")
+        self.setGeometry(100, 200, 10, 10)
+
+        # set controller
+        self.controller = controller
 
         # create main widget & layout
         self.main_widget = QWidget(self)
-        self.main_layout = QVBoxLayout(self.main_widget)
-        self.main_layout.addStretch(1)
+        self.main_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        self.main_layout = QGridLayout(self.main_widget)
 
-        self.crop_tabs_widget = QTabWidget()
-        self.crop_tabs_widget.currentChanged.connect(self.change_crop)
-        self.crop_tabs_widget.setElideMode(Qt.ElideLeft)
-        self.crop_tabs_layout = QVBoxLayout(self.crop_tabs_widget)
-        self.main_layout.addWidget(self.crop_tabs_widget)
+        # create left widget & layout
+        self.left_widget = QWidget(self)
+        self.main_layout.addWidget(self.left_widget, 0, 0)
 
-        self.create_crop()
+        self.left_layout = QVBoxLayout(self.left_widget)
+        self.left_layout.setAlignment(Qt.AlignTop)
+
+        # create list of tracking items
+        self.tracking_list_items = []
+        self.tracking_list = QListWidget(self)
+        self.tracking_list.currentRowChanged.connect(self.controller.switch_tracking_file)
+        self.left_layout.addWidget(self.tracking_list)
+
+        # create tracking list buttons
+        self.tracking_list_buttons = QHBoxLayout(self)
+        self.left_layout.addLayout(self.tracking_list_buttons)
+
+        self.add_tracking_button = QPushButton('+')
+        self.add_tracking_button.clicked.connect(self.controller.select_and_open_tracking_files)
+        self.add_tracking_button.setToolTip("Add tracking file.")
+        self.tracking_list_buttons.addWidget(self.add_tracking_button)
+
+        self.remove_tracking_button = QPushButton('-')
+        self.remove_tracking_button.clicked.connect(self.controller.remove_tracking_file)
+        self.remove_tracking_button.setToolTip("Remove selected tracking file.")
+        self.tracking_list_buttons.addWidget(self.remove_tracking_button)
+
+        self.prev_tracking_button = QPushButton('<')
+        self.prev_tracking_button.clicked.connect(self.controller.prev_tracking_file)
+        self.prev_tracking_button.setToolTip("Switch to previous tracking file.")
+        self.tracking_list_buttons.addWidget(self.prev_tracking_button)
+
+        self.next_tracking_button = QPushButton('>')
+        self.next_tracking_button.clicked.connect(self.controller.next_tracking_file)
+        self.next_tracking_button.setToolTip("Switch to next tracking file.")
+        self.tracking_list_buttons.addWidget(self.next_tracking_button)
+
+
+        # create right widget & layout
+        self.right_widget = QWidget(self)
+        self.right_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        self.main_layout.addWidget(self.right_widget, 0, 1)
+        
+        self.right_layout = QVBoxLayout(self.right_widget)
+        self.right_layout.setAlignment(Qt.AlignTop)
+        self.right_layout.setSpacing(5)
 
         # create button layout for main widget
-        main_button_layout = QHBoxLayout()
-        main_button_layout.setSpacing(5)
-        main_button_layout.addStretch(1)
-        self.main_layout.addLayout(main_button_layout)
+        plot_horiz_layout = QHBoxLayout()
+        self.right_layout.addLayout(plot_horiz_layout)
 
-        # add buttons
-        self.load_data_button = QPushButton('Load Data', self)
-        self.load_data_button.setMinimumHeight(30)
-        self.load_data_button.setMaximumWidth(90)
-        self.load_data_button.clicked.connect(lambda:self.load_data())
-        main_button_layout.addWidget(self.load_data_button)
+        # add param labels & textboxes
+        plot_type_label = QLabel()
+        plot_type_label.setText("Plot:")
+        plot_horiz_layout.addWidget(plot_type_label)
+        plot_horiz_layout.addStretch(1)
+
+        # create tab widget for plot type
+        self.plot_tabs_widget = QTabBar()
+        self.plot_tabs_widget.setDrawBase(False)
+        self.plot_tabs_widget.setExpanding(False)
+        self.plot_tabs_widget.currentChanged.connect(lambda:self.change_plot_type(keep_limits=True))
+        plot_horiz_layout.addWidget(self.plot_tabs_widget)
+
+        # create button layout for main widget
+        crop_horiz_layout = QHBoxLayout()
+        self.right_layout.addLayout(crop_horiz_layout)
+
+        # add param labels & textboxes
+        crop_type_label = QLabel()
+        crop_type_label.setText("Crop #:")
+        crop_horiz_layout.addWidget(crop_type_label)
+        crop_horiz_layout.addStretch(1)
+
+        # create tab widget for crop number
+        self.crop_tabs_widget = QTabBar()
+        self.crop_tabs_widget.setDrawBase(False)
+        self.crop_tabs_widget.setExpanding(False)
+        self.crop_tabs_widget.currentChanged.connect(self.controller.change_crop)
+        crop_horiz_layout.addWidget(self.crop_tabs_widget)
+
+        # create button layout for main widget
+        button_layout = QHBoxLayout()
+        button_layout.addStretch(1)
+        self.right_layout.addLayout(button_layout)
 
         # add buttons
         self.show_tracking_params_button = QPushButton('Tracking Parameters', self)
         self.show_tracking_params_button.setMinimumHeight(30)
-        self.show_tracking_params_button.setMaximumWidth(180)
         self.show_tracking_params_button.clicked.connect(lambda:self.show_tracking_params())
-        main_button_layout.addWidget(self.show_tracking_params_button)
+        button_layout.addWidget(self.show_tracking_params_button)
 
-        self.main_widget.setFocus()
+        # create stacked widget & layout
+        self.stacked_widget = QStackedWidget(self)
+        self.stacked_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        self.right_layout.addWidget(self.stacked_widget)
+
+        self.create_tail_tracking_widget(self.stacked_widget)
+        self.create_body_tracking_widget(self.stacked_widget)
+
+        # self.right_layout = QVBoxLayout(self.right_widget)
+        # self.right_layout.setAlignment(Qt.AlignTop)
+        # self.right_layout.setSpacing(5)
+
+        # self.main_widget.setFocus()
         self.setCentralWidget(self.main_widget)
 
+        # set window titlebar buttons
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+
         self.show()
+
+    def change_plot_type(self, bouts=None, peak_maxes_y=None, peak_maxes_x=None, peak_mins_y=None, peak_mins_x=None, freqs=None, keep_limits=True):
+        print(keep_limits)
+        tracking_params = self.controller.tracking_params[self.controller.curr_tracking_num]
+        print("Changing plot type")
+
+        if tracking_params['type'] == "freeswimming":
+            # print(self.plot_tabs_widget.currentIndex())
+            if self.plot_tabs_widget.currentIndex() == 0:
+                plot_type = "tail"
+                self.stacked_widget.setCurrentIndex(0)
+            elif self.plot_tabs_widget.currentIndex() == 1:
+                plot_type = "body"
+                self.stacked_widget.setCurrentIndex(1)
+            else:
+                plot_type = "eyes"
+        else:
+            plot_type = "tail"
+            self.stacked_widget.setCurrentIndex(0)
+
+        self.plot_window.update_plot(plot_type, bouts=bouts, peak_maxes_y=peak_maxes_y, peak_maxes_x=peak_maxes_x, peak_mins_y=peak_mins_y, peak_mins_x=peak_mins_x, freqs=freqs, keep_limits=keep_limits)
+
+    def switch_tracking_item(self, row_number):
+        tracking_params = self.controller.tracking_params[row_number]
+
+        print("Switching tracking item")
+
+        self.change_selected_tracking_row(row_number)
+
+        self.plot_tabs_widget.blockSignals(True)
+        # add plot tabs
+        for i in range(self.plot_tabs_widget.count()-1, -1, -1):
+            self.plot_tabs_widget.removeTab(i)
+
+        if tracking_params['type'] == "freeswimming":
+            if tracking_params['track_tail']:
+                self.plot_tabs_widget.addTab("Tail")
+
+                # self.create_tail_tracking_widget(self.right_widget)
+
+            self.plot_tabs_widget.addTab("Body")
+
+            # self.create_body_tracking_widget(self.right_widget)
+
+            if tracking_params['track_eyes']:
+                self.plot_tabs_widget.addTab("Eyes")
+        else:
+            self.plot_tabs_widget.addTab("Tail")
+
+            # self.create_tail_tracking_widget(self.right_widget)
+        self.plot_tabs_widget.blockSignals(False)
+
+        self.crop_tabs_widget.blockSignals(True)
+        for i in range(self.crop_tabs_widget.count()-1, -1, -1):
+            self.crop_tabs_widget.removeTab(i)
+
+        # add crop tabs
+        n_crops = len(tracking_params['crop_params'])
+
+        for i in range(n_crops):
+            self.crop_tabs_widget.addTab("{}".format(i+1))
+        self.crop_tabs_widget.blockSignals(False)
+
+        self.change_plot_type(keep_limits=False)
+
+    def add_tracking_item(self, item_name):
+        print("Adding tracking item")
+        self.tracking_list_items.append(QListWidgetItem(item_name, self.tracking_list))
+
+        # self.update_plot()
+
+    def change_selected_tracking_row(self, row_number):
+        self.tracking_list.blockSignals(True)
+        self.tracking_list.setCurrentRow(row_number)
+        self.tracking_list.blockSignals(False)
 
     def show_tracking_params(self):
         if self.tracking_params_window != None:
@@ -198,83 +615,53 @@ class AnalysisWindow(QMainWindow):
         self.tracking_params_window = TrackingParamsWindow(self)
         self.tracking_params_window.show()
 
-        # self.tracking_params_window.create_param_controls(self.params, self.current_crop_num)
+        # self.tracking_params_window.create_param_controls(self.params, self.current_crop)
 
-    def create_crop(self):
-        crop_tab_widget = QWidget(self.crop_tabs_widget)
-        crop_tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        crop_tab_layout = QVBoxLayout(crop_tab_widget)
+    # def create_plot_toolbar(self, parent_layout):
+    #     zoom_button = QPushButton('Zoom')
+    #     zoom_button.clicked.connect(self.zoom)
+         
+    #     pan_button = QPushButton('Pan')
+    #     pan_button.clicked.connect(self.pan)
+         
+    #     home_button = QPushButton('Home')
+    #     home_button.clicked.connect(self.home)
 
-        # add to list of crop widgets & layouts
-        self.crop_tab_layouts.append(crop_tab_layout)
-        self.crop_tab_widgets.append(crop_tab_widget)
+    #     save_button = QPushButton('Save')
+    #     save_button.clicked.connect(self.save)
 
-        # create tabs widget & layout
-        plot_tabs_widget = QTabWidget()
-        plot_tabs_layout  = QVBoxLayout(plot_tabs_widget)
-        crop_tab_layout.addWidget(plot_tabs_widget)
+    #     top_tail_button_layout = QHBoxLayout()
+    #     top_tail_button_layout.setSpacing(5)
+    #     top_tail_button_layout.addStretch(1)
+    #     parent_layout.addLayout(top_tail_button_layout)
 
-        # add to list of crop widgets & layouts
-        self.plot_tabs_layouts.append(plot_tabs_layout)
-        self.plot_tabs_widgets.append(plot_tabs_widget)
+    #     top_tail_button_layout.addWidget(zoom_button)
+    #     top_tail_button_layout.addWidget(pan_button)
+    #     top_tail_button_layout.addWidget(home_button)
+    #     top_tail_button_layout.addWidget(save_button)
 
+    def create_tail_tracking_widget(self, parent_widget):
         # create tail tab widget & layout
         tail_tab_widget = QWidget()
         tail_tab_layout = QVBoxLayout(tail_tab_widget)
 
-        # add to list of crop widgets & layouts
-        self.tail_tab_layouts.append(tail_tab_layout)
-        self.tail_tab_widgets.append(tail_tab_widget)
-
-        # create tail plot canvas & toolbar
-        tail_canvas = MplCanvas(tail_tab_widget, width=10, height=10, dpi=75)
-        tail_canvas.resize(400, 300)
-        tail_toolbar = NavigationToolbar(tail_canvas, self)
-        tail_toolbar.hide()
-        self.tail_toolbars.append(tail_toolbar)
-        self.tail_canvases.append(tail_canvas)
-
-        zoom_button = QPushButton('+ Zoom')
-        zoom_button.clicked.connect(self.zoom_tail)
-         
-        pan_button = QPushButton('> Pan')
-        pan_button.clicked.connect(self.pan_tail)
-         
-        home_button = QPushButton('# Home')
-        home_button.clicked.connect(self.home_tail)
-
-        save_button = QPushButton(u'\u2714 Save')
-        save_button.clicked.connect(self.save_tail)
-
-        top_tail_button_layout = QHBoxLayout()
-        top_tail_button_layout.setSpacing(5)
-        top_tail_button_layout.addStretch(1)
-        tail_tab_layout.addLayout(top_tail_button_layout)
-
-        top_tail_button_layout.addWidget(zoom_button)
-        top_tail_button_layout.addWidget(pan_button)
-        top_tail_button_layout.addWidget(home_button)
-        top_tail_button_layout.addWidget(save_button)
-
-        # add tail plot canvas & toolbar to tail tab widget
-        tail_tab_layout.addWidget(tail_toolbar)
-        tail_tab_layout.addWidget(tail_canvas)
-
         # create button layout for tail tab
-        bottom_tail_button_layout = QHBoxLayout()
+        bottom_tail_button_layout = QVBoxLayout()
+        # bottom_tail_button_layout.setSpacing(5)
+        bottom_tail_button_layout.addStretch(1)
         tail_tab_layout.addLayout(bottom_tail_button_layout)
 
         # add buttons
         track_bouts_button = QPushButton('Track Bouts', self)
         track_bouts_button.setMinimumHeight(30)
         track_bouts_button.setMaximumWidth(100)
-        track_bouts_button.clicked.connect(lambda:self.track_bouts())
+        track_bouts_button.clicked.connect(lambda:self.controller.track_bouts())
         bottom_tail_button_layout.addWidget(track_bouts_button)
 
         track_freqs_button = QPushButton('Track Freq', self)
         track_freqs_button.setMinimumHeight(30)
         track_freqs_button.setMaximumWidth(100)
-        track_freqs_button.clicked.connect(lambda:self.track_freqs())
+        track_freqs_button.clicked.connect(lambda:self.controller.track_freqs())
         bottom_tail_button_layout.addWidget(track_freqs_button)
 
         # add checkbox for switching plots
@@ -289,8 +676,8 @@ class AnalysisWindow(QMainWindow):
 
         self.smoothing_window_param_box = QLineEdit(self)
         self.smoothing_window_param_box.setMinimumHeight(20)
-        self.smoothing_window_param_box.setMinimumWidth(40)
-        self.smoothing_window_param_box.setText(str(self.smoothing_window_width))
+        self.smoothing_window_param_box.setMaximumWidth(40)
+        self.smoothing_window_param_box.setText(str(self.controller.smoothing_window_width))
         bottom_tail_button_layout.addWidget(self.smoothing_window_param_box)
 
         threshold_label = QLabel()
@@ -299,8 +686,8 @@ class AnalysisWindow(QMainWindow):
 
         self.threshold_param_box = QLineEdit(self)
         self.threshold_param_box.setMinimumHeight(20)
-        self.threshold_param_box.setMinimumWidth(40)
-        self.threshold_param_box.setText(str(self.threshold))
+        self.threshold_param_box.setMaximumWidth(40)
+        self.threshold_param_box.setText(str(self.controller.threshold))
         bottom_tail_button_layout.addWidget(self.threshold_param_box)
 
         min_width_label = QLabel()
@@ -309,50 +696,16 @@ class AnalysisWindow(QMainWindow):
 
         self.min_width_param_box = QLineEdit(self)
         self.min_width_param_box.setMinimumHeight(20)
-        self.min_width_param_box.setMinimumWidth(40)
-        self.min_width_param_box.setText(str(self.min_width))
+        self.min_width_param_box.setMaximumWidth(40)
+        self.min_width_param_box.setText(str(self.controller.min_width))
         bottom_tail_button_layout.addWidget(self.min_width_param_box)
 
+        parent_widget.addWidget(tail_tab_widget)
+
+    def create_body_tracking_widget(self, parent_widget):
         # create head tab widget & layout
         head_tab_widget = QWidget()
         head_tab_layout = QVBoxLayout(head_tab_widget)
-
-        # add to list of crop widgets & layouts
-        self.head_tab_layouts.append(head_tab_layout)
-        self.head_tab_widgets.append(head_tab_widget)
-
-        # create head plot canvas & toolbar
-        head_canvas = MplCanvas(head_tab_widget, width=10, height=10, dpi=75)
-        head_toolbar = NavigationToolbar(head_canvas, self)
-        head_toolbar.hide()
-        self.head_toolbars.append(head_toolbar)
-        self.head_canvases.append(head_canvas)
-
-        zoom_button = QPushButton('+ Zoom')
-        zoom_button.clicked.connect(self.zoom_head)
-         
-        pan_button = QPushButton('> Pan')
-        pan_button.clicked.connect(self.pan_head)
-         
-        home_button = QPushButton('# Home')
-        home_button.clicked.connect(self.home_head)
-
-        save_button = QPushButton(u'\u2714 Save')
-        save_button.clicked.connect(self.save_head)
-
-        top_head_button_layout = QHBoxLayout()
-        top_head_button_layout.setSpacing(5)
-        top_head_button_layout.addStretch(1)
-        head_tab_layout.addLayout(top_head_button_layout)
-
-        top_head_button_layout.addWidget(zoom_button)
-        top_head_button_layout.addWidget(pan_button)
-        top_head_button_layout.addWidget(home_button)
-        top_head_button_layout.addWidget(save_button)
-
-        # add tail plot canvas & toolbar to tail tab widget
-        head_tab_layout.addWidget(head_toolbar)
-        head_tab_layout.addWidget(head_canvas)
 
         # create button layout for head tab
         bottom_head_button_layout = QHBoxLayout()
@@ -369,45 +722,96 @@ class AnalysisWindow(QMainWindow):
         speed_checkbox = QCheckBox("Show speed")
         speed_checkbox.toggled.connect(lambda:self.show_speed(self.speed_checkbox))
         bottom_head_button_layout.addWidget(speed_checkbox)
-    
-        # set plot tabs widget size
-        # plot_tabs_widget.resize(450, 350)
 
-        plot_tabs_widget.addTab(tail_tab_widget, "Tail")
-        plot_tabs_widget.addTab(head_tab_widget, "Head")
+        parent_widget.addWidget(head_tab_widget)
 
-        self.n_crops += 1
+    def create_crops(self, parent_layout):
+        crop_tabs_widget = QTabWidget()
+        crop_tabs_widget.currentChanged.connect(self.change_crop)
+        crop_tabs_widget.setElideMode(Qt.ElideLeft)
+        crop_tabs_layout = QVBoxLayout(crop_tabs_widget)
+        parent_layout.addWidget(crop_tabs_widget)
 
-        self.current_crop_num = self.n_crops - 1
+        self.crop_tabs_widgets.append(crop_tabs_widget)
+        self.crop_tabs_layouts.append(crop_tabs_layout)
+
+        # create head plot canvas & toolbar
+        # head_canvas = MplCanvas(width=5, height=5, dpi=75)
+        # head_toolbar = NavigationToolbar(head_canvas, self)
+        # head_toolbar.hide()
+        # self.plot_toolbars[self.controller.curr_tracking_num]['body'] = head_toolbar
+        # self.plot_canvases[self.controller.curr_tracking_num]['body'] = head_canvas
+
+        n_crops = len(self.controller.tracking_params[self.controller.curr_tracking_num]['crop_params'])
+
+        for k in range(n_crops):
+            self.create_crop()
+
+    def create_crop(self):
+        print(self.controller.curr_tracking_num, self.crop_tabs_widgets)
+        parent_widget = self.crop_tabs_widgets[self.controller.curr_tracking_num]
+
+        crop_tab_widget = QWidget(parent_widget)
+        crop_tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        crop_tab_layout = QVBoxLayout(crop_tab_widget)
+
+        # add to list of crop widgets & layouts
+        self.crop_tab_layouts[self.controller.curr_tracking_num].append(crop_tab_layout)
+        self.crop_tab_widgets[self.controller.curr_tracking_num].append(crop_tab_widget)
+
+        # # create tabs widget & layout
+        # plot_tabs_widget = QTabWidget()
+        # plot_tabs_layout  = QVBoxLayout(plot_tabs_widget)
+        # crop_tab_layout.addWidget(plot_tabs_widget)
+
+        # # add to list of crop widgets & layouts
+        # self.plot_tabs_layouts[self.controller.curr_tracking_num].append(plot_tabs_layout)
+        # self.plot_tabs_widgets[self.controller.curr_tracking_num].append(plot_tabs_widget)
+
+        # self.create_tail_tab_widget(plot_tabs_widget)
+        # self.create_body_tab_widget(plot_tabs_widget)
+
+        # self.plot_canvases[self.controller.curr_tracking_num]['body'].setParent(crop_tab_widget)
+        # self.plot_canvases[self.controller.curr_tracking_num]['tail'].setParent(crop_tab_widget)
+
+        # add tail plot canvas & toolbar to tail tab widget
+        crop_tab_layout.addWidget(self.plot_toolbars[self.controller.curr_tracking_num])
+        crop_tab_layout.addWidget(self.plot_canvases[self.controller.curr_tracking_num])
 
         # add tabs to plot tabs widget
-        self.crop_tabs_widget.addTab(crop_tab_widget, str(self.current_crop_num))
+        parent_widget.addTab(crop_tab_widget, str(self.controller.current_crop))
 
-        self.crop_tabs_widget.setCurrentIndex(self.current_crop_num)
+        parent_widget.setCurrentIndex(self.current_crop)
+
+        # self.change_crop
 
     def change_crop(self, index):
         if index != -1:
             # update current crop number
-            self.current_crop_num = index
+            self.current_crop = index
 
-            self.tail_toolbar = self.tail_toolbars[index]
-            self.head_toolbar = self.head_toolbars[index]
-            self.tail_canvas = self.tail_canvases[index]
-            self.head_canvas = self.head_canvases[index]
+            self.tail_toolbar = self.plot_toolbars[self.controller.curr_tracking_num]
+            self.head_toolbar = self.plot_toolbars[self.controller.curr_tracking_num]
+            self.tail_canvas = self.plot_canvases[self.controller.curr_tracking_num]
+            self.head_canvas = self.plot_canvases[self.controller.curr_tracking_num]
 
     def clear_crops(self):
-        self.crop_tab_layouts  = []
-        self.crop_tab_widgets  = []
-        self.tail_tab_layouts  = []
-        self.tail_tab_widgets  = []
-        self.head_tab_layouts  = []
-        self.head_tab_widgets  = []
-        self.tail_toolbars     = []
-        self.head_toolbars     = []
-        self.tail_canvases     = []
-        self.head_canvases     = []
-        self.plot_tabs_widgets = []
-        self.plot_tabs_layouts = []
+        self.crop_tab_layouts  = [[]]
+        self.crop_tab_widgets  = [[]]
+        self.plot_tab_layouts  = [{'tail': [],
+                                  'eyes': [],
+                                  'body': []}]
+        self.plot_tab_widgets  = [{'tail': [],
+                                  'eyes': [],
+                                  'body': []}]
+        self.plot_toolbars     = [{'tail': [],
+                                  'eyes': [],
+                                  'body': []}]
+        self.plot_canvases     = [{'tail': [],
+                                  'eyes': [],
+                                  'body': []}]
+        self.plot_tabs_widgets = [[]]
+        self.plot_tabs_layouts = [[]]
 
         self.head_angle_arrays = []
         self.tail_angle_arrays = []
@@ -417,39 +821,30 @@ class AnalysisWindow(QMainWindow):
             self.crop_tabs_widget.removeTab(c)
 
         self.n_crops = 0
-        self.current_crop_num = -1
+        self.current_crop = -1
 
-    def home_tail(self):
-        self.tail_toolbar.home()
-    def zoom_tail(self):
-        self.tail_toolbar.zoom()
-    def pan_tail(self):
-        self.tail_toolbar.pan()
-    def save_tail(self):
-        self.tail_toolbar.save_figure()
-
-    def home_head(self):
-        self.head_toolbar.home()
-    def zoom_head(self):
-        self.head_toolbar.zoom()
-    def pan_head(self):
-        self.head_toolbar.pan()
-    def save_head(self):
-        self.head_toolbar.save_figure()
+    # def home(self):
+    #     self.plot_toolbar.home()
+    # def zoom(self):
+    #     self.plot_toolbar.zoom()
+    # def pan(self):
+    #     self.plot_toolbar.pan()
+    # def save(self):
+    #     self.plot_toolbar.save_figure()
 
     def show_smoothed_deriv(self, checkbox):
         if self.smoothed_abs_deriv_abs_angle_array != None:
             if checkbox.isChecked():
-                self.tail_canvas.plot_tail_angle_array(self.smoothed_abs_deriv_abs_angle_array, self.bouts, keep_xlim=True)
+                self.tail_canvas.plot_tail_angle_array(self.smoothed_abs_deriv_abs_angle_array, self.bouts, keep_limits=True)
             else:
-                self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop_num], self.bouts, self.peak_maxes_y, self.peak_maxes_x, self.peak_mins_y, self.peak_mins_x, self.freqs, keep_xlim=True)
+                self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop], self.bouts, self.peak_maxes_y, self.peak_maxes_x, self.peak_mins_y, self.peak_mins_x, self.freqs, keep_limits=True)
 
     def show_speed(self, checkbox):
         if self.speed_array != None:
             if checkbox.isChecked():
-                self.head_canvas.plot_head_array(self.speed_array, keep_xlim=True)
+                self.head_canvas.plot_head_array(self.speed_array, keep_limits=True)
             else:
-                self.head_canvas.plot_head_array(self.head_angle_array, keep_xlim=True)
+                self.head_canvas.plot_head_array(self.head_angle_array, keep_limits=True)
 
     def load_data(self, data_path=None):
         if data_path == None:
@@ -491,64 +886,64 @@ class AnalysisWindow(QMainWindow):
                 if self.tail_angle_array is not None:
                     self.tail_canvases[k].plot_tail_angle_array(self.tail_end_angle_array[k])
 
-    def track_bouts(self):
-        if self.tail_angle_array != None:
-            # get params
-            self.smoothing_window_width = int(self.smoothing_window_param_box.text())
-            self.threshold = float(self.threshold_param_box.text())
-            self.min_width = int(self.min_width_param_box.text())
+    # def track_bouts(self):
+    #     if self.tail_angle_array != None:
+    #         # get params
+    #         self.smoothing_window_width = int(self.smoothing_window_param_box.text())
+    #         self.threshold = float(self.threshold_param_box.text())
+    #         self.min_width = int(self.min_width_param_box.text())
 
-            # get smoothed derivative
-            abs_angle_array = np.abs(self.tail_end_angle_array[self.current_crop_num])
-            deriv_abs_angle_array = np.gradient(abs_angle_array)
-            abs_deriv_abs_angle_array = np.abs(deriv_abs_angle_array)
-            normpdf = scipy.stats.norm.pdf(range(-int(self.smoothing_window_width/2),int(self.smoothing_window_width/2)),0,3)
-            self.smoothed_abs_deriv_abs_angle_array =  np.convolve(abs_deriv_abs_angle_array,  normpdf/np.sum(normpdf),mode='valid')
+    #         # get smoothed derivative
+    #         abs_angle_array = np.abs(self.tail_end_angle_array[self.current_crop])
+    #         deriv_abs_angle_array = np.gradient(abs_angle_array)
+    #         abs_deriv_abs_angle_array = np.abs(deriv_abs_angle_array)
+    #         normpdf = scipy.stats.norm.pdf(range(-int(self.smoothing_window_width/2),int(self.smoothing_window_width/2)),0,3)
+    #         self.smoothed_abs_deriv_abs_angle_array =  np.convolve(abs_deriv_abs_angle_array,  normpdf/np.sum(normpdf),mode='valid')
 
-            # calculate bout periods
-            self.bouts = an.contiguous_regions(self.smoothed_abs_deriv_abs_angle_array > self.threshold)
+    #         # calculate bout periods
+    #         self.bouts = an.contiguous_regions(self.smoothed_abs_deriv_abs_angle_array > self.threshold)
 
-            # remove bouts that don't have the minimum bout length
-            for i in range(self.bouts.shape[0]-1, -1, -1):
-                if self.bouts[i, 1] - self.bouts[i, 0] < self.min_width:
-                    self.bouts = np.delete(self.bouts, (i), 0)
+    #         # remove bouts that don't have the minimum bout length
+    #         for i in range(self.bouts.shape[0]-1, -1, -1):
+    #             if self.bouts[i, 1] - self.bouts[i, 0] < self.min_width:
+    #                 self.bouts = np.delete(self.bouts, (i), 0)
 
-            # update plot
-            self.smoothed_deriv_checkbox.setChecked(False)
-            self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop_num], self.bouts, keep_xlim=True)
+    #         # update plot
+    #         self.smoothed_deriv_checkbox.setChecked(False)
+    #         self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop], self.bouts, keep_limits=True)
 
-    def track_freqs(self):
-        if self.bouts != None:
-            # initiate bout maxima & minima coord lists
-            self.peak_maxes_y = []
-            self.peak_maxes_x = []
-            self.peak_mins_y = []
-            self.peak_mins_x = []
+    # def track_freqs(self):
+    #     if self.bouts != None:
+    #         # initiate bout maxima & minima coord lists
+    #         self.peak_maxes_y = []
+    #         self.peak_maxes_x = []
+    #         self.peak_mins_y = []
+    #         self.peak_mins_x = []
 
-            # initiate instantaneous frequency array
-            self.freqs = np.zeros(self.tail_angle_array.shape[0])
+    #         # initiate instantaneous frequency array
+    #         self.freqs = np.zeros(self.tail_angle_array.shape[0])
 
-            for i in range(self.bouts.shape[0]):
-                # get local maxima & minima
-                peak_max, peak_min = peakdetect.peakdet(self.tail_end_angle_array[self.current_crop_num][self.bouts[i, 0]:self.bouts[i, 1]], 0.02)
+    #         for i in range(self.bouts.shape[0]):
+    #             # get local maxima & minima
+    #             peak_max, peak_min = peakdetect.peakdet(self.tail_end_angle_array[self.current_crop][self.bouts[i, 0]:self.bouts[i, 1]], 0.02)
 
-                # change local coordinates (relative to the start of the bout) to global coordinates
-                peak_max[:, 0] += self.bouts[i, 0]
-                peak_min[:, 0] += self.bouts[i, 0]
+    #             # change local coordinates (relative to the start of the bout) to global coordinates
+    #             peak_max[:, 0] += self.bouts[i, 0]
+    #             peak_min[:, 0] += self.bouts[i, 0]
 
-                # add to the bout maxima & minima coord lists
-                self.peak_maxes_y += list(peak_max[:, 1])
-                self.peak_maxes_x += list(peak_max[:, 0])
-                self.peak_mins_y += list(peak_min[:, 1])
-                self.peak_mins_x += list(peak_min[:, 0])
+    #             # add to the bout maxima & minima coord lists
+    #             self.peak_maxes_y += list(peak_max[:, 1])
+    #             self.peak_maxes_x += list(peak_max[:, 0])
+    #             self.peak_mins_y += list(peak_min[:, 1])
+    #             self.peak_mins_x += list(peak_min[:, 0])
 
-            # calculate instantaneous frequencies
-            for i in range(len(self.peak_maxes_x)-1):
-                self.freqs[self.peak_maxes_x[i]:self.peak_maxes_x[i+1]] = 1.0/(self.peak_maxes_x[i+1] - self.peak_maxes_x[i])
+    #         # calculate instantaneous frequencies
+    #         for i in range(len(self.peak_maxes_x)-1):
+    #             self.freqs[self.peak_maxes_x[i]:self.peak_maxes_x[i+1]] = 1.0/(self.peak_maxes_x[i+1] - self.peak_maxes_x[i])
 
-            # update plot
-            self.smoothed_deriv_checkbox.setChecked(False)
-            self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop_num], self.bouts, self.peak_maxes_y, self.peak_maxes_x, self.peak_mins_y, self.peak_mins_x, self.freqs, keep_xlim=True)
+    #         # update plot
+    #         self.smoothed_deriv_checkbox.setChecked(False)
+    #         self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop], self.bouts, self.peak_maxes_y, self.peak_maxes_x, self.peak_mins_y, self.peak_mins_x, self.freqs, keep_limits=True)
 
     def track_position(self):
         if self.head_angle_array != None:
@@ -565,20 +960,21 @@ class AnalysisWindow(QMainWindow):
     def fileQuit(self):
         self.close()
 
-    def closeEvent(self, ce):
-        self.fileQuit()
+    def closeEvent(self, event):
+        self.controller.close_all()
 
     def resizeEvent(self, re):
         QMainWindow.resizeEvent(self, re)
 
-        self.plot_tabs_widgets[self.current_crop_num].resize(self.frameGeometry().width()-80, self.frameGeometry().height()-160)
+        # self.crop_tab_widgets[self.controller.curr_tracking_num][self.current_crop].resize(self.frameGeometry().width()-80, self.frameGeometry().height()-160)
 
 class TrackingParamsWindow(QMainWindow):
-    def __init__(self, parent):
+    def __init__(self, parent, controller):
         QMainWindow.__init__(self)
 
         # set parent
-        self.parent = parent
+        self.parent     = parent
+        self.controller = controller
 
         # set position & size
         self.setGeometry(550, 100, 10, 10)
@@ -600,7 +996,7 @@ class TrackingParamsWindow(QMainWindow):
 
         # create parameter controls
         self.create_param_controls_layout()
-        self.create_param_controls(self.parent.params, self.parent.current_crop_num)
+        self.create_param_controls(self.controller.params, self.controller.current_crop)
 
         # set main widget
         self.setCentralWidget(self.main_widget)
@@ -622,7 +1018,7 @@ class TrackingParamsWindow(QMainWindow):
         # create dict for storing all parameter controls
         self.param_controls = {}
 
-    def create_param_controls(self, params, current_crop_num):
+    def create_param_controls(self, params, current_crop):
         self.add_parameter_label("type", "Tracking type:", params['type'], self.form_layout)
         self.add_parameter_label("shrink_factor", "Shrink factor:", params['shrink_factor'], self.form_layout)
         self.add_parameter_label("invert", "Invert:", params['invert'], self.form_layout)
@@ -673,7 +1069,6 @@ def convert_direction_to_angle(direction):
 if __name__ == "__main__":
     qApp = QApplication(sys.argv)
 
-    plot_window = AnalysisWindow(None)
-    plot_window.show()
+    controller = Controller(default_params)
 
     sys.exit(qApp.exec_())

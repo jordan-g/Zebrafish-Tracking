@@ -26,7 +26,7 @@ import tracking
 # color table to use for showing images
 gray_color_table = [qRgb(i, i, i) for i in range(256)]
 
-class PlotQLabel(QLabel):
+class PreviewQLabel(QLabel):
     """
     QLabel subclass used to show a preview image.
 
@@ -35,6 +35,7 @@ class PlotQLabel(QLabel):
         scale_factor:          (float): scale factor between label pixels & pixels of the actual image
         start_crop_coord        (y, x): starting coordinate of mouse crop selection
         end_crop_coord          (y, x): ending coordinate of mouse crop selection
+        pixmap                 (Array): label's pixmap
     """
 
     def __init__(self, preview_window):
@@ -42,6 +43,8 @@ class PlotQLabel(QLabel):
 
         self.preview_window = preview_window
         self.scale_factor = None
+        self.pix                 = None  # image label's pixmap
+        self.pix_size            = None  # size of image label's pixmap
 
         # accept clicks
         self.setAcceptDrops(True)
@@ -74,15 +77,58 @@ class PlotQLabel(QLabel):
     def set_scale_factor(self, scale_factor):
         self.scale_factor = scale_factor
 
+    def update_size(self):
+        if self.pix:
+            # calculate new label vs. image scale factor
+            scale_factor = float(self.pix_size)/max(self.pix.width(), self.pix.height())
+            self.scale_factor = scale_factor
+
+            # scale pixmap
+            pix = self.pix.scaled(self.pix.width()*scale_factor, self.pix.height()*scale_factor, Qt.IgnoreAspectRatio, Qt.FastTransformation)
+
+            # update pixmap & size
+            self.setPixmap(pix)
+            self.setFixedSize(pix.size())
+
+    def update_pixmap(self, image):
+        # get image info
+        height, width, bytesPerComponent = image.shape
+        bytesPerLine = bytesPerComponent * width
+        
+        # create qimage
+        qimage = QImage(image.data, image.shape[1], image.shape[0], bytesPerLine, QImage.Format_RGB888)
+        qimage.setColorTable(gray_color_table)
+
+        # generate pixmap
+        self.pix = QPixmap(qimage)
+
+        # update label vs. image scale factor
+        self.set_scale_factor(float(self.pix_size)/max(self.pix.width(), self.pix.height()))
+
+        # scale pixmap
+        pixmap = self.pix.scaled(self.pix_size, self.pix_size, Qt.KeepAspectRatio)
+
+        # set image label's pixmap & update label's size
+        self.setPixmap(pixmap)
+        self.setFixedSize(pixmap.size())
+
 class PreviewWindow(QMainWindow):
     """
     QMainWindow subclass used to show frames & tracking.
 
     Properties:
-        param_window (ParamWindow): parameter window
-        scale_factor:          (float): scale factor between label pixels & pixels of the actual image
-        start_crop_coord        (y, x): starting coordinate of mouse crop selection
-        end_crop_coord          (y, x): ending coordinate of mouse crop selection
+        controller        (Controller): controller object
+        main_widget          (QWidget): main window widget
+        main_layout          (QLayout): main window layout
+        image_label    (PreviewQLabel): label for showing a preview image
+        instructions_label    (QLabel): label for showing instructions
+        image_slider         (QSlider): slider for switching between frames
+        image                  (Array): image to show
+        pixmap                 = None  # image label's pixmap
+        pixmap_size            = None  # size of image label's pixmap
+        tracking_data          = None  # list of tracking data
+        selecting_crop         = False # whether user is selecting a crop
+        changing_heading_angle = False # whether the user is changing the heading angle
     """
 
     def __init__(self, controller):
@@ -105,7 +151,7 @@ class PreviewWindow(QMainWindow):
         self.main_layout = QVBoxLayout(self.main_widget)
 
         # create label that shows frames
-        self.image_label = PlotQLabel(self)
+        self.image_label = PreviewQLabel(self)
         self.image_label.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.main_layout.addWidget(self.image_label)
@@ -127,10 +173,7 @@ class PreviewWindow(QMainWindow):
         self.main_layout.addWidget(self.image_slider)
 
         # initialize variables
-        # self.image_slider   = None  # slider for selecting frames
         self.image                  = None  # image to show
-        self.pixmap                 = None  # image label's pixmap
-        self.pixmap_size            = None  # size of image label's pixmap
         self.tracking_data          = None  # list of tracking data
         self.selecting_crop         = False # whether user is selecting a crop
         self.changing_heading_angle = False # whether the user is changing the heading angle
@@ -151,19 +194,10 @@ class PreviewWindow(QMainWindow):
         width = max(min(size.width(), 900), 400)
 
         # set new size of pixmap
-        self.pixmap_size = width - 40
+        self.image_label.pix_size = width - 40
 
-        if self.pixmap:
-            # calculate new label vs. image scale factor
-            scale_factor = float(self.pixmap_size)/max(self.pixmap.width(), self.pixmap.height())
-            self.image_label.set_scale_factor(scale_factor)
-
-            # scale pixmap
-            pix = self.pixmap.scaled(self.pixmap.width()*scale_factor, self.pixmap.height()*scale_factor, Qt.IgnoreAspectRatio, Qt.FastTransformation)
-
-            # update label's pixmap & size
-            self.image_label.setPixmap(pix)
-            self.image_label.setFixedSize(pix.size())
+        # update size of image label
+        self.image_label.update_size()
 
         # constrain window to square size
         self.resize(width, width)
@@ -274,27 +308,9 @@ class PreviewWindow(QMainWindow):
             self.update_image_label(image)
 
     def update_image_label(self, image):
-        # get image info
-        height, width, bytesPerComponent = image.shape
-        bytesPerLine = bytesPerComponent * width
         cv2.cvtColor(image, cv2.COLOR_BGR2RGB, image)
 
-        # create qimage
-        qimage = QImage(image.data, image.shape[1], image.shape[0], bytesPerLine, QImage.Format_RGB888)
-        qimage.setColorTable(gray_color_table)
-
-        # generate pixmap
-        self.pixmap = QPixmap(qimage)
-
-        # update label vs. image scale factor
-        self.image_label.set_scale_factor(float(self.pixmap_size)/max(self.pixmap.width(), self.pixmap.height()))
-
-        # scale pixmap
-        pixmap = self.pixmap.scaled(self.pixmap_size, self.pixmap_size, Qt.KeepAspectRatio)
-
-        # set image label's pixmap & update label's size
-        self.image_label.setPixmap(pixmap)
-        self.image_label.setFixedSize(pixmap.size())
+        self.image_label.update_pixmap(image)
 
     def crop_selection(self, start_crop_coord, end_crop_coord):
         if self.selecting_crop:

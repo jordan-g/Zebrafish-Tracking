@@ -33,14 +33,11 @@ if __name__ == "__main__":
     freeswimming_button = mode_select_dialog.addButton("Free-swimming", QMessageBox.NoRole)
      
     mode_select_dialog.exec_()
-     
+
+    # create controller
     if mode_select_dialog.clickedButton() == headfixed_button:
-        print("Headfixed")
-        # create controller
         controller = HeadfixedController()
     elif mode_select_dialog.clickedButton() == freeswimming_button:
-        print("Free-swimming")
-        # create controller
         controller = FreeswimmingController()
     else:
         mode_select_dialog.close()

@@ -6,7 +6,8 @@ import glob
 def open_saved_data(save_dir=None):
     # load first crop
     try:
-        npzfile = np.load(glob.glob(os.path.join(save_dir, "*.npz"))[0])
+        # npzfile = np.load(glob.glob(os.path.join(save_dir, "*.npz"))[0])
+        npzfile = np.load(save_dir)
 
         tail_coords_array   = npzfile['tail_coords']
         spline_coords_array = npzfile['spline_coords']
@@ -30,6 +31,23 @@ def open_saved_data(save_dir=None):
         return [None]*6
 
     return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array, params
+
+def fix_heading_angles(heading_angle_array):
+    # get number of crops, frames & tail points
+    n_crops          = heading_angle_array.shape[0]
+    n_frames         = heading_angle_array.shape[1]
+    n_heading_points = heading_angle_array.shape[-1]
+
+    for k in range(n_crops):
+        for j in range(n_heading_points):
+            # correct for abrupt jumps in angle due to vectors switching quadrants between frames
+            for i in range(1, n_frames):
+                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= np.pi/2.0:
+                    heading_angle_array[k, i, j] -= np.pi
+                elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -np.pi/2.0:
+                    heading_angle_array[k, i, j] += np.pi
+
+    return heading_angle_array
 
 def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_position_array):
     print("hi")
@@ -63,6 +81,13 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
     # create tail vectors by subtracting points along the tail and the body position
     tail_vectors = body_position_array[:, :, :, np.newaxis] - tail_coords_array
 
+    tail_distance_start = np.sqrt((heading_coords_array[:, :, 0, 0] - tail_coords_array[:, :, 0, 0])**2 + (heading_coords_array[:, :, 1, 0] - tail_coords_array[:, :, 1, 0])**2)
+    tail_distance_end   = np.sqrt((heading_coords_array[:, :, 0, 0] - tail_coords_array[:, :, 0, -1])**2 + (heading_coords_array[:, :, 1, 0] - tail_coords_array[:, :, 1, -1])**2)
+
+    mask = tail_distance_end < tail_distance_start
+
+    tail_coords_array[mask, :, :] = np.fliplr(tail_coords_array[mask, :, :])
+
     for k in range(n_crops):
         for j in range(n_tail_points):
             # get dot product and determinant between the tail vectors and the heading vectors
@@ -72,14 +97,45 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
             # get an angle between 0 and 2*pi
             tail_angle_array[k, :, j] = np.arctan2(dot, det)
 
-            print(j, tail_angle_array[k, 772, j], tail_angle_array[k, 773, j])
+            # print(tail_angle_array[k, 0, j] // np.pi/2.0)
+
+            # tail_angle_array[k, :, j] -= (tail_angle_array[k, 0, j] // np.pi/2.0)*np.pi/2.0
 
             # correct for abrupt jumps in angle due to vectors switching quadrants between frames
             for i in range(1, n_frames):
-                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/2.0:
+                # if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi:
+                #     tail_angle_array[k, i, j] -= 2*np.pi
+                # elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi:
+                #     tail_angle_array[k, i, j] += 2*np.pi
+                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/4.0:
+                    if k == 3 and i < 30:
+                        print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
                     tail_angle_array[k, i, j] -= np.pi
-                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/2.0:
+                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/4.0:
+                    if k == 3 and i < 30:
+                        print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
                     tail_angle_array[k, i, j] += np.pi
+
+            print("round 2")
+
+            for i in range(1, n_frames):
+                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/4.0:
+                    if k == 3 and i < 30:
+                        print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
+                    tail_angle_array[k, i, j] -= np.pi
+                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/4.0:
+                    if k == 3 and i < 30:
+                        print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
+                    tail_angle_array[k, i, j] += np.pi
+
+            # print(tail_angle_array[k, 0, j] // np.pi/2.0)
+
+            if tail_angle_array[k, 0, j] >= np.pi/2.0:
+                tail_angle_array[k, :, j] -= np.pi
+            elif tail_angle_array[k, 0, j] <= -np.pi/2.0:
+                tail_angle_array[k, :, j] += np.pi
+
+            # tail_angle_array[k, :, j] -= (tail_angle_array[k, 0, j] // np.pi/2.0)*np.pi/2.0
 
     return tail_angle_array
 

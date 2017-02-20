@@ -1,7 +1,6 @@
 from param_window import *
 from preview_window import *
 from crops_window import *
-from analysis_window import *
 import tracking
 
 # import the Qt library
@@ -34,51 +33,51 @@ default_freeswimming_crop_params = { 'offset': np.array([0, 0]), # crop (y, x) o
                                      'eye_threshold': 60,        # pixel brightness to use for thresholding to find the eyes (0-255)
                                      'tail_threshold': 200 }     # pixel brightness to use for thresholding to find the tail (0-255)
 
-default_headfixed_params = {'shrink_factor': 1.0,                               # factor by which to shrink the original frame
+default_headfixed_params = {'shrink_factor': 1.0,                            # factor by which to shrink the original frame
                             'crop_params': [],
-                            'invert': False,                                    # invert the frame
-                            'type': "headfixed",                                # "headfixed" / "freeswimming"
-                            'save_video': True,                                 # whether to make a video with tracking overlaid
-                            'saved_video_fps': 30,                              # fps for the generated video
-                            'n_tail_points': 30,                                # number of tail points to use
-                            'subtract_background': False,                       # whether to perform background subtraction
-                            'tail_direction': "Right",                          # "right" / "left" / "up" / "down"
-                            'media_types': [],                                  # types of media that are tracked - "video" / "folder" / "image"
-                            'media_paths': [],                                  # paths to media that are tracked
-                            'backgrounds': [],                                  # backgrounds calculated for background subtraction
-                            'tail_start_coords': None,                          # (y, x) coordinates of the start of the tail
-                            'use_multiprocessing': True,                        # whether to use multiprocessing
-                            'align_batches': False,                             # whether to perform spatial alignment of batches of media
-                            'batch_offsets': None,                              # spatial alignment offsets
-                            'gui_params': { 'auto_track': False }}              # automatically track a frame when you switch to it
+                            'invert': False,                                 # invert the frame
+                            'type': "headfixed",                             # "headfixed" / "freeswimming"
+                            'save_video': True,                              # whether to make a video with tracking overlaid
+                            'saved_video_fps': 30,                           # fps for the generated video
+                            'n_tail_points': 30,                             # number of tail points to use
+                            'subtract_background': False,                    # whether to perform background subtraction
+                            'tail_direction': "Right",                       # "right" / "left" / "up" / "down"
+                            'media_types': [],                               # types of media that are tracked - "video" / "folder" / "image"
+                            'media_paths': [],                               # paths to media that are tracked
+                            'backgrounds': [],                               # backgrounds calculated for background subtraction
+                            'tail_start_coords': None,                       # (y, x) coordinates of the start of the tail
+                            'use_multiprocessing': True,                     # whether to use multiprocessing
+                            'align_batches': False,                          # whether to perform spatial alignment of batches of media
+                            'batch_offsets': None,                           # spatial alignment offsets
+                            'gui_params': { 'auto_track': False }}           # automatically track a frame when you switch to it
 
-default_freeswimming_params = {'shrink_factor': 1.0,                            # factor by which to shrink the original frame
+default_freeswimming_params = {'shrink_factor': 1.0,                         # factor by which to shrink the original frame
                                'crop_params': [],
-                               'invert': False,                                 # invert the frame
-                               'type': "freeswimming",                          # "headfixed" / "freeswimming"
-                               'save_video': True,                              # whether to make a video with tracking overlaid
-                               'saved_video_fps': 30,                           # fps for the generated video
-                               'n_tail_points': 30,                             # number of tail points to use
-                               'adjust_thresholds': False,                      # whether to adjust thresholds while tracking if necessary
-                               'subtract_background': False,                    # whether to perform background subtraction
-                               'track_tail': True,                              # whether to track the tail
-                               'track_eyes': True,                              # whether to track the eyes
-                               'min_tail_body_dist': 10,                        # min. distance between the body center and the tail
-                               'max_tail_body_dist': 30,                        # max. distance between the body center and the tail
-                               'eye_resize_factor': 1,                          # factor by which to resize frame for reducing noise in eye position tracking
-                               'interpolation': 'Nearest Neighbor',             # interpolation to use when resizing frame for eye tracking
-                               'tail_crop': np.array([100, 100]),               # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
-                               'media_types': [],                               # types of media that are tracked - "video" / "folder" / "image"
-                               'media_paths': [],                               # paths to media that are tracked
-                               'backgrounds': [],                               # backgrounds calculated for background subtraction
-                               'use_multiprocessing': True,                     # whether to use multiprocessing
-                               'align_batches': False,                          # whether to perform spatial alignment of batches of media
-                               'batch_offsets': None,                           # spatial alignment offsets
-                               'gui_params': { 'show_body_threshold': False,    # show body threshold in preview window
-                                               'show_eye_threshold': False,     # show eye threshold in preview window
-                                               'show_tail_threshold': False,    # show tail threshold in preview window
-                                               'show_tail_skeleton': False,     # show tail skeleton in preview window
-                                               'auto_track': False }}           # automatically track a frame when you switch to it
+                               'invert': False,                              # invert the frame
+                               'type': "freeswimming",                       # "headfixed" / "freeswimming"
+                               'save_video': True,                           # whether to make a video with tracking overlaid
+                               'saved_video_fps': 30,                        # fps for the generated video
+                               'n_tail_points': 30,                          # number of tail points to use
+                               'adjust_thresholds': False,                   # whether to adjust thresholds while tracking if necessary
+                               'subtract_background': False,                 # whether to perform background subtraction
+                               'track_tail': True,                           # whether to track the tail
+                               'track_eyes': True,                           # whether to track the eyes
+                               'min_tail_body_dist': 10,                     # min. distance between the body center and the tail
+                               'max_tail_body_dist': 30,                     # max. distance between the body center and the tail
+                               'eye_resize_factor': 1,                       # factor by which to resize frame for reducing noise in eye position tracking
+                               'interpolation': 'Nearest Neighbor',          # interpolation to use when resizing frame for eye tracking
+                               'tail_crop': np.array([100, 100]),            # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
+                               'media_types': [],                            # types of media that are tracked - "video" / "folder" / "image"
+                               'media_paths': [],                            # paths to media that are tracked
+                               'backgrounds': [],                            # backgrounds calculated for background subtraction
+                               'use_multiprocessing': True,                  # whether to use multiprocessing
+                               'align_batches': False,                       # whether to perform spatial alignment of batches of media
+                               'batch_offsets': None,                        # spatial alignment offsets
+                               'gui_params': { 'show_body_threshold': False, # show body threshold in preview window
+                                               'show_eye_threshold': False,  # show eye threshold in preview window
+                                               'show_tail_threshold': False, # show tail threshold in preview window
+                                               'show_tail_skeleton': False,  # show tail skeleton in preview window
+                                               'auto_track': False }}        # automatically track a frame when you switch to it
 
 max_n_frames = 200 # maximum # of frames to load for previewing
 
@@ -97,7 +96,7 @@ class Controller():
         self.frames                = []
         self.bg_sub_frames         = []
         self.tracking_results      = []
-        self.current_crop          = -1   # which crop is being looked at
+        self.current_crop          = -1   # which crop is being looked at (-1 means no crop is loaded)
         self.curr_media_num        = 0    # which media (from a loaded batch) is being looked at
         self.n_frames              = 0    # total number of frames to preview
         self.n                     = 0    # index of currently selected frame
@@ -105,15 +104,11 @@ class Controller():
         self.get_background_thread = None
         self.track_media_thread    = None
         self.closing               = False
-        self.first_load            = True
+        self.first_load            = True # False if we are reloading parameters or media has already been loaded; True otherwise
         self.background_calc_paths = []
 
         # create preview window
         self.preview_window  = PreviewWindow(self)
-
-        # create analysis window
-        self.analysis_window = AnalysisWindow(self)
-        self.analysis_window.hide()
 
     def select_and_open_media(self):
         if pyqt_version == 4:
@@ -125,7 +120,6 @@ class Controller():
             media_paths = [ str(media_path) for media_path in media_paths ]
 
         if len(media_paths) > 0 and media_paths[0] != '':
-            # need_to_clear_crops = self.first_load and len(self.params['media_paths']) == 0
             if self.first_load:
                 # clear all crops
                 self.clear_crops()
@@ -133,16 +127,20 @@ class Controller():
                 # set params to defaults
                 self.params = self.default_params.copy()
 
+                # reset current crop
                 self.current_crop = -1
 
+            # set media types
             if media_paths[0].endswith('.jpg') or media_paths[0].endswith('.jpeg') or media_paths[0].endswith('.tif') or media_paths[0].endswith('.tiff') or media_paths[0].endswith('.png'):
                 media_types = ["image"]*len(media_paths)
             else:
                 media_types = ["video"]*len(media_paths)
 
+            # open the media
             self.open_media_batch(media_types, media_paths)
 
             if self.first_load:
+                # create a crop
                 self.create_crop()
 
                 self.first_load = False
@@ -151,6 +149,8 @@ class Controller():
             self.switch_frame(0, new_load=True)
 
     def open_media(self, media_type, media_path):
+        ''' Open one media file. '''
+
         # reset tracking results
         self.tracking_results = []
 
@@ -218,7 +218,9 @@ class Controller():
             self.crops_window.set_gui_disabled(False)
             self.param_window.set_gui_disabled(False)
 
-    def open_media_batch(self, media_types, media_paths): #todo: complete this
+    def open_media_batch(self, media_types, media_paths):
+        ''' Open a batch of media files. '''
+
         self.first_load = self.first_load or len(self.params['media_paths']) == 0
 
         if (self.first_load and len(self.params['media_paths']) == 0) or not self.first_load:
@@ -274,7 +276,8 @@ class Controller():
                     # background is already calculated; call the callback function
                     self.background_calculated(self.params['backgrounds'][k], self.params['media_paths'][k])
 
-                self.param_window.add_media_item(os.path.basename(self.params['media_paths'][k]))
+        for k in range(len(self.params['media_paths']) - len(media_paths), len(self.params['media_paths'])):
+            self.param_window.add_media_item(os.path.basename(self.params['media_paths'][k]))
 
         self.param_window.change_selected_media_row(self.curr_media_num)
 
@@ -422,8 +425,6 @@ class Controller():
 
     def media_tracked(self, tracking_time):
         self.param_window.tracking_progress_label.setText("Tracking completed in <b>{:.3f}s</b>.".format(tracking_time))
-        
-        self.param_window.toggle_analysis_window_button.setEnabled(True)
 
     def update_background_subtract_progress(self, percent):
         self.param_window.param_controls["subtract_background"].setText("Subtract background (Calculating...{}%)".format(percent))
@@ -486,13 +487,6 @@ class Controller():
  
         # save params to file
         np.savez(params_path, params=self.params)
-
-    def toggle_analysis_window(self):
-        if self.tracking_path != None:
-            self.analysis_window.show()
-
-            # analyze tracking data
-            self.analysis_window.load_data(os.path.dirname(self.tracking_path))
 
     def switch_frame(self, n, new_load=False):
         if n != self.n:
