@@ -97,16 +97,8 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
             # get an angle between 0 and 2*pi
             tail_angle_array[k, :, j] = np.arctan2(dot, det)
 
-            # print(tail_angle_array[k, 0, j] // np.pi/2.0)
-
-            # tail_angle_array[k, :, j] -= (tail_angle_array[k, 0, j] // np.pi/2.0)*np.pi/2.0
-
             # correct for abrupt jumps in angle due to vectors switching quadrants between frames
             for i in range(1, n_frames):
-                # if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi:
-                #     tail_angle_array[k, i, j] -= 2*np.pi
-                # elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi:
-                #     tail_angle_array[k, i, j] += 2*np.pi
                 if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/4.0:
                     if k == 3 and i < 30:
                         print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
@@ -115,8 +107,6 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
                     if k == 3 and i < 30:
                         print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
                     tail_angle_array[k, i, j] += np.pi
-
-            print("round 2")
 
             for i in range(1, n_frames):
                 if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/4.0:
@@ -127,15 +117,11 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
                     if k == 3 and i < 30:
                         print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
                     tail_angle_array[k, i, j] += np.pi
-
-            # print(tail_angle_array[k, 0, j] // np.pi/2.0)
 
             if tail_angle_array[k, 0, j] >= np.pi/2.0:
                 tail_angle_array[k, :, j] -= np.pi
             elif tail_angle_array[k, 0, j] <= -np.pi/2.0:
                 tail_angle_array[k, :, j] += np.pi
-
-            # tail_angle_array[k, :, j] -= (tail_angle_array[k, 0, j] // np.pi/2.0)*np.pi/2.0
 
     return tail_angle_array
 

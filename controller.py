@@ -4,20 +4,15 @@ from crops_window import *
 import tracking
 
 # import the Qt library
-from matplotlib.backends import qt_compat
-use_pyside = qt_compat.QT_API == qt_compat.QT_API_PYSIDE
-if use_pyside:
-    from PySide import QtGui, QtCore
-else:
-    try:
-        from PyQt4.QtCore import Signal, Qt, QThread
-        from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
-        pyqt_version = 4
-    except:
-        from PyQt5.QtCore import Signal, Qt, QThread
-        from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
-        from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
-        pyqt_version = 5
+try:
+    from PyQt4.QtCore import pyqtSignal, Qt, QThread
+    from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
+    pyqt_version = 4
+except:
+    from PyQt5.QtCore import pyqtSignal, Qt, QThread
+    from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
+    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
+    pyqt_version = 5
 
 try:
     xrange
@@ -1093,8 +1088,8 @@ class HeadfixedController(Controller):
             self.update_preview(image=None, new_load=False, new_frame=True)
 
 class GetBackgroundThread(QThread):
-    finished = Signal(np.ndarray, str)
-    progress = Signal(int)
+    finished = pyqtSignal(np.ndarray, str)
+    progress = pyqtSignal(int)
 
     def set_parameters(self, media_path, media_type, media_num):
         self.media_path   = media_path
@@ -1110,8 +1105,8 @@ class GetBackgroundThread(QThread):
         self.finished.emit(background, self.media_path)
 
 class TrackMediaThread(QThread):
-    finished = Signal(float)
-    progress = Signal(str, int, int)
+    finished = pyqtSignal(float)
+    progress = pyqtSignal(str, int, int)
 
     def set_parameters(self, params, tracking_path):
         self.params = params
