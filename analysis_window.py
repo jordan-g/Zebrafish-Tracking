@@ -59,7 +59,7 @@ class MplCanvas(FigureCanvas):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.updateGeometry()
 
-    def plot_tail_angle_array(self, array, bouts=None, peak_points=None, valley_points=None, frequencies=None, keep_xlim=True):
+    def plot_tail_angle_array(self, array, extra_tracking=None, keep_xlim=True):
         self.axes.cla()
 
         if keep_xlim:
@@ -69,19 +69,25 @@ class MplCanvas(FigureCanvas):
         # plot data
         self.axes.plot(array)
 
-        if frequencies is not None:
-            # overlay frequencies
-            self.axes.plot(frequencies, 'k')
+        if extra_tracking != None:
+            bouts         = extra_tracking['bouts']
+            peak_points   = extra_tracking['peak_points']
+            valley_points = extra_tracking['valley_points']
+            frequencies   = extra_tracking['frequencies']
 
-        if peak_points is not None and valley_points is not None:
-            # overlay peak & valley points
-            self.axes.plot(peak_points[0], peak_points[1], 'g.')
-            self.axes.plot(valley_points[0], valley_points[1], 'r.')
+            if frequencies is not None:
+                # overlay frequencies
+                self.axes.plot(frequencies, 'k')
 
-        if bouts != None:
-            # overlay bouts
-            for i in range(bouts.shape[0]):
-                self.axes.axvspan(bouts[i, 0], bouts[i, 1], color='red', alpha=0.2)
+            if peak_points is not None and valley_points is not None:
+                # overlay peak & valley points
+                self.axes.plot(peak_points[0], peak_points[1], 'g.')
+                self.axes.plot(valley_points[0], valley_points[1], 'r.')
+
+            if bouts != None:
+                # overlay bouts
+                for i in range(bouts.shape[0]):
+                    self.axes.axvspan(bouts[i, 0], bouts[i, 1], color='red', alpha=0.2)
 
         if keep_xlim:
             # restore previous xlim
@@ -89,17 +95,17 @@ class MplCanvas(FigureCanvas):
 
         self.draw()
 
-    def plot_heading_angle_array(self, array, keep_xlims=True):
+    def plot_heading_angle_array(self, array, keep_xlim=True):
         self.axes.cla()
 
-        if keep_xlims:
+        if keep_xlim:
             # store existing xlim
             xlim = self.axes.get_xlim()
 
         # plot data
         self.axes.plot(array)
 
-        if keep_xlims:
+        if keep_xlim:
             # restore previous xlim
             self.axes.set_xlim(xlim)
 
@@ -170,234 +176,12 @@ class PlotWindow(QMainWindow):
         # add button layout to parent layout
         parent_layout.addLayout(button_layout)
 
-    def plot_tail_angle_array(self, array, bouts=None, peak_points=None, valley_points=None, frequencies=None, keep_xlim=True):
-        self.plot_canvas.plot_tail_angle_array(self, array, bouts, peak_points, valley_points, frequencies, keep_xlim)
+    def plot_tail_angle_array(self, array, extra_tracking=None, keep_xlim=True):
+        self.plot_canvas.plot_tail_angle_array(array, extra_tracking, keep_xlim)
 
     def plot_heading_angle_array(self, array, keep_xlim=True):
-        self.plot_canvas.plot_heading_angle_array(self, array, keep_xlim)
-
-class Controller():
-    def __init__(self, default_params):
-        # set parameters
-        self.default_params = default_params
-        self.params         = self.default_params
-
-        # initialize variables
-        self.current_crop      = -1   # which crop is being looked at
-        self.curr_tracking_num = 0    # which tracking data (from a loaded batch) is being looked at
-        self.n_frames          = 0    # total number of frames to preview
-        self.n                 = 0    # index of currently selected frame
-        self.first_load        = True
-
-        # intialize analysis variables
-        self.smoothing_window_width = 10
-        self.threshold              = 0.01
-        self.min_width              = 30
-
-        self.tail_angle_arrays                  = []
-        self.heading_angle_arrays               = []
-        self.body_position_arrays               = []
-        self.eye_position_arrays                = []
-        self.tail_end_angle_arrays              = []
-        self.tracking_params                    = []
-        self.tracking_paths                     = None
-        self.smoothed_abs_deriv_abs_angle_array = None
-        self.speed_arrays                       = None
-        self.bouts                              = None
-        self.peak_maxes_y                       = None
-        self.peak_maxes_x                       = None
-        self.peak_mins_y                        = None
-        self.peak_mins_x                        = None
-        self.freqs                              = None
-        self.tracking_params_window             = None
-
-        self.analysis_window = AnalysisWindow(None, self)
-        self.plot_window     = PlotWindow(self.analysis_window, self)
-
-    def select_and_open_tracking_files(self):
-        if pyqt_version == 4:
-            tracking_paths = QFileDialog.getOpenFileNames(self.analysis_window, 'Select tracking files', '', 'Numpy (*.npz)')
-        elif pyqt_version == 5:
-            tracking_paths = QFileDialog.getOpenFileNames(self.analysis_window, 'Select tracking files', '', 'Numpy (*.npz)')[0]
-
-            # convert paths to str
-            tracking_paths = [ str(tracking_path) for tracking_path in tracking_paths ]
-
-        if len(tracking_paths) > 0 and tracking_paths[0] != '':
-            if self.first_load:
-                # clear all crops
-                self.clear_crops()
-
-                # set params to defaults
-                self.params = self.default_params.copy()
-
-                self.current_crop = -1
-
-            self.open_tracking_file_batch(tracking_paths)
-
-            if self.first_load:
-                self.first_load = False
-
-    def open_tracking_file_batch(self, tracking_paths):
-        self.first_load = self.first_load or len(self.params['tracking_paths']) == 0
-
-        if (self.first_load and len(self.params['tracking_paths']) == 0) or not self.first_load:
-            # update tracking paths & type parameters
-            self.params['tracking_paths'] += tracking_paths
-
-        self.tail_angle_arrays     += [None]*len(tracking_paths)
-        self.heading_angle_arrays  += [None]*len(tracking_paths)
-        self.body_position_arrays  += [None]*len(tracking_paths)
-        self.eye_position_arrays   += [None]*len(tracking_paths)
-        self.tail_end_angle_arrays += [None]*len(tracking_paths)
-        self.tracking_params       += [None]*len(tracking_paths)
-
-        if self.first_load:
-            # update current tracking data number
-            self.curr_tracking_num = 0
-
-            # open the first tracking file from the batch
-            self.open_tracking_file(tracking_paths[self.curr_tracking_num])
-
-        for k in range(len(self.params['tracking_paths']) - len(tracking_paths), len(self.params['tracking_paths'])):
-            self.analysis_window.add_tracking_item(os.path.basename(self.params['tracking_paths'][k]))
-
-        # self.analysis_window.change_selected_tracking_row(self.curr_tracking_num)
-        self.analysis_window.switch_tracking_item(self.curr_tracking_num)
-        
-    def open_tracking_file(self, tracking_path):
-        print("Loading {}".format(tracking_path))
-
-        # load saved tracking data
-        (tail_coords_array, spline_coords_array,
-         heading_angle_array, body_position_array,
-         eye_coords_array, tracking_params) = an.open_saved_data(tracking_path)
-
-        # calculate tail angles
-        if tracking_params['type'] == "freeswimming" and tracking_params['track_tail']:
-            heading_angle_array = an.fix_heading_angles(heading_angle_array)
-            tail_angle_array = an.get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_position_array)
-        elif tracking_params['type'] == "headfixed":
-            tail_angle_array = an.get_headfixed_tail_angles(tail_coords_array, tracking_params['tail_direction'])
-        else:
-            tail_angle_array = None
-
-        if tail_angle_array != None:
-            # get array of average angle of the last few points of the tail
-            tail_end_angle_array = np.mean(tail_angle_array[:, :, -3:], axis=-1)
-        else:
-            tail_end_angle_array = None
-
-        # print(self.curr_tracking_num, heading_angle_array)
-
-        self.tail_angle_arrays[self.curr_tracking_num]     = tail_angle_array
-        self.tail_end_angle_arrays[self.curr_tracking_num] = tail_end_angle_array
-        self.heading_angle_arrays[self.curr_tracking_num]  = heading_angle_array
-        self.body_position_arrays[self.curr_tracking_num]  = body_position_array
-        self.eye_position_arrays[self.curr_tracking_num]   = eye_coords_array
-        self.tracking_params[self.curr_tracking_num]       = tracking_params
-
-    def create_crops(self, n_crops):
-        # self.current_crop = n_crops - 1
-
-        self.analysis_window.create_crops()
-
-    def change_crop(self, index):
-        print("Changing crop", index)
-        self.current_crop = index
-        self.analysis_window.change_plot_type()
-
-    def clear_crops(self):
-        pass
-
-    def remove_tracking_file(self):
-        pass
-
-    def prev_tracking_file(self):
-        pass
-
-    def next_tracking_file(self):
-        pass
-
-    def switch_tracking_file(self, tracking_num):
-        if 0 <= tracking_num <= len(self.params['tracking_paths'])-1:
-            tracking_paths = self.params['tracking_paths']
-
-            # update current media number
-            self.curr_tracking_num = tracking_num
-
-            if self.tracking_params[self.curr_tracking_num] == None:
-                # open the next media from the batch
-                self.open_tracking_file(tracking_paths[self.curr_tracking_num])
-
-            # self.analysis_window.switch_tracking_widget(tracking_num)
-            self.analysis_window.switch_tracking_item(tracking_num)
-
-    def track_bouts(self):
-        if len(self.tail_angle_arrays) > 0:
-            # get params
-            self.smoothing_window_width = int(self.analysis_window.smoothing_window_param_box.text())
-            self.threshold = float(self.analysis_window.threshold_param_box.text())
-            self.min_width = int(self.analysis_window.min_width_param_box.text())
-
-            # get smoothed derivative
-            abs_angle_array = np.abs(self.tail_end_angle_arrays[self.curr_tracking_num][self.current_crop])
-            deriv_abs_angle_array = np.gradient(abs_angle_array)
-            abs_deriv_abs_angle_array = np.abs(deriv_abs_angle_array)
-            normpdf = scipy.stats.norm.pdf(range(-int(self.smoothing_window_width/2),int(self.smoothing_window_width/2)),0,3)
-            self.smoothed_abs_deriv_abs_angle_array =  np.convolve(abs_deriv_abs_angle_array,  normpdf/np.sum(normpdf),mode='valid')
-
-            # calculate bout periods
-            self.bouts = an.contiguous_regions(self.smoothed_abs_deriv_abs_angle_array > self.threshold)
-
-            # remove bouts that don't have the minimum bout length
-            for i in range(self.bouts.shape[0]-1, -1, -1):
-                if self.bouts[i, 1] - self.bouts[i, 0] < self.min_width:
-                    self.bouts = np.delete(self.bouts, (i), 0)
-
-            # update plot
-            self.analysis_window.change_plot_type(bouts=self.bouts, keep_limits=True)
-            # self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop], self.bouts, keep_limits=True)
-
-    def track_freqs(self):
-        if self.bouts != None:
-            # initiate bout maxima & minima coord lists
-            self.peak_maxes_y = []
-            self.peak_maxes_x = []
-            self.peak_mins_y = []
-            self.peak_mins_x = []
-
-            # initiate instantaneous frequency array
-            self.freqs = np.zeros(self.tail_angle_arrays[self.curr_tracking_num].shape[0])
-
-            for i in range(self.bouts.shape[0]):
-                # get local maxima & minima
-                peak_max, peak_min = peakdetect.peakdet(self.tail_end_angle_arrays[self.curr_tracking_num][self.current_crop][self.bouts[i, 0]:self.bouts[i, 1]], 0.02)
-
-                # change local coordinates (relative to the start of the bout) to global coordinates
-                peak_max[:, 0] += self.bouts[i, 0]
-                peak_min[:, 0] += self.bouts[i, 0]
-
-                # add to the bout maxima & minima coord lists
-                self.peak_maxes_y += list(peak_max[:, 1])
-                self.peak_maxes_x += list(peak_max[:, 0])
-                self.peak_mins_y += list(peak_min[:, 1])
-                self.peak_mins_x += list(peak_min[:, 0])
-
-            # calculate instantaneous frequencies
-            for i in range(len(self.peak_maxes_x)-1):
-                self.freqs[self.peak_maxes_x[i]:self.peak_maxes_x[i+1]] = 1.0/(self.peak_maxes_x[i+1] - self.peak_maxes_x[i])
-
-            # update plot
-            # self.smoothed_deriv_checkbox.setChecked(False)
-            # self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop], self.bouts, self.peak_maxes_y, self.peak_maxes_x, self.peak_mins_y, self.peak_mins_x, self.freqs, keep_limits=True)
-            
-            # update plot
-            self.analysis_window.change_plot_type(bouts=self.bouts, peak_maxes_y=self.peak_maxes_y, peak_maxes_x=self.peak_maxes_x, peak_mins_y=self.peak_mins_y, peak_mins_x=self.peak_mins_x, freqs=self.freqs, keep_limits=True)
-
-    def close_all(self):
-        self.analysis_window.close()
-        self.plot_window.close()
+        print(array.shape)
+        self.plot_canvas.plot_heading_angle_array(array, keep_xlim)
 
 class AnalysisWindow(QMainWindow):
     def __init__(self, parent, controller):
@@ -453,7 +237,6 @@ class AnalysisWindow(QMainWindow):
         self.next_tracking_button.setToolTip("Switch to next tracking file.")
         self.tracking_list_buttons.addWidget(self.next_tracking_button)
 
-
         # create right widget & layout
         self.right_widget = QWidget(self)
         self.right_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
@@ -477,7 +260,7 @@ class AnalysisWindow(QMainWindow):
         self.plot_tabs_widget = QTabBar()
         self.plot_tabs_widget.setDrawBase(False)
         self.plot_tabs_widget.setExpanding(False)
-        self.plot_tabs_widget.currentChanged.connect(lambda:self.change_plot_type(keep_limits=True))
+        self.plot_tabs_widget.currentChanged.connect(self.controller.change_plot_type)
         plot_horiz_layout.addWidget(self.plot_tabs_widget)
 
         # create button layout for main widget
@@ -505,7 +288,7 @@ class AnalysisWindow(QMainWindow):
         # add buttons
         self.show_tracking_params_button = QPushButton('Tracking Parameters', self)
         self.show_tracking_params_button.setMinimumHeight(30)
-        self.show_tracking_params_button.clicked.connect(lambda:self.show_tracking_params())
+        self.show_tracking_params_button.clicked.connect(self.controller.show_tracking_params)
         button_layout.addWidget(self.show_tracking_params_button)
 
         # create stacked widget & layout
@@ -528,35 +311,27 @@ class AnalysisWindow(QMainWindow):
 
         self.show()
 
-    def change_plot_type(self, bouts=None, peak_maxes_y=None, peak_maxes_x=None, peak_mins_y=None, peak_mins_x=None, freqs=None, keep_limits=True):
-        print(keep_limits)
-        tracking_params = self.controller.tracking_params[self.controller.curr_tracking_num]
-        print("Changing plot type")
+    def update_plot(self, array, plot_type, extra_tracking=None, keep_xlim=True):
+        print("Updating plot")
 
-        if tracking_params['type'] == "freeswimming":
-            # print(self.plot_tabs_widget.currentIndex())
-            if self.plot_tabs_widget.currentIndex() == 0:
-                plot_type = "tail"
-                self.stacked_widget.setCurrentIndex(0)
-            elif self.plot_tabs_widget.currentIndex() == 1:
-                plot_type = "body"
-                self.stacked_widget.setCurrentIndex(1)
-            else:
-                plot_type = "eyes"
-        else:
-            plot_type = "tail"
+        if plot_type == "tail":
             self.stacked_widget.setCurrentIndex(0)
-
-        self.plot_window.update_plot(plot_type, bouts=bouts, peak_maxes_y=peak_maxes_y, peak_maxes_x=peak_maxes_x, peak_mins_y=peak_mins_y, peak_mins_x=peak_mins_x, freqs=freqs, keep_limits=keep_limits)
+            self.plot_window.plot_tail_angle_array(array, extra_tracking=extra_tracking, keep_xlim=keep_xlim)
+        elif plot_type == "body":
+            self.stacked_widget.setCurrentIndex(1)
+            self.plot_window.plot_heading_angle_array(array, keep_xlim=keep_xlim)
+        else:
+            pass
 
     def switch_tracking_item(self, row_number):
-        tracking_params = self.controller.tracking_params[row_number]
-
         print("Switching tracking item")
+
+        tracking_params = self.controller.tracking_params[row_number]
 
         self.change_selected_tracking_row(row_number)
 
         self.plot_tabs_widget.blockSignals(True)
+
         # add plot tabs
         for i in range(self.plot_tabs_widget.count()-1, -1, -1):
             self.plot_tabs_widget.removeTab(i)
@@ -565,18 +340,13 @@ class AnalysisWindow(QMainWindow):
             if tracking_params['track_tail']:
                 self.plot_tabs_widget.addTab("Tail")
 
-                # self.create_tail_tracking_widget(self.right_widget)
-
             self.plot_tabs_widget.addTab("Body")
-
-            # self.create_body_tracking_widget(self.right_widget)
 
             if tracking_params['track_eyes']:
                 self.plot_tabs_widget.addTab("Eyes")
         else:
             self.plot_tabs_widget.addTab("Tail")
 
-            # self.create_tail_tracking_widget(self.right_widget)
         self.plot_tabs_widget.blockSignals(False)
 
         self.crop_tabs_widget.blockSignals(True)
@@ -590,8 +360,6 @@ class AnalysisWindow(QMainWindow):
             self.crop_tabs_widget.addTab("{}".format(i+1))
         self.crop_tabs_widget.blockSignals(False)
 
-        self.change_plot_type(keep_limits=False)
-
     def add_tracking_item(self, item_name):
         print("Adding tracking item")
         self.tracking_list_items.append(QListWidgetItem(item_name, self.tracking_list))
@@ -602,38 +370,6 @@ class AnalysisWindow(QMainWindow):
         self.tracking_list.blockSignals(True)
         self.tracking_list.setCurrentRow(row_number)
         self.tracking_list.blockSignals(False)
-
-    def show_tracking_params(self):
-        if self.tracking_params_window != None:
-            self.tracking_params_window.close()
-
-        self.tracking_params_window = TrackingParamsWindow(self)
-        self.tracking_params_window.show()
-
-        # self.tracking_params_window.create_param_controls(self.params, self.current_crop)
-
-    # def create_plot_toolbar(self, parent_layout):
-    #     zoom_button = QPushButton('Zoom')
-    #     zoom_button.clicked.connect(self.zoom)
-         
-    #     pan_button = QPushButton('Pan')
-    #     pan_button.clicked.connect(self.pan)
-         
-    #     home_button = QPushButton('Home')
-    #     home_button.clicked.connect(self.home)
-
-    #     save_button = QPushButton('Save')
-    #     save_button.clicked.connect(self.save)
-
-    #     top_tail_button_layout = QHBoxLayout()
-    #     top_tail_button_layout.setSpacing(5)
-    #     top_tail_button_layout.addStretch(1)
-    #     parent_layout.addLayout(top_tail_button_layout)
-
-    #     top_tail_button_layout.addWidget(zoom_button)
-    #     top_tail_button_layout.addWidget(pan_button)
-    #     top_tail_button_layout.addWidget(home_button)
-    #     top_tail_button_layout.addWidget(save_button)
 
     def create_tail_tracking_widget(self, parent_widget):
         # create tail tab widget & layout
@@ -730,65 +466,10 @@ class AnalysisWindow(QMainWindow):
         self.crop_tabs_widgets.append(crop_tabs_widget)
         self.crop_tabs_layouts.append(crop_tabs_layout)
 
-        # create head plot canvas & toolbar
-        # head_canvas = MplCanvas(width=5, height=5, dpi=75)
-        # head_toolbar = NavigationToolbar(head_canvas, self)
-        # head_toolbar.hide()
-        # self.plot_toolbars[self.controller.curr_tracking_num]['body'] = head_toolbar
-        # self.plot_canvases[self.controller.curr_tracking_num]['body'] = head_canvas
-
         n_crops = len(self.controller.tracking_params[self.controller.curr_tracking_num]['crop_params'])
 
         for k in range(n_crops):
             self.create_crop()
-
-    def create_crop(self):
-        print(self.controller.curr_tracking_num, self.crop_tabs_widgets)
-        parent_widget = self.crop_tabs_widgets[self.controller.curr_tracking_num]
-
-        crop_tab_widget = QWidget(parent_widget)
-        crop_tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        crop_tab_layout = QVBoxLayout(crop_tab_widget)
-
-        # add to list of crop widgets & layouts
-        self.crop_tab_layouts[self.controller.curr_tracking_num].append(crop_tab_layout)
-        self.crop_tab_widgets[self.controller.curr_tracking_num].append(crop_tab_widget)
-
-        # # create tabs widget & layout
-        # plot_tabs_widget = QTabWidget()
-        # plot_tabs_layout  = QVBoxLayout(plot_tabs_widget)
-        # crop_tab_layout.addWidget(plot_tabs_widget)
-
-        # # add to list of crop widgets & layouts
-        # self.plot_tabs_layouts[self.controller.curr_tracking_num].append(plot_tabs_layout)
-        # self.plot_tabs_widgets[self.controller.curr_tracking_num].append(plot_tabs_widget)
-
-        # self.create_tail_tab_widget(plot_tabs_widget)
-        # self.create_body_tab_widget(plot_tabs_widget)
-
-        # self.plot_canvases[self.controller.curr_tracking_num]['body'].setParent(crop_tab_widget)
-        # self.plot_canvases[self.controller.curr_tracking_num]['tail'].setParent(crop_tab_widget)
-
-        # add tail plot canvas & toolbar to tail tab widget
-        crop_tab_layout.addWidget(self.plot_toolbars[self.controller.curr_tracking_num])
-        crop_tab_layout.addWidget(self.plot_canvases[self.controller.curr_tracking_num])
-
-        # add tabs to plot tabs widget
-        parent_widget.addTab(crop_tab_widget, str(self.controller.current_crop))
-
-        parent_widget.setCurrentIndex(self.current_crop)
-
-        # self.change_crop
-
-    def change_crop(self, index):
-        if index != -1:
-            # update current crop number
-            self.current_crop = index
-
-            self.tail_toolbar = self.plot_toolbars[self.controller.curr_tracking_num]
-            self.head_toolbar = self.plot_toolbars[self.controller.curr_tracking_num]
-            self.tail_canvas = self.plot_canvases[self.controller.curr_tracking_num]
-            self.head_canvas = self.plot_canvases[self.controller.curr_tracking_num]
 
     def clear_crops(self):
         self.crop_tab_layouts  = [[]]
@@ -797,12 +478,6 @@ class AnalysisWindow(QMainWindow):
                                   'eyes': [],
                                   'body': []}]
         self.plot_tab_widgets  = [{'tail': [],
-                                  'eyes': [],
-                                  'body': []}]
-        self.plot_toolbars     = [{'tail': [],
-                                  'eyes': [],
-                                  'body': []}]
-        self.plot_canvases     = [{'tail': [],
                                   'eyes': [],
                                   'body': []}]
         self.plot_tabs_widgets = [[]]
@@ -817,15 +492,6 @@ class AnalysisWindow(QMainWindow):
 
         self.n_crops = 0
         self.current_crop = -1
-
-    # def home(self):
-    #     self.plot_toolbar.home()
-    # def zoom(self):
-    #     self.plot_toolbar.zoom()
-    # def pan(self):
-    #     self.plot_toolbar.pan()
-    # def save(self):
-    #     self.plot_toolbar.save_figure()
 
     def show_smoothed_deriv(self, checkbox):
         if self.smoothed_abs_deriv_abs_angle_array != None:
@@ -875,7 +541,7 @@ class AnalysisWindow(QMainWindow):
 
                 # plot heading angle
                 if self.heading_angle_array is not None:
-                    self.head_canvases[k].plot_heading_angle_array(self.heading_angle_array[k])
+                    self.plot_canvases[k].plot_heading_angle_array(self.heading_angle_array[k])
 
                 # plot tail angle
                 if self.tail_angle_array is not None:
@@ -963,12 +629,291 @@ class AnalysisWindow(QMainWindow):
 
         # self.crop_tab_widgets[self.controller.curr_tracking_num][self.current_crop].resize(self.frameGeometry().width()-80, self.frameGeometry().height()-160)
 
+class Controller():
+    def __init__(self, default_params):
+        # set parameters
+        self.default_params = default_params
+        self.params         = self.default_params
+
+        # initialize variables
+        self.current_crop         = -1     # which crop is being looked at
+        self.current_tracking_num = 0      # which tracking data (from a loaded batch) is being looked at
+        self.current_plot_type    = "tail" # which plot type is being looked at ("tail" / "body" / "eyes")
+
+        self.n_frames          = 0    # total number of frames to preview
+        self.n                 = 0    # index of currently selected frame
+        self.first_load        = True
+
+        # intialize analysis variables
+        self.smoothing_window_width = 10
+        self.threshold              = 0.01
+        self.min_width              = 30
+
+        self.tail_angle_arrays                  = []
+        self.heading_angle_arrays               = []
+        self.body_position_arrays               = []
+        self.eye_position_arrays                = []
+        self.tail_end_angle_arrays              = []
+        self.tracking_params                    = []
+        self.tracking_paths                     = None
+        self.smoothed_abs_deriv_abs_angle_array = None
+        self.speed_arrays                       = None
+        self.bouts                              = None
+        self.peak_points                        = None
+        self.valley_points                      = None
+        self.tail_frequencies                   = None
+        self.tracking_params_window             = None
+
+        self.analysis_window = AnalysisWindow(None, self)
+        self.plot_window     = PlotWindow(self.analysis_window, self)
+        self.tracking_params_window = None
+
+    def select_and_open_tracking_files(self):
+        if pyqt_version == 4:
+            tracking_paths = QFileDialog.getOpenFileNames(self.analysis_window, 'Select tracking files', '', 'Numpy (*.npz)')
+        elif pyqt_version == 5:
+            tracking_paths = QFileDialog.getOpenFileNames(self.analysis_window, 'Select tracking files', '', 'Numpy (*.npz)')[0]
+
+            # convert paths to str
+            tracking_paths = [ str(tracking_path) for tracking_path in tracking_paths ]
+
+        if len(tracking_paths) > 0 and tracking_paths[0] != '':
+            if self.first_load:
+                # clear all crops
+                self.clear_crops()
+
+                # set params to defaults
+                self.params = self.default_params.copy()
+
+                self.current_crop = -1
+
+            self.open_tracking_file_batch(tracking_paths)
+
+            if self.first_load:
+                self.first_load = False
+
+    def open_tracking_file_batch(self, tracking_paths):
+        self.first_load = self.first_load or len(self.params['tracking_paths']) == 0
+
+        if (self.first_load and len(self.params['tracking_paths']) == 0) or not self.first_load:
+            # update tracking paths & type parameters
+            self.params['tracking_paths'] += tracking_paths
+
+        self.tail_angle_arrays     += [None]*len(tracking_paths)
+        self.heading_angle_arrays  += [None]*len(tracking_paths)
+        self.body_position_arrays  += [None]*len(tracking_paths)
+        self.eye_position_arrays   += [None]*len(tracking_paths)
+        self.tail_end_angle_arrays += [None]*len(tracking_paths)
+        self.tracking_params       += [None]*len(tracking_paths)
+
+        if self.first_load:
+            # update current tracking data number
+            self.current_tracking_num = 0
+
+            # open the first tracking file from the batch
+            self.open_tracking_file(tracking_paths[self.current_tracking_num])
+
+        for k in range(len(self.params['tracking_paths']) - len(tracking_paths), len(self.params['tracking_paths'])):
+            self.analysis_window.add_tracking_item(os.path.basename(self.params['tracking_paths'][k]))
+
+        self.analysis_window.switch_tracking_item(self.current_tracking_num)
+        
+    def open_tracking_file(self, tracking_path):
+        print("Loading {}".format(tracking_path))
+
+        # load saved tracking data
+        (tail_coords_array, spline_coords_array,
+         heading_angle_array, body_position_array,
+         eye_coords_array, tracking_params) = an.open_saved_data(tracking_path)
+
+        # calculate tail angles
+        if tracking_params['type'] == "freeswimming":
+            heading_angle_array = an.fix_heading_angles(heading_angle_array)
+
+            if tracking_params['track_tail']:
+                tail_angle_array = an.get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_position_array)
+            else:
+                tail_angle_array = None
+        elif tracking_params['type'] == "headfixed":
+            tail_angle_array = an.get_headfixed_tail_angles(tail_coords_array, tracking_params['tail_direction'])
+        else:
+            tail_angle_array = None
+
+        if tail_angle_array != None:
+            self.current_plot_type = "tail"
+
+            # get array of average angle of the last few points of the tail
+            tail_end_angle_array = np.mean(tail_angle_array[:, :, -3:], axis=-1)
+        else:
+            self.current_plot_type = "body"
+            tail_end_angle_array = None
+
+        self.tail_angle_arrays[self.current_tracking_num]     = tail_angle_array
+        self.tail_end_angle_arrays[self.current_tracking_num] = tail_end_angle_array
+        self.heading_angle_arrays[self.current_tracking_num]  = heading_angle_array
+        self.body_position_arrays[self.current_tracking_num]  = body_position_array
+        self.eye_position_arrays[self.current_tracking_num]   = eye_coords_array
+        self.tracking_params[self.current_tracking_num]       = tracking_params
+
+        if self.current_plot_type == "tail":
+            self.plot_array = self.tail_end_angle_arrays[self.current_tracking_num][self.current_crop]
+        elif self.current_plot_type == "body":
+            self.plot_array = self.heading_angle_arrays[self.current_tracking_num][self.current_crop]
+        elif self.current_plot_type == "eyes":
+            self.plot_array = self.eye_position_arrays[self.current_tracking_num][self.current_crop]
+
+        self.analysis_window.update_plot(self.plot_array, self.current_plot_type, keep_xlim=False)
+
+    def create_crops(self, n_crops):
+        self.analysis_window.create_crops()
+
+    def change_crop(self, index):
+        print("Changing crop", index)
+
+        self.current_crop = index
+
+        if self.current_plot_type == "tail":
+            self.plot_array = self.tail_end_angle_arrays[self.current_tracking_num][self.current_crop]
+        elif self.current_plot_type == "body":
+            self.plot_array = self.heading_angle_arrays[self.current_tracking_num][self.current_crop]
+        elif self.current_plot_type == "eyes":
+            self.plot_array = self.eye_position_arrays[self.current_tracking_num][self.current_crop]
+
+        self.analysis_window.update_plot(self.plot_array, self.current_plot_type)
+
+    def change_plot_type(self, index):
+        print("Changing plot type", index)
+        if index == 0:
+            self.current_plot_type = "tail"
+        elif index == 1:
+            self.current_plot_type = "body"
+        else:
+            self.current_plot_type = "eyes"
+
+        if self.current_plot_type == "tail":
+            self.plot_array = self.tail_end_angle_arrays[self.current_tracking_num][self.current_crop]
+        elif self.current_plot_type == "body":
+            self.plot_array = self.heading_angle_arrays[self.current_tracking_num][self.current_crop]
+        elif self.current_plot_type == "eyes":
+            self.plot_array = self.eye_position_arrays[self.current_tracking_num][self.current_crop]
+
+        self.analysis_window.update_plot(self.plot_array, self.current_plot_type)
+
+    def show_tracking_params(self):
+        if self.tracking_params_window != None:
+            self.tracking_params_window.close()
+
+        self.tracking_params_window = TrackingParamsWindow(self)
+        self.tracking_params_window.show()
+
+        # self.tracking_params_window.create_param_controls(self.params, self.current_crop)
+
+    def clear_crops(self):
+        pass
+
+    def remove_tracking_file(self):
+        pass
+
+    def prev_tracking_file(self):
+        pass
+
+    def next_tracking_file(self):
+        pass
+
+    def switch_tracking_file(self, tracking_num):
+        if 0 <= tracking_num <= len(self.params['tracking_paths'])-1:
+            tracking_paths = self.params['tracking_paths']
+
+            # update current media number
+            self.current_tracking_num = tracking_num
+
+            if self.tracking_params[self.current_tracking_num] == None:
+                # open the next media from the batch
+                self.open_tracking_file(tracking_paths[self.current_tracking_num])
+
+            # self.analysis_window.switch_tracking_widget(tracking_num)
+            self.analysis_window.switch_tracking_item(tracking_num)
+
+    def track_bouts(self):
+        if len(self.tail_angle_arrays) > 0:
+            # get params
+            self.smoothing_window_width = int(self.analysis_window.smoothing_window_param_box.text())
+            self.threshold = float(self.analysis_window.threshold_param_box.text())
+            self.min_width = int(self.analysis_window.min_width_param_box.text())
+
+            # get smoothed derivative
+            abs_angle_array = np.abs(self.tail_end_angle_arrays[self.current_tracking_num][self.current_crop])
+            deriv_abs_angle_array = np.gradient(abs_angle_array)
+            abs_deriv_abs_angle_array = np.abs(deriv_abs_angle_array)
+            normpdf = scipy.stats.norm.pdf(range(-int(self.smoothing_window_width/2),int(self.smoothing_window_width/2)),0,3)
+            self.smoothed_abs_deriv_abs_angle_array =  np.convolve(abs_deriv_abs_angle_array,  normpdf/np.sum(normpdf),mode='valid')
+
+            # calculate bout periods
+            self.bouts = an.contiguous_regions(self.smoothed_abs_deriv_abs_angle_array > self.threshold)
+
+            # remove bouts that don't have the minimum bout length
+            for i in range(self.bouts.shape[0]-1, -1, -1):
+                if self.bouts[i, 1] - self.bouts[i, 0] < self.min_width:
+                    self.bouts = np.delete(self.bouts, (i), 0)
+
+            extra_tracking = { 'bouts': self.bouts,
+                               'peak_points': self.peak_points,
+                               'valley_points': self.valley_points,
+                               'frequencies': self.tail_frequencies }
+
+            # update plot
+            self.analysis_window.update_plot(self.plot_array, self.current_plot_type, extra_tracking, keep_limits=True)
+
+    def track_freqs(self):
+        if self.bouts != None:
+            # initiate bout maxima & minima coord lists
+            self.peak_maxes_y = []
+            self.peak_maxes_x = []
+            self.peak_mins_y = []
+            self.peak_mins_x = []
+
+            # initiate instantaneous frequency array
+            self.tail_frequencies = np.zeros(self.tail_angle_arrays[self.current_tracking_num].shape[0])
+
+            for i in range(self.bouts.shape[0]):
+                # get local maxima & minima
+                peak_max, peak_min = peakdetect.peakdet(self.tail_end_angle_arrays[self.current_tracking_num][self.current_crop][self.bouts[i, 0]:self.bouts[i, 1]], 0.02)
+
+                # change local coordinates (relative to the start of the bout) to global coordinates
+                peak_max[:, 0] += self.bouts[i, 0]
+                peak_min[:, 0] += self.bouts[i, 0]
+
+                # add to the bout maxima & minima coord lists
+                self.peak_maxes_y += list(peak_max[:, 1])
+                self.peak_maxes_x += list(peak_max[:, 0])
+                self.peak_mins_y += list(peak_min[:, 1])
+                self.peak_mins_x += list(peak_min[:, 0])
+
+            # calculate instantaneous frequencies
+            for i in range(len(self.peak_maxes_x)-1):
+                self.freqs[self.peak_maxes_x[i]:self.peak_maxes_x[i+1]] = 1.0/(self.peak_maxes_x[i+1] - self.peak_maxes_x[i])
+
+            extra_tracking = { 'bouts': self.bouts,
+                               'peak_points': self.peak_points,
+                               'valley_points': self.valley_points,
+                               'frequencies': self.tail_frequencies }
+
+            # update plot
+            # self.smoothed_deriv_checkbox.setChecked(False)
+            # self.tail_canvas.plot_tail_angle_array(self.tail_end_angle_array[self.current_crop], self.bouts, self.peak_maxes_y, self.peak_maxes_x, self.peak_mins_y, self.peak_mins_x, self.freqs, keep_limits=True)
+            
+            # update plot
+            self.analysis_window.update_plot(self.plot_array, self.current_plot_type, extra_tracking=extra_tracking, keep_limits=True)
+
+    def close_all(self):
+        self.analysis_window.close()
+        self.plot_window.close()
+
 class TrackingParamsWindow(QMainWindow):
-    def __init__(self, parent, controller):
+    def __init__(self, controller):
         QMainWindow.__init__(self)
 
-        # set parent
-        self.parent     = parent
+        # set controller
         self.controller = controller
 
         # set position & size
@@ -991,7 +936,7 @@ class TrackingParamsWindow(QMainWindow):
 
         # create parameter controls
         self.create_param_controls_layout()
-        self.create_param_controls(self.controller.params, self.controller.current_crop)
+        self.create_param_controls(self.controller.tracking_params[self.controller.current_tracking_num], self.controller.current_crop)
 
         # set main widget
         self.setCentralWidget(self.main_widget)
@@ -1019,8 +964,8 @@ class TrackingParamsWindow(QMainWindow):
         self.add_parameter_label("invert", "Invert:", params['invert'], self.form_layout)
         self.add_parameter_label("n_tail_points", "Number of tail points:", params['n_tail_points'], self.form_layout)
         self.add_parameter_label("subtract_background", "Subtract background:", params['subtract_background'], self.form_layout)
-        self.add_parameter_label("media_type", "Media type:", params['media_type'], self.form_layout)
-        self.add_parameter_label("media_path", "Media path:", params['media_path'], self.form_layout)
+        self.add_parameter_label("media_types", "Media types:", params['media_types'], self.form_layout)
+        self.add_parameter_label("media_paths", "Media paths:", params['media_paths'], self.form_layout)
         self.add_parameter_label("use_multiprocessing", "Use multiprocessing:", params['use_multiprocessing'], self.form_layout)
 
         if params['type'] == "freeswimming":

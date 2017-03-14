@@ -3,11 +3,10 @@ import matplotlib.pyplot as plt
 import os
 import glob
 
-def open_saved_data(save_dir=None):
+def open_saved_data(data_path=None):
     # load first crop
     try:
-        # npzfile = np.load(glob.glob(os.path.join(save_dir, "*.npz"))[0])
-        npzfile = np.load(save_dir)
+        npzfile = np.load(data_path)
 
         tail_coords_array   = npzfile['tail_coords']
         spline_coords_array = npzfile['spline_coords']
@@ -99,23 +98,15 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
 
             # correct for abrupt jumps in angle due to vectors switching quadrants between frames
             for i in range(1, n_frames):
-                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/4.0:
-                    if k == 3 and i < 30:
-                        print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
+                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/2.0:
                     tail_angle_array[k, i, j] -= np.pi
-                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/4.0:
-                    if k == 3 and i < 30:
-                        print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
+                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/2.0:
                     tail_angle_array[k, i, j] += np.pi
 
             for i in range(1, n_frames):
-                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/4.0:
-                    if k == 3 and i < 30:
-                        print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
+                if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] >= np.pi/2.0:
                     tail_angle_array[k, i, j] -= np.pi
-                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/4.0:
-                    if k == 3 and i < 30:
-                        print(k, j, i, i-1, tail_angle_array[k, i, j], tail_angle_array[k, i-1, j])
+                elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -np.pi/2.0:
                     tail_angle_array[k, i, j] += np.pi
 
             if tail_angle_array[k, 0, j] >= np.pi/2.0:
