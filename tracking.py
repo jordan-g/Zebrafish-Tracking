@@ -20,7 +20,6 @@ from itertools import chain
 
 from moviepy.video.io.ffmpeg_reader import *
 from skimage.morphology import skeletonize
-import bwmorph_thin
 from collections import deque
 
 default_crop_params = { 'offset': [0, 0],      # crop offset
