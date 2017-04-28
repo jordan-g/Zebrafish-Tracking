@@ -100,7 +100,7 @@ class CropsWindow(QMainWindow):
         # add to list of crop or global controls
         self.param_controls[-1][label] = param_box
 
-    def add_slider(self, label, description, minimum, maximum, value, slider_moved_func, parent, tick_interval=1, single_step=1, multiplier=1):
+    def add_slider(self, label, description, minimum, maximum, value, slider_moved_func, parent, tick_interval=1, single_step=1, slider_scale_factor=1, int_values=False):
         # make layout to hold slider and textbox
         control_layout = QHBoxLayout()
 
@@ -125,18 +125,18 @@ class CropsWindow(QMainWindow):
         # textbox.setMinimumHeight(10)
         textbox.setFixedWidth(40)
         textbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        textbox.setText(str(value/multiplier))
         textbox.returnPressed.connect(self.controller.update_crop_params_from_gui)
+        self.update_textbox_from_slider(slider, textbox, slider_scale_factor, int_values)
         control_layout.addWidget(textbox)
 
         # connect slider to set textbox text & update params
-        slider.sliderMoved.connect(lambda:self.update_textbox_from_slider(slider, textbox, multiplier))
+        slider.sliderMoved.connect(lambda:self.update_textbox_from_slider(slider, textbox, slider_scale_factor, int_values))
         slider.sliderMoved.connect(slider_moved_func)
         slider.sliderPressed.connect(lambda:self.slider_pressed(slider))
         slider.sliderReleased.connect(lambda:self.slider_released(slider))
 
         # connect textbox to 
-        textbox.editingFinished.connect(lambda:self.update_slider_from_textbox(slider, textbox, multiplier))
+        textbox.editingFinished.connect(lambda:self.update_slider_from_textbox(slider, textbox, slider_scale_factor))
         textbox.editingFinished.connect(slider_moved_func)
 
         # add row to form layout
@@ -148,7 +148,11 @@ class CropsWindow(QMainWindow):
 
     def slider_pressed(self, slider):
         label = slider.objectName()
+
         if "threshold" in label:
+            # store previously-checked threshold checkbox
+            self.prev_checked_threshold_checkbox = self.controller.get_checked_threshold_checkbox()
+
             checkbox = self.controller.param_window.param_controls["show_{}".format(label)]
             checkbox.setChecked(True)
             self.controller.toggle_threshold_image(checkbox)
@@ -158,15 +162,21 @@ class CropsWindow(QMainWindow):
         if "threshold" in label:
             checkbox = self.controller.param_window.param_controls["show_{}".format(label)]
             checkbox.setChecked(False)
-            self.controller.toggle_threshold_image(checkbox)
 
-    def update_textbox_from_slider(self, slider, textbox, multiplier=1.0):
-        textbox.setText(str(slider.sliderPosition()/multiplier))
+            if self.prev_checked_threshold_checkbox != None:
+                self.prev_checked_threshold_checkbox.setChecked(True)
+            self.controller.toggle_threshold_image(self.prev_checked_threshold_checkbox)
 
-    def update_slider_from_textbox(self, slider, textbox, multiplier=1.0):
-        slider.setValue(float(textbox.text())*multiplier)
+    def update_textbox_from_slider(self, slider, textbox, slider_scale_factor=1.0, int_values=False):
+        if int_values:
+            textbox.setText(str(int(slider.sliderPosition()/slider_scale_factor)))
+        else:
+            textbox.setText(str(slider.sliderPosition()/slider_scale_factor))
 
-    def set_slider_value(self, label, value, crop_index, slider_scale_factor=None):
+    def update_slider_from_textbox(self, slider, textbox, slider_scale_factor=1.0):
+        slider.setValue(float(textbox.text())*slider_scale_factor)
+
+    def set_slider_value(self, label, value, crop_index, slider_scale_factor=1.0, int_values=False):
         # change slider value without sending signals
 
         slider_label  = label + "_slider"
@@ -179,16 +189,13 @@ class CropsWindow(QMainWindow):
 
         slider.blockSignals(True)
 
-        if slider_scale_factor != None:
-            slider.setValue(value*slider_scale_factor)
-        else:
-            slider.setValue(value)
+        slider.setValue(value*slider_scale_factor)
 
         slider.blockSignals(False)
 
         # change textbox value
         textbox = self.param_controls[crop_index][textbox_label]
-        textbox.setText(str(int(value)))
+        self.update_textbox_from_slider(slider, textbox, slider_scale_factor=slider_scale_factor, int_values=int_values)
 
     def set_gui_disabled(self, disbaled_bool):
         self.crop_tabs_widget.setDisabled(disbaled_bool)
@@ -262,15 +269,15 @@ class CropsWindow(QMainWindow):
     def create_param_controls(self, crop_params):
         if self.controller.current_frame is not None:
             # add sliders - (key, description, start, end, initial value, parent layout)
-            self.add_slider('crop_y', 'Crop y:', 1, self.controller.current_frame.shape[0], crop_params['crop'][0], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50)
-            self.add_slider('crop_x', 'Crop x:', 1, self.controller.current_frame.shape[1], crop_params['crop'][1], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50)
-            self.add_slider('offset_y', 'Offset y:', 0, self.controller.current_frame.shape[0]-1, crop_params['offset'][0], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50)
-            self.add_slider('offset_x', 'Offset x:', 0, self.controller.current_frame.shape[1]-1, crop_params['offset'][1], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50)
+            self.add_slider('crop_y', 'Crop y:', 1, self.controller.current_frame.shape[0], crop_params['crop'][0], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
+            self.add_slider('crop_x', 'Crop x:', 1, self.controller.current_frame.shape[1], crop_params['crop'][1], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
+            self.add_slider('offset_y', 'Offset y:', 0, self.controller.current_frame.shape[0]-1, crop_params['offset'][0], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
+            self.add_slider('offset_x', 'Offset x:', 0, self.controller.current_frame.shape[1]-1, crop_params['offset'][1], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
         else:
-            self.add_slider('crop_y', 'Crop y:', 1, 2, 1, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50)
-            self.add_slider('crop_x', 'Crop x:', 1, 2, 1, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50)
-            self.add_slider('offset_y', 'Offset y:', 0, 1, 0, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50)
-            self.add_slider('offset_x', 'Offset x:', 0, 1, 0, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50)
+            self.add_slider('crop_y', 'Crop y:', 1, 2, 1, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
+            self.add_slider('crop_x', 'Crop x:', 1, 2, 1, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
+            self.add_slider('offset_y', 'Offset y:', 0, 1, 0, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
+            self.add_slider('offset_x', 'Offset x:', 0, 1, 0, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
     
     def update_gui_from_params(self, crop_params):
         if len(crop_params) == len(self.param_controls):
@@ -282,10 +289,10 @@ class CropsWindow(QMainWindow):
                 self.param_controls[c]['offset_x' + '_slider'].setMaximum(self.controller.current_frame.shape[1]-1)
 
                 # update param controls with current parameters
-                self.set_slider_value('crop_y', crop_params[c]['crop'][0], c)
-                self.set_slider_value('crop_x', crop_params[c]['crop'][1], c)
-                self.set_slider_value('offset_y', crop_params[c]['offset'][0], c)
-                self.set_slider_value('offset_x', crop_params[c]['offset'][1], c)
+                self.set_slider_value('crop_y', crop_params[c]['crop'][0], c, int_values=True)
+                self.set_slider_value('crop_x', crop_params[c]['crop'][1], c, int_values=True)
+                self.set_slider_value('offset_y', crop_params[c]['offset'][0], c, int_values=True)
+                self.set_slider_value('offset_x', crop_params[c]['offset'][1], c, int_values=True)
 
     def closeEvent(self, ce):
         if not self.controller.closing:
@@ -301,18 +308,18 @@ class FreeswimmingCropsWindow(CropsWindow):
         CropsWindow.create_param_controls(self, crop_params)
 
         # add textboxes - (key, decription, initial value, parent layout)
-        self.add_slider('body_threshold', 'Body threshold:', 0, 255, crop_params['body_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1)
-        self.add_slider('eye_threshold', 'Eye threshold:', 0, 255, crop_params['eye_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1)
-        self.add_slider('tail_threshold', 'Tail threshold:', 0, 255, crop_params['tail_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1)
+        self.add_slider('body_threshold', 'Body threshold:', 0, 255, crop_params['body_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1, int_values=True)
+        self.add_slider('eye_threshold', 'Eye threshold:', 0, 255, crop_params['eye_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1, int_values=True)
+        self.add_slider('tail_threshold', 'Tail threshold:', 0, 255, crop_params['tail_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1, int_values=True)
 
     def update_gui_from_params(self, crop_params):
         CropsWindow.update_gui_from_params(self, crop_params)
 
         if len(crop_params) == len(self.param_controls):
             for c in range(len(crop_params)):
-                self.set_slider_value('body_threshold', crop_params[c]['body_threshold'], c)
-                self.set_slider_value('eye_threshold', crop_params[c]['eye_threshold'], c)
-                self.set_slider_value('tail_threshold', crop_params[c]['tail_threshold'], c)
+                self.set_slider_value('body_threshold', crop_params[c]['body_threshold'], c, int_values=True)
+                self.set_slider_value('eye_threshold', crop_params[c]['eye_threshold'], c, int_values=True)
+                self.set_slider_value('tail_threshold', crop_params[c]['tail_threshold'], c, int_values=True)
 
 class HeadfixedCropsWindow(CropsWindow):
     def __init__(self, controller):

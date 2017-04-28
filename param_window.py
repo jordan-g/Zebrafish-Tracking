@@ -338,10 +338,7 @@ class ParamWindow(QMainWindow):
         textbox.setObjectName(textbox_label)
         textbox.setFixedWidth(40)
         textbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        if int_values:
-            textbox.setText(str(int(value/multiplier)))
-        else:
-            textbox.setText(str(value/multiplier))
+        self.update_textbox_from_slider(slider, textbox, multiplier, int_values)
         control_layout.addWidget(textbox)
 
         # connect slider to set textbox text & update params

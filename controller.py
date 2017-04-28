@@ -880,33 +880,44 @@ class FreeswimmingController(Controller):
         Controller.reshape_frame(self)
 
     def toggle_threshold_image(self, checkbox):
-        if self.current_frame is not None:
-            if checkbox.isChecked():
-                # uncheck other threshold checkboxes
-                if checkbox.text() == "Show body threshold":
-                    self.param_window.param_controls["show_eye_threshold"].setChecked(False)
-                    self.param_window.param_controls["show_tail_threshold"].setChecked(False)
-                    self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
-                elif checkbox.text() == "Show eye threshold":
-                    self.param_window.param_controls["show_body_threshold"].setChecked(False)
-                    self.param_window.param_controls["show_tail_threshold"].setChecked(False)
-                    self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
-                elif checkbox.text() == "Show tail threshold":
-                    self.param_window.param_controls["show_body_threshold"].setChecked(False)
-                    self.param_window.param_controls["show_eye_threshold"].setChecked(False)
-                    self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
-                elif checkbox.text() == "Show tail skeleton":
-                    self.param_window.param_controls["show_body_threshold"].setChecked(False)
-                    self.param_window.param_controls["show_eye_threshold"].setChecked(False)
-                    self.param_window.param_controls["show_tail_threshold"].setChecked(False)
+        if self.current_frame is not None and checkbox != None and checkbox.isChecked():
+            # uncheck other threshold checkboxes
+            if checkbox.text() == "Show body threshold":
+                self.param_window.param_controls["show_eye_threshold"].setChecked(False)
+                self.param_window.param_controls["show_tail_threshold"].setChecked(False)
+                self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
+            elif checkbox.text() == "Show eye threshold":
+                self.param_window.param_controls["show_body_threshold"].setChecked(False)
+                self.param_window.param_controls["show_tail_threshold"].setChecked(False)
+                self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
+            elif checkbox.text() == "Show tail threshold":
+                self.param_window.param_controls["show_body_threshold"].setChecked(False)
+                self.param_window.param_controls["show_eye_threshold"].setChecked(False)
+                self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
+            elif checkbox.text() == "Show tail skeleton":
+                self.param_window.param_controls["show_body_threshold"].setChecked(False)
+                self.param_window.param_controls["show_eye_threshold"].setChecked(False)
+                self.param_window.param_controls["show_tail_threshold"].setChecked(False)
 
-            self.params['gui_params']['show_body_threshold'] = self.param_window.param_controls["show_body_threshold"].isChecked()
-            self.params['gui_params']['show_eye_threshold']  = self.param_window.param_controls["show_eye_threshold"].isChecked()
-            self.params['gui_params']['show_tail_threshold'] = self.param_window.param_controls["show_tail_threshold"].isChecked()
-            self.params['gui_params']['show_tail_skeleton']  = self.param_window.param_controls["show_tail_skeleton"].isChecked()
+        self.params['gui_params']['show_body_threshold'] = self.param_window.param_controls["show_body_threshold"].isChecked()
+        self.params['gui_params']['show_eye_threshold']  = self.param_window.param_controls["show_eye_threshold"].isChecked()
+        self.params['gui_params']['show_tail_threshold'] = self.param_window.param_controls["show_tail_threshold"].isChecked()
+        self.params['gui_params']['show_tail_skeleton']  = self.param_window.param_controls["show_tail_skeleton"].isChecked()
 
-            # update the image preview
-            self.update_preview(image=None, new_load=False, new_frame=True)
+        # update the image preview
+        self.update_preview(image=None, new_load=False, new_frame=True)
+
+    def get_checked_threshold_checkbox(self):
+        if self.param_window.param_controls["show_body_threshold"].isChecked():
+            return self.param_window.param_controls["show_body_threshold"]
+        elif self.param_window.param_controls["show_eye_threshold"].isChecked():
+            return self.param_window.param_controls["show_eye_threshold"]
+        elif self.param_window.param_controls["show_tail_threshold"].isChecked():
+            return self.param_window.param_controls["show_tail_threshold"]
+        elif self.param_window.param_controls["show_tail_skeleton"].isChecked():
+            return self.param_window.param_controls["show_tail_skeleton"]
+        else:
+            return None
 
     def toggle_tail_tracking(self, checkbox):
         self.params['track_tail'] = checkbox.isChecked()
