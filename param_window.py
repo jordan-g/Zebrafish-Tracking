@@ -11,14 +11,13 @@ import pdb
 # import the Qt library
 try:
     from PyQt4.QtCore import Qt, QThread
-    from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem
+    from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView
 except:
     from PyQt5.QtCore import Qt, QThread
     from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
-    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem
+    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView
 
 # options for dropdown selectors for interpolation
-upscale_factor_options = [i for i in range(1, 9)]
 interpolation_options     = ["Nearest Neighbor", "Linear", "Bicubic", "Lanczos"]
 tail_direction_options    = ["Left", "Right", "Up", "Down"]
 
@@ -49,6 +48,7 @@ class ParamWindow(QMainWindow):
         self.left_layout.setAlignment(Qt.AlignTop)
 
         self.media_list = QListWidget(self)
+        self.media_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.media_list.currentRowChanged.connect(self.controller.switch_media)
         self.left_layout.addWidget(self.media_list)
 
@@ -121,10 +121,11 @@ class ParamWindow(QMainWindow):
         self.media_list_items.append(QListWidgetItem(item_name, self.media_list))
 
     def remove_media_item(self, item_num):
-        self.media_list.blockSignals(True)
-        self.media_list.takeItem(item_num)
-        del self.media_list_items[item_num]
-        self.media_list.blockSignals(False)
+        if len(self.media_list_items) > 0 and item_num < len(self.media_list_items):
+            self.media_list.blockSignals(True)
+            self.media_list.takeItem(item_num)
+            del self.media_list_items[item_num]
+            self.media_list.blockSignals(False)
 
     def change_selected_media_row(self, row_number):
         self.media_list.blockSignals(True)
@@ -308,12 +309,12 @@ class ParamWindow(QMainWindow):
 
         # set default text
         if default_value != None:
-            param_box.setText(str(default_value))
+            param_box.setText(str(int(default_value)))
 
         # add to list of crop or global controls
         self.param_controls[label] = param_box
 
-    def add_slider(self, label, description, minimum, maximum, slider_moved_func, value, parent, tick_interval=1, single_step=1, multiplier=1):
+    def add_slider(self, label, description, minimum, maximum, slider_moved_func, value, parent, tick_interval=1, single_step=1, multiplier=1, int_values=False):
         # make layout to hold slider and textbox
         control_layout = QHBoxLayout()
 
@@ -337,11 +338,14 @@ class ParamWindow(QMainWindow):
         textbox.setObjectName(textbox_label)
         textbox.setFixedWidth(40)
         textbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        textbox.setText(str(value/multiplier))
+        if int_values:
+            textbox.setText(str(int(value/multiplier)))
+        else:
+            textbox.setText(str(value/multiplier))
         control_layout.addWidget(textbox)
 
         # connect slider to set textbox text & update params
-        slider.valueChanged.connect(lambda:self.update_textbox_from_slider(slider, textbox, multiplier))
+        slider.valueChanged.connect(lambda:self.update_textbox_from_slider(slider, textbox, multiplier, int_values))
         slider.valueChanged.connect(slider_moved_func)
 
         # connect textbox to 
@@ -355,13 +359,16 @@ class ParamWindow(QMainWindow):
         self.param_controls[slider_label]  = slider
         self.param_controls[textbox_label] = textbox
 
-    def update_textbox_from_slider(self, slider, textbox, multiplier=1.0):
-        textbox.setText(str(slider.sliderPosition()/multiplier))
+    def update_textbox_from_slider(self, slider, textbox, multiplier=1.0, int_values=False):
+        if int_values:
+            textbox.setText(str(int(slider.sliderPosition()/multiplier)))
+        else:
+            textbox.setText(str(slider.sliderPosition()/multiplier))
 
     def update_slider_from_textbox(self, slider, textbox, multiplier=1.0):
         slider.setValue(float(textbox.text())*multiplier)
 
-    def set_slider_value(self, label, value, slider_scale_factor=None):
+    def set_slider_value(self, label, value, slider_scale_factor=1.0, int_values=False):
         # change slider value without sending signals
 
         slider_label  = label + "_slider"
@@ -374,16 +381,13 @@ class ParamWindow(QMainWindow):
 
         slider.blockSignals(True)
 
-        if slider_scale_factor != None:
-            slider.setValue(value*slider_scale_factor)
-        else:
-            slider.setValue(value)
+        slider.setValue(value*slider_scale_factor)
 
         slider.blockSignals(False)
 
         # change textbox value
         textbox = self.param_controls[textbox_label]
-        textbox.setText(str(float(value)))
+        self.update_textbox_from_slider(slider, textbox, multiplier=slider_scale_factor, int_values=int_values)
 
     def add_checkbox(self, label, description, toggle_func, checked, parent, row=-1, column=-1):
         # make checkbox & add to layout
@@ -437,7 +441,7 @@ class HeadfixedParamWindow(ParamWindow):
         self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 2, 1)
 
         # add sliders - (key, description, start, end, initial value, parent layout)
-        self.add_slider('shrink_factor', 'Shrink factor:', 1, 10, self.controller.update_params_from_gui, 10.0*params['shrink_factor'], self.form_layout, multiplier=10.0)
+        self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_params_from_gui, 10.0*params['scale_factor'], self.form_layout, multiplier=10.0)
 
         # add textboxes - (key, decription, initial value, parent layout)
         self.add_textbox('saved_video_fps', 'Saved video FPS:', params['saved_video_fps'], self.form_layout)
@@ -445,6 +449,7 @@ class HeadfixedParamWindow(ParamWindow):
 
         # add comboboxes
         self.add_combobox('tail_direction', 'Tail direction:', tail_direction_options, params['tail_direction'], self.form_layout)
+        self.add_combobox('interpolation', 'Interpolation:', interpolation_options, params['interpolation'], self.form_layout)
 
     def update_gui_from_params(self, params):
         # update param controls with current parameters
@@ -455,12 +460,13 @@ class HeadfixedParamWindow(ParamWindow):
             self.param_controls['use_multiprocessing'].setChecked(params['use_multiprocessing'])
             self.param_controls['auto_track'].setChecked(params['gui_params']['auto_track'])
 
-            self.set_slider_value('shrink_factor', params['shrink_factor'], slider_scale_factor=10)
+            self.set_slider_value('scale_factor', params['scale_factor'], slider_scale_factor=10)
 
             self.param_controls['saved_video_fps'].setText(str(params['saved_video_fps']))
             self.param_controls['n_tail_points'].setText(str(params['n_tail_points']))
 
             self.param_controls['tail_direction'].setCurrentIndex(tail_direction_options.index(params['tail_direction']))
+            self.param_controls['interpolation'].setCurrentIndex(interpolation_options.index(params['interpolation']))
 
 class FreeswimmingParamWindow(ParamWindow):
     def __init__(self, controller):
@@ -488,10 +494,10 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 4, 1)
         self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 5, 1)
 
-        # add sliders - (key, description, start, end, initial value, parent layout)
-        self.add_slider('shrink_factor', 'Shrink factor:', 1, 10, self.controller.update_params_from_gui, 10.0*params['shrink_factor'], self.form_layout, multiplier=10.0)
-        self.add_slider('body_crop_height', 'Tail crop height:', 1, 100, self.controller.update_params_from_gui, round(params['body_crop'][0]), self.form_layout, tick_interval=10)
-        self.add_slider('body_crop_width', 'Tail crop width:', 1, 100, self.controller.update_params_from_gui, round(params['body_crop'][1]), self.form_layout, tick_interval=10)
+        # add sliders - (key, description, start, end, callback function, initial value, parent layout)
+        self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_params_from_gui, 10.0*params['scale_factor'], self.form_layout, multiplier=10.0)
+        self.add_slider('body_crop_height', 'Body crop height:', 1, 100, self.controller.update_params_from_gui, round(params['body_crop'][0]), self.form_layout, tick_interval=10, int_values=True)
+        self.add_slider('body_crop_width', 'Body crop width:', 1, 100, self.controller.update_params_from_gui, round(params['body_crop'][1]), self.form_layout, tick_interval=10, int_values=True)
 
         # add textboxes - (key, decription, initial value, parent layout)
         self.add_textbox('min_tail_body_dist', 'Body/tail min. dist.:', params['min_tail_body_dist'], self.form_layout)
@@ -500,7 +506,6 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_textbox('n_tail_points', '# tail points:', params['n_tail_points'], self.form_layout)
 
         # add comboboxes
-        self.add_combobox('upscale_factor', 'Resize factor for eyes:', upscale_factor_options, params['upscale_factor'], self.form_layout)
         self.add_combobox('interpolation', 'Interpolation:', interpolation_options, params['interpolation'], self.form_layout)
 
     def update_gui_from_params(self, params):
@@ -519,14 +524,13 @@ class FreeswimmingParamWindow(ParamWindow):
             self.param_controls['use_multiprocessing'].setChecked(params['use_multiprocessing'])
             self.param_controls['auto_track'].setChecked(params['gui_params']['auto_track'])
 
-            self.set_slider_value('shrink_factor', params['shrink_factor'], slider_scale_factor=10)
-            self.set_slider_value('body_crop_height', params['body_crop'][0])
-            self.set_slider_value('body_crop_width', params['body_crop'][1])
+            self.set_slider_value('scale_factor', params['scale_factor'], slider_scale_factor=10)
+            self.set_slider_value('body_crop_height', params['body_crop'][0], int_values=True)
+            self.set_slider_value('body_crop_width', params['body_crop'][1], int_values=True)
 
             self.param_controls['min_tail_body_dist'].setText(str(params['min_tail_body_dist']))
             self.param_controls['max_tail_body_dist'].setText(str(params['max_tail_body_dist']))
             self.param_controls['saved_video_fps'].setText(str(params['saved_video_fps']))
             self.param_controls['n_tail_points'].setText(str(params['n_tail_points']))
 
-            self.param_controls['upscale_factor'].setCurrentIndex(upscale_factor_options.index(params['upscale_factor']))
             self.param_controls['interpolation'].setCurrentIndex(interpolation_options.index(params['interpolation']))

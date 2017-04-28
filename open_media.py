@@ -81,7 +81,7 @@ def open_folder(folder_path, frame_nums=None, frame_filenames=None, return_frame
 def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None):
     # open the video
     try:
-        capture = cv2.VideoCapture(video_path)
+        capture = FFMPEG_VideoReader(video_path)
     except:
         print("Error: Could not open video.")
         return None
@@ -104,7 +104,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     background  = None
 
     for i in range(n_frames_total):
-        _, frame = capture.read()
+        frame = capture.read_frame()
 
         # stop if the frame couldn't be read
         if frame == None:
@@ -139,8 +139,8 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
                 mask = np.less(background, frame)
                 background[mask] = frame[mask]
 
-    # release the capture object
-    capture.release()
+    # close the capture object
+    capture.close()
 
     print("{} frame{} opened.".format(n_frames, "s"*(n_frames > 1)))
 

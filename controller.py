@@ -30,7 +30,8 @@ default_freeswimming_crop_params = { 'offset': np.array([0, 0]), # crop (y, x) o
                                      'eye_threshold': 60,        # pixel brightness to use for thresholding to find the eyes (0-255)
                                      'tail_threshold': 200 }     # pixel brightness to use for thresholding to find the tail (0-255)
 
-default_headfixed_params = {'shrink_factor': 1.0,                            # factor by which to shrink the original frame
+default_headfixed_params = {'scale_factor': 1.0,                            # factor by which to down/upscale the original frame
+                            'interpolation': 'Nearest Neighbor',             # interpolation to use when down/upscaling the original frame
                             'crop_params': [],
                             'invert': False,                                 # invert the frame
                             'type': "headfixed",                             # "headfixed" / "freeswimming"
@@ -48,7 +49,8 @@ default_headfixed_params = {'shrink_factor': 1.0,                            # f
                             'batch_offsets': None,                           # spatial alignment offsets
                             'gui_params': { 'auto_track': False }}           # automatically track a frame when you switch to it
 
-default_freeswimming_params = {'shrink_factor': 1.0,                         # factor by which to shrink the original frame
+default_freeswimming_params = {'scale_factor': 1.0,                         # factor by which to down/upscale the original frame
+                               'interpolation': 'Nearest Neighbor',          # interpolation to use when down/upscaling the original frame
                                'crop_params': [],
                                'invert': False,                              # invert the frame
                                'type': "freeswimming",                       # "headfixed" / "freeswimming"
@@ -61,8 +63,6 @@ default_freeswimming_params = {'shrink_factor': 1.0,                         # f
                                'track_eyes': True,                           # whether to track the eyes
                                'min_tail_body_dist': 10,                     # min. distance between the body center and the tail
                                'max_tail_body_dist': 30,                     # max. distance between the body center and the tail
-                               'upscale_factor': 1,                       # factor by which to resize frame for reducing noise in eye position tracking
-                               'interpolation': 'Nearest Neighbor',          # interpolation to use when resizing frame for eye tracking
                                'body_crop': np.array([100, 100]),            # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
                                'media_types': [],                            # types of media that are tracked - "video" / "folder" / "image"
                                'media_paths': [],                            # paths to media that are tracked
@@ -88,7 +88,7 @@ class Controller():
 
         # initialize variables
         self.current_frame         = None
-        self.shrunken_frame        = None
+        self.scaled_frame          = None
         self.cropped_frame         = None
         self.frames                = []
         self.bg_sub_frames         = []
@@ -508,7 +508,7 @@ class Controller():
     def switch_frame(self, n, new_load=False):
         if n != self.n:
             # reset tracking results
-            self.tracking_results = []
+            self.tracking_results = None
 
         # set current frame index
         if n != None:
@@ -544,7 +544,7 @@ class Controller():
 
     def reshape_frame(self):
         # reset tracking results
-        self.tracking_results = []
+        self.tracking_results = None
 
         if self.current_frame != None:
             # print(self.current_frame)
@@ -560,21 +560,21 @@ class Controller():
             else:
                 self.cropped_frame = self.current_frame
 
-            # shrink the frame
-            if self.params['shrink_factor'] != None:
-                self.shrunken_frame = tracking.shrink_frame(self.cropped_frame, self.params['shrink_factor'])
+            # scale the frame
+            if self.params['scale_factor'] != None:
+                self.scaled_frame = tracking.scale_frame(self.cropped_frame, self.params['scale_factor'], utilities.translate_interpolation(self.params['interpolation']))
             else:
-                self.shrunken_frame = self.cropped_frame
+                self.scaled_frame = self.cropped_frame
 
     def invert_frame(self):
         self.current_frame  = (255 - self.current_frame)
-        self.shrunken_frame = (255 - self.shrunken_frame)
+        self.scaled_frame   = (255 - self.scaled_frame)
         self.cropped_frame  = (255 - self.cropped_frame)
 
     def update_preview(self, image=None, new_load=False, new_frame=False):
         if image == None:
             # use the cropped current frame by default
-            image = self.shrunken_frame
+            image = self.scaled_frame
 
         if image != None:
             # if we have more than one frame, show the slider
@@ -604,9 +604,9 @@ class Controller():
         current_crop_params = self.params['crop_params'][self.current_crop]
 
         # generate thresholded frames
-        self.body_threshold_frame = tracking.simplify_body_threshold_frame(tracking.get_threshold_frame(self.shrunken_frame, current_crop_params['body_threshold']))*255
-        self.eye_threshold_frame  = tracking.get_threshold_frame(self.shrunken_frame, current_crop_params['eye_threshold'])*255
-        self.tail_threshold_frame = tracking.get_threshold_frame(self.shrunken_frame, current_crop_params['tail_threshold'])*255
+        self.body_threshold_frame = tracking.simplify_body_threshold_frame(tracking.get_threshold_frame(self.scaled_frame, current_crop_params['body_threshold']))*255
+        self.eye_threshold_frame  = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['eye_threshold'])*255
+        self.tail_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['tail_threshold'])*255
         self.tail_skeleton_frame  = tracking.get_tail_skeleton_frame(self.tail_threshold_frame/255)*255
 
     def toggle_save_video(self, checkbox):
@@ -642,12 +642,22 @@ class Controller():
 
     def track_frame(self):
         if self.current_frame != None:
-            # print(self.current_frame, self.shrunken_frame)
+            # print(self.current_frame, self.scaled_frame)
             # get params from gui
             self.update_params_from_gui()
 
             # track current frame
-            self.tracking_results = tracking.track_cropped_frame(self.shrunken_frame, self.params, self.params['crop_params'][self.current_crop])
+            self.tracking_results = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
+
+            # rescale coordinates
+            if self.tracking_results['tail_coords'] != None:
+                self.tracking_results['tail_coords'] /= self.params['scale_factor']
+            if self.tracking_results['spline_coords'] != None:
+                self.tracking_results['spline_coords'] /= self.params['scale_factor']
+            if self.tracking_results['body_position'] != None:
+                self.tracking_results['body_position'] /= self.params['scale_factor']
+            if self.tracking_results['eye_coords'] != None:
+                self.tracking_results['eye_coords'] /= self.params['scale_factor']
 
             self.update_preview(image=None, new_load=False, new_frame=False)
 
@@ -705,11 +715,11 @@ class Controller():
 
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
         # get start & end coordinates - end_add adds a pixel to the end coordinates (for a more accurate crop)
-        y_start = round(start_crop_coord[0]/self.params['shrink_factor'])
-        y_end   = round(end_crop_coord[0]/self.params['shrink_factor'])
-        x_start = round(start_crop_coord[1]/self.params['shrink_factor'])
-        x_end   = round(end_crop_coord[1]/self.params['shrink_factor'])
-        end_add = round(1*self.params['shrink_factor'])
+        y_start = round(start_crop_coord[0]/self.params['scale_factor'])
+        y_end   = round(end_crop_coord[0]/self.params['scale_factor'])
+        x_start = round(start_crop_coord[1]/self.params['scale_factor'])
+        x_end   = round(end_crop_coord[1]/self.params['scale_factor'])
+        end_add = round(1*self.params['scale_factor'])
 
         # get params of currently selected crop
         current_crop_params = self.params['crop_params'][self.current_crop].copy()
@@ -862,7 +872,7 @@ class FreeswimmingController(Controller):
             elif self.params['gui_params']["show_tail_skeleton"]:
                 image = self.tail_skeleton_frame
             else:
-                image = self.shrunken_frame
+                image = self.scaled_frame
 
         Controller.update_preview(self, image, new_load, new_frame)
 
@@ -905,7 +915,7 @@ class FreeswimmingController(Controller):
         old_crop_params = self.params['crop_params']
 
         # get current shrink factor
-        shrink_factor = self.params['shrink_factor']
+        scale_factor = self.params['scale_factor']
 
         # get crop params from gui
         for c in range(len(self.params['crop_params'])):
@@ -954,36 +964,33 @@ class FreeswimmingController(Controller):
         if self.current_frame != None:
             # get params from gui
             try:
-                shrink_factor      = float(self.param_window.param_controls['shrink_factor' + '_textbox'].text())
+                scale_factor      = float(self.param_window.param_controls['scale_factor' + '_textbox'].text())
                 saved_video_fps    = int(float(self.param_window.param_controls['saved_video_fps'].text()))
                 n_tail_points      = int(float(self.param_window.param_controls['n_tail_points'].text()))
                 body_crop_height   = int(float(self.param_window.param_controls['body_crop_height' + '_textbox'].text()))
                 body_crop_width    = int(float(self.param_window.param_controls['body_crop_width' + '_textbox'].text()))
                 min_tail_body_dist = int(float(self.param_window.param_controls['min_tail_body_dist'].text()))
                 max_tail_body_dist = int(float(self.param_window.param_controls['max_tail_body_dist'].text()))
-                upscale_factor  = int(float(self.param_window.param_controls['upscale_factor'].currentText()))
                 interpolation      = str(self.param_window.param_controls['interpolation'].currentText())
             except ValueError:
                 self.param_window.show_invalid_params_text()
                 return
 
-            valid_params = (0 < shrink_factor <= 1
+            valid_params = (scale_factor > 0
                         and saved_video_fps > 0
                         and n_tail_points > 0
                         and body_crop_height > 0
                         and body_crop_width > 0
                         and min_tail_body_dist >= 0
-                        and max_tail_body_dist > min_tail_body_dist
-                        and upscale_factor > 0)
+                        and max_tail_body_dist > min_tail_body_dist)
 
             if valid_params:
-                self.params['shrink_factor']      = shrink_factor
+                self.params['scale_factor']      = scale_factor
                 self.params['saved_video_fps']    = saved_video_fps
                 self.params['n_tail_points']      = n_tail_points
                 self.params['body_crop']          = np.array([body_crop_height, body_crop_width])
-                self.params['min_tail_body_dist'] = min_tail_body_dist * shrink_factor
+                self.params['min_tail_body_dist'] = min_tail_body_dist
                 self.params['max_tail_body_dist'] = max_tail_body_dist
-                self.params['upscale_factor']  = upscale_factor
                 self.params['interpolation']      = interpolation
 
                 self.param_window.hide_invalid_params_text()
@@ -1070,7 +1077,7 @@ class HeadfixedController(Controller):
     def update_tail_start_coords(self, rel_tail_start_coords):
         self.params['tail_start_coords'] = tracking.get_absolute_coords(rel_tail_start_coords,
                                                                                    self.params['crop_params'][self.current_crop]['offset'],
-                                                                                   self.params['shrink_factor'])
+                                                                                   self.params['scale_factor'])
 
         # reset headfixed tracking
         tracking.clear_headfixed_tracking()
@@ -1080,7 +1087,7 @@ class HeadfixedController(Controller):
 
             # get params from gui
             try:
-                shrink_factor   = float(self.param_window.param_controls['shrink_factor' + '_textbox'].text())
+                scale_factor   = float(self.param_window.param_controls['scale_factor' + '_textbox'].text())
                 tail_direction  = str(self.param_window.param_controls['tail_direction'].currentText())
                 saved_video_fps = int(self.param_window.param_controls['saved_video_fps'].text())
                 n_tail_points   = int(self.param_window.param_controls['n_tail_points'].text())
@@ -1088,12 +1095,12 @@ class HeadfixedController(Controller):
                 self.param_window.show_invalid_params_text()
                 return
 
-            valid_params = (0 < shrink_factor <= 1
+            valid_params = (0 < scale_factor <= 1
                         and saved_video_fps > 0
                         and n_tail_points > 0)
 
             if valid_params:
-                self.params['shrink_factor']   = shrink_factor
+                self.params['scale_factor']   = scale_factor
                 self.params['tail_direction']  = tail_direction
                 self.params['saved_video_fps'] = saved_video_fps
                 self.params['n_tail_points']   = n_tail_points

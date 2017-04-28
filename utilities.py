@@ -42,3 +42,16 @@ def estimate_thresholds(frame, delta=0.0001, n_bins=20, plot_histogram=False):
     print("Estimated thresholds: {}, {}, {}.".format(est_tail_threshold, est_body_threshold, est_eye_threshold))
 
     return est_tail_threshold, est_body_threshold, est_eye_threshold
+
+def translate_interpolation(interpolation_string):
+    # get matching opencv interpolation variable from string
+    if interpolation_string == 'Nearest Neighbor':
+        interpolation = cv2.INTER_NEAREST
+    elif interpolation_string == 'Linear':
+        interpolation = cv2.INTER_LINEAR
+    elif interpolation_string == 'Bicubic':
+        interpolation = cv2.INTER_CUBIC
+    elif interpolation_string == 'Lanczos':
+        interpolation = cv2.INTER_LANCZOS4
+
+    return interpolation

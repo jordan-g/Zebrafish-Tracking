@@ -17,6 +17,7 @@ except:
     from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
 
 import tracking
+import utilities
 
 # color table to use for showing images
 gray_color_table = [qRgb(i, i, i) for i in range(256)]
@@ -219,52 +220,38 @@ class PreviewWindow(QMainWindow):
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
         # update image
-        self.image = image.copy()
+        self.image = tracking.scale_frame(image, 1.0/params['scale_factor'], utilities.translate_interpolation('Nearest Neighbor'))
+
+        body_crop = params['body_crop']
 
         try:
-            body_crop = tracking.get_relative_body_crop(params['body_crop'], params['shrink_factor'])
-        except KeyError as error:
-            # print(error)
-            body_crop = None
-
-        try:
-            tail_start_coords = tracking.get_relative_coords(params['tail_start_coords'], crop_params['offset'], params['shrink_factor'])
+            tail_start_coords = params['tail_start_coords']
 
             # add tail start point to image
-            cv2.circle(image, (int(round(tail_start_coords[1])), int(round(tail_start_coords[0]))), 1, (180, 50, 180), -1)
+            cv2.circle(self.image, (int(round(tail_start_coords[1])), int(round(tail_start_coords[0]))), 1, (180, 50, 180), -1)
         except (KeyError, TypeError) as error:
             # print(error)
             tail_start_coords = None
 
-        if len(tracking_results) > 0:
-            # get tracking coords
-            tail_coords    = tracking_results[0]
-            spline_coords  = tracking_results[1]
-            if len(tracking_results) > 2:
-                heading_angle  = tracking_results[2]
-                body_position  = tracking_results[3]
-                eye_coords     = tracking_results[4]
-            else:
-                heading_angle  = None
-                body_position  = None
-                eye_coords     = None
+        if tracking_results != None:
+            body_position = tracking_results['body_position']
 
             # add tracking to image
-            image = tracking.add_tracking_to_frame(image, tracking_results, cropped=True)
+            image = tracking.add_tracking_to_frame(self.image, tracking_results, cropped=True)
 
             if body_crop != None and body_position != None:
                 # copy image
-                overlay = image.copy()
+                overlay = self.image.copy()
 
                 # draw tail crop overlay
                 cv2.rectangle(overlay, (int(body_position[1]-body_crop[1]), int(body_position[0]-body_crop[0])),
                                         (int(body_position[1]+body_crop[1]), int(body_position[0]+body_crop[0])), (242, 242, 65), -1)
 
                 # overlay with the original image
-                cv2.addWeighted(overlay, 0.2, image, 0.8, 0, image)
+                cv2.addWeighted(overlay, 0.2, self.image, 0.8, 0, self.image)
 
         # update image label
-        self.update_image_label(image)
+        self.update_image_label(self.image)
 
     def draw_crop_selection(self, start_crop_coords, end_crop_coords):
         if self.selecting_crop and self.image != None:
