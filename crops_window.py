@@ -24,7 +24,7 @@ class CropsWindow(QMainWindow):
         self.controller = controller
 
         # set position & size
-        self.setGeometry(550, 100, 10, 10)
+        self.setGeometry(750, 200, 500, 10)
 
         # set title
         self.setWindowTitle("Crops")
@@ -109,6 +109,7 @@ class CropsWindow(QMainWindow):
 
         # make slider & add to layout
         slider = QSlider(Qt.Horizontal)
+        slider.setObjectName(label)
         slider.setFocusPolicy(Qt.StrongFocus)
         slider.setTickPosition(QSlider.TicksBothSides)
         slider.setTickInterval(tick_interval)
@@ -120,6 +121,7 @@ class CropsWindow(QMainWindow):
 
         # make textbox & add to layout
         textbox = QLineEdit()
+        textbox.setObjectName(label)
         # textbox.setMinimumHeight(10)
         textbox.setFixedWidth(40)
         textbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -130,6 +132,8 @@ class CropsWindow(QMainWindow):
         # connect slider to set textbox text & update params
         slider.sliderMoved.connect(lambda:self.update_textbox_from_slider(slider, textbox, multiplier))
         slider.sliderMoved.connect(slider_moved_func)
+        slider.sliderPressed.connect(lambda:self.slider_pressed(slider))
+        slider.sliderReleased.connect(lambda:self.slider_released(slider))
 
         # connect textbox to 
         textbox.editingFinished.connect(lambda:self.update_slider_from_textbox(slider, textbox, multiplier))
@@ -141,6 +145,20 @@ class CropsWindow(QMainWindow):
         # add to list of controls
         self.param_controls[-1][slider_label]  = slider
         self.param_controls[-1][textbox_label] = textbox
+
+    def slider_pressed(self, slider):
+        label = slider.objectName()
+        if "threshold" in label:
+            checkbox = self.controller.param_window.param_controls["show_{}".format(label)]
+            checkbox.setChecked(True)
+            self.controller.toggle_threshold_image(checkbox)
+
+    def slider_released(self, slider):
+        label = slider.objectName()
+        if "threshold" in label:
+            checkbox = self.controller.param_window.param_controls["show_{}".format(label)]
+            checkbox.setChecked(False)
+            self.controller.toggle_threshold_image(checkbox)
 
     def update_textbox_from_slider(self, slider, textbox, multiplier=1.0):
         textbox.setText(str(slider.sliderPosition()/multiplier))
