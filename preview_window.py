@@ -222,10 +222,10 @@ class PreviewWindow(QMainWindow):
         self.image = image.copy()
 
         try:
-            tail_crop = tracking.get_relative_tail_crop(params['tail_crop'], params['shrink_factor'])
+            body_crop = tracking.get_relative_body_crop(params['body_crop'], params['shrink_factor'])
         except KeyError as error:
             # print(error)
-            tail_crop = None
+            body_crop = None
 
         try:
             tail_start_coords = tracking.get_relative_coords(params['tail_start_coords'], crop_params['offset'], params['shrink_factor'])
@@ -252,13 +252,13 @@ class PreviewWindow(QMainWindow):
             # add tracking to image
             image = tracking.add_tracking_to_frame(image, tracking_results, cropped=True)
 
-            if tail_crop != None and body_position != None:
+            if body_crop != None and body_position != None:
                 # copy image
                 overlay = image.copy()
 
                 # draw tail crop overlay
-                cv2.rectangle(overlay, (int(body_position[1]-tail_crop[1]), int(body_position[0]-tail_crop[0])),
-                                        (int(body_position[1]+tail_crop[1]), int(body_position[0]+tail_crop[0])), (242, 242, 65), -1)
+                cv2.rectangle(overlay, (int(body_position[1]-body_crop[1]), int(body_position[0]-body_crop[0])),
+                                        (int(body_position[1]+body_crop[1]), int(body_position[0]+body_crop[0])), (242, 242, 65), -1)
 
                 # overlay with the original image
                 cv2.addWeighted(overlay, 0.2, image, 0.8, 0, image)

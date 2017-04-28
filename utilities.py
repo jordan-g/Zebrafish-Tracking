@@ -4,7 +4,7 @@ import peakdetect
 import numpy as np
 import matplotlib.pyplot as plt
 
-def estimate_thresholds(frame, delta=0.0001, n_bins=20, plot_histogram=True):
+def estimate_thresholds(frame, delta=0.0001, n_bins=20, plot_histogram=False):
     # get number of pixels in the frame
     n_pixels = np.product(frame.shape)
 

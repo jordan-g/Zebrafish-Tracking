@@ -61,9 +61,9 @@ default_freeswimming_params = {'shrink_factor': 1.0,                         # f
                                'track_eyes': True,                           # whether to track the eyes
                                'min_tail_body_dist': 10,                     # min. distance between the body center and the tail
                                'max_tail_body_dist': 30,                     # max. distance between the body center and the tail
-                               'eye_resize_factor': 1,                       # factor by which to resize frame for reducing noise in eye position tracking
+                               'upscale_factor': 1,                       # factor by which to resize frame for reducing noise in eye position tracking
                                'interpolation': 'Nearest Neighbor',          # interpolation to use when resizing frame for eye tracking
-                               'tail_crop': np.array([100, 100]),            # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
+                               'body_crop': np.array([100, 100]),            # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
                                'media_types': [],                            # types of media that are tracked - "video" / "folder" / "image"
                                'media_paths': [],                            # paths to media that are tracked
                                'backgrounds': [],                            # backgrounds calculated for background subtraction
@@ -847,8 +847,8 @@ class FreeswimmingController(Controller):
         Controller.switch_frame(self, n, new_load)
 
         if new_load:
-            self.param_window.param_controls['tail_crop_height_slider'].setMaximum(self.current_frame.shape[0])
-            self.param_window.param_controls['tail_crop_width_slider'].setMaximum(self.current_frame.shape[1])
+            self.param_window.param_controls['body_crop_height_slider'].setMaximum(self.current_frame.shape[0])
+            self.param_window.param_controls['body_crop_width_slider'].setMaximum(self.current_frame.shape[1])
 
     def update_preview(self, image=None, new_load=False, new_frame=False):
         if image == None:
@@ -957,11 +957,11 @@ class FreeswimmingController(Controller):
                 shrink_factor      = float(self.param_window.param_controls['shrink_factor' + '_textbox'].text())
                 saved_video_fps    = int(float(self.param_window.param_controls['saved_video_fps'].text()))
                 n_tail_points      = int(float(self.param_window.param_controls['n_tail_points'].text()))
-                tail_crop_height   = int(float(self.param_window.param_controls['tail_crop_height' + '_textbox'].text()))
-                tail_crop_width    = int(float(self.param_window.param_controls['tail_crop_width' + '_textbox'].text()))
+                body_crop_height   = int(float(self.param_window.param_controls['body_crop_height' + '_textbox'].text()))
+                body_crop_width    = int(float(self.param_window.param_controls['body_crop_width' + '_textbox'].text()))
                 min_tail_body_dist = int(float(self.param_window.param_controls['min_tail_body_dist'].text()))
                 max_tail_body_dist = int(float(self.param_window.param_controls['max_tail_body_dist'].text()))
-                eye_resize_factor  = int(float(self.param_window.param_controls['eye_resize_factor'].currentText()))
+                upscale_factor  = int(float(self.param_window.param_controls['upscale_factor'].currentText()))
                 interpolation      = str(self.param_window.param_controls['interpolation'].currentText())
             except ValueError:
                 self.param_window.show_invalid_params_text()
@@ -970,20 +970,20 @@ class FreeswimmingController(Controller):
             valid_params = (0 < shrink_factor <= 1
                         and saved_video_fps > 0
                         and n_tail_points > 0
-                        and tail_crop_height > 0
-                        and tail_crop_width > 0
+                        and body_crop_height > 0
+                        and body_crop_width > 0
                         and min_tail_body_dist >= 0
                         and max_tail_body_dist > min_tail_body_dist
-                        and eye_resize_factor > 0)
+                        and upscale_factor > 0)
 
             if valid_params:
                 self.params['shrink_factor']      = shrink_factor
                 self.params['saved_video_fps']    = saved_video_fps
                 self.params['n_tail_points']      = n_tail_points
-                self.params['tail_crop']          = np.array([tail_crop_height, tail_crop_width])
+                self.params['body_crop']          = np.array([body_crop_height, body_crop_width])
                 self.params['min_tail_body_dist'] = min_tail_body_dist * shrink_factor
                 self.params['max_tail_body_dist'] = max_tail_body_dist
-                self.params['eye_resize_factor']  = eye_resize_factor
+                self.params['upscale_factor']  = upscale_factor
                 self.params['interpolation']      = interpolation
 
                 self.param_window.hide_invalid_params_text()

@@ -18,7 +18,7 @@ except:
     from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem
 
 # options for dropdown selectors for interpolation
-eye_resize_factor_options = [i for i in range(1, 9)]
+upscale_factor_options = [i for i in range(1, 9)]
 interpolation_options     = ["Nearest Neighbor", "Linear", "Bicubic", "Lanczos"]
 tail_direction_options    = ["Left", "Right", "Up", "Down"]
 
@@ -490,8 +490,8 @@ class FreeswimmingParamWindow(ParamWindow):
 
         # add sliders - (key, description, start, end, initial value, parent layout)
         self.add_slider('shrink_factor', 'Shrink factor:', 1, 10, self.controller.update_params_from_gui, 10.0*params['shrink_factor'], self.form_layout, multiplier=10.0)
-        self.add_slider('tail_crop_height', 'Tail crop height:', 1, 100, self.controller.update_params_from_gui, round(params['tail_crop'][0]), self.form_layout, tick_interval=10)
-        self.add_slider('tail_crop_width', 'Tail crop width:', 1, 100, self.controller.update_params_from_gui, round(params['tail_crop'][1]), self.form_layout, tick_interval=10)
+        self.add_slider('body_crop_height', 'Tail crop height:', 1, 100, self.controller.update_params_from_gui, round(params['body_crop'][0]), self.form_layout, tick_interval=10)
+        self.add_slider('body_crop_width', 'Tail crop width:', 1, 100, self.controller.update_params_from_gui, round(params['body_crop'][1]), self.form_layout, tick_interval=10)
 
         # add textboxes - (key, decription, initial value, parent layout)
         self.add_textbox('min_tail_body_dist', 'Body/tail min. dist.:', params['min_tail_body_dist'], self.form_layout)
@@ -500,7 +500,7 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_textbox('n_tail_points', '# tail points:', params['n_tail_points'], self.form_layout)
 
         # add comboboxes
-        self.add_combobox('eye_resize_factor', 'Resize factor for eyes:', eye_resize_factor_options, params['eye_resize_factor'], self.form_layout)
+        self.add_combobox('upscale_factor', 'Resize factor for eyes:', upscale_factor_options, params['upscale_factor'], self.form_layout)
         self.add_combobox('interpolation', 'Interpolation:', interpolation_options, params['interpolation'], self.form_layout)
 
     def update_gui_from_params(self, params):
@@ -520,13 +520,13 @@ class FreeswimmingParamWindow(ParamWindow):
             self.param_controls['auto_track'].setChecked(params['gui_params']['auto_track'])
 
             self.set_slider_value('shrink_factor', params['shrink_factor'], slider_scale_factor=10)
-            self.set_slider_value('tail_crop_height', params['tail_crop'][0])
-            self.set_slider_value('tail_crop_width', params['tail_crop'][1])
+            self.set_slider_value('body_crop_height', params['body_crop'][0])
+            self.set_slider_value('body_crop_width', params['body_crop'][1])
 
             self.param_controls['min_tail_body_dist'].setText(str(params['min_tail_body_dist']))
             self.param_controls['max_tail_body_dist'].setText(str(params['max_tail_body_dist']))
             self.param_controls['saved_video_fps'].setText(str(params['saved_video_fps']))
             self.param_controls['n_tail_points'].setText(str(params['n_tail_points']))
 
-            self.param_controls['eye_resize_factor'].setCurrentIndex(eye_resize_factor_options.index(params['eye_resize_factor']))
+            self.param_controls['upscale_factor'].setCurrentIndex(upscale_factor_options.index(params['upscale_factor']))
             self.param_controls['interpolation'].setCurrentIndex(interpolation_options.index(params['interpolation']))
