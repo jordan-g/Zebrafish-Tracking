@@ -283,18 +283,18 @@ class FreeswimmingCropsWindow(CropsWindow):
         CropsWindow.create_param_controls(self, crop_params)
 
         # add textboxes - (key, decription, initial value, parent layout)
-        self.add_textbox('body_threshold', 'Body threshold:', crop_params['body_threshold'], self.form_layout)
-        self.add_textbox('eye_threshold', 'Eye threshold:', crop_params['eye_threshold'], self.form_layout)
-        self.add_textbox('tail_threshold', 'Tail threshold:', crop_params['tail_threshold'], self.form_layout)
+        self.add_slider('body_threshold', 'Body threshold:', 0, 255, crop_params['body_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1)
+        self.add_slider('eye_threshold', 'Eye threshold:', 0, 255, crop_params['eye_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1)
+        self.add_slider('tail_threshold', 'Tail threshold:', 0, 255, crop_params['tail_threshold'], self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=1)
 
     def update_gui_from_params(self, crop_params):
         CropsWindow.update_gui_from_params(self, crop_params)
 
         if len(crop_params) == len(self.param_controls):
             for c in range(len(crop_params)):
-                self.param_controls[c]['body_threshold'].setText(str(crop_params[c]['body_threshold']))
-                self.param_controls[c]['eye_threshold'].setText(str(crop_params[c]['eye_threshold']))
-                self.param_controls[c]['tail_threshold'].setText(str(crop_params[c]['tail_threshold']))
+                self.set_slider_value('body_threshold', crop_params[c]['body_threshold'], c)
+                self.set_slider_value('eye_threshold', crop_params[c]['eye_threshold'], c)
+                self.set_slider_value('tail_threshold', crop_params[c]['tail_threshold'], c)
 
 class HeadfixedCropsWindow(CropsWindow):
     def __init__(self, controller):

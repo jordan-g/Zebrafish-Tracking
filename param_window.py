@@ -6,6 +6,7 @@ import json
 
 import numpy as np
 import cv2
+import pdb
 
 # import the Qt library
 try:
@@ -53,7 +54,7 @@ class ParamWindow(QMainWindow):
 
         self.media_list_items = []
 
-        self.media_list_buttons = QHBoxLayout(self)
+        self.media_list_buttons = QHBoxLayout()
         self.left_layout.addLayout(self.media_list_buttons)
 
         self.add_media_button = QPushButton('+')
@@ -107,6 +108,7 @@ class ParamWindow(QMainWindow):
 
         # disable controls
         self.set_gui_disabled(True)
+
         
         self.show()
 
@@ -199,7 +201,7 @@ class ParamWindow(QMainWindow):
         top_layout.addWidget(self.loaded_media_label)
 
         # create tracking progress label
-        self.tracking_progress_label = QLabel("")
+        self.tracking_progress_label = QLabel("---")
         self.right_layout.addWidget(self.tracking_progress_label)
 
         # create invalid parameters label
@@ -243,39 +245,46 @@ class ParamWindow(QMainWindow):
         button_layout_1.addWidget(self.save_button)
 
         self.track_button = QPushButton(u'\u279E Track', self)
-        self.track_button.setMaximumWidth(80)
+        self.track_button.setMaximumWidth(90)
         self.track_button.clicked.connect(self.controller.track_frame)
+        self.track_button.setToolTip("Track the currently-previewed frame (for parameter tuning).")
         button_layout_1.addWidget(self.track_button)
 
         self.track_all_button = QPushButton(u'\u27A0 Track All', self)
         self.track_all_button.setMaximumWidth(180)
         self.track_all_button.clicked.connect(self.controller.track_media)
         self.track_all_button.setStyleSheet("font-weight: bold")
+        self.track_all_button.setToolTip("Track all of the currently loaded media with the current parameters.")
         button_layout_1.addWidget(self.track_all_button)
 
         self.reload_last_save_button = QPushButton(u'\u27AA Reload', self)
         self.reload_last_save_button.setMaximumWidth(90)
         self.reload_last_save_button.clicked.connect(self.controller.load_last_params)
+        self.reload_last_save_button.setToolTip("Reload the previously auto-saved parameters.")
         button_layout_2.addWidget(self.reload_last_save_button)
 
         self.load_params_button = QPushButton(u'Load Params\u2026', self)
         self.load_params_button.setMaximumWidth(180)
         self.load_params_button.clicked.connect(lambda:self.controller.load_params(None))
+        self.load_params_button.setToolTip("Load a set of parameters.")
         button_layout_2.addWidget(self.load_params_button)
 
         self.save_params_button = QPushButton(u'Save Params\u2026', self)
         self.save_params_button.setMaximumWidth(180)
         self.save_params_button.clicked.connect(self.controller.save_params)
+        self.save_params_button.setToolTip("Save the current set of parameters.")
         button_layout_2.addWidget(self.save_params_button)
 
         self.load_background_button = QPushButton(u'Load Background', self)
         self.load_background_button.setMaximumWidth(180)
         self.load_background_button.clicked.connect(self.controller.load_background)
+        self.load_background_button.setToolTip("Load a saved background image for background subtraction.")
         button_layout_3.addWidget(self.load_background_button)
 
         self.save_background_button = QPushButton(u'Save Background', self)
         self.save_background_button.setMaximumWidth(180)
         self.save_background_button.clicked.connect(self.controller.save_background)
+        self.save_background_button.setToolTip("Save the calculated background subtraction image.")
         button_layout_3.addWidget(self.save_background_button)
 
     def set_gui_disabled(self, disabled_bool):

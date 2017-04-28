@@ -215,7 +215,7 @@ class PreviewWindow(QMainWindow):
                 self.image_slider.hide()
 
         # convert to BGR
-        if len(image.shape) < 3:
+        if len(image.shape) == 2:
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
         # update image

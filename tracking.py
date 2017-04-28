@@ -17,11 +17,15 @@ import multiprocessing
 from multiprocessing import sharedctypes
 from functools import partial
 from itertools import chain
+import matplotlib.pyplot as plt
 
 from moviepy.video.io.ffmpeg_reader import *
 from skimage.morphology import skeletonize
 from collections import deque
 
+from open_media import open_image, open_folder, open_video
+from preprocessing import calc_background
+import pdb
 default_crop_params = { 'offset': [0, 0],      # crop offset
                         'crop': None,          # crop size
                         'tail_threshold': 200, # pixel brightness to use for thresholding to find the tail (0-255)
@@ -43,315 +47,41 @@ n_frames_tracked      = 0
 
 cv2.setNumThreads(0) # avoids crashes when using multiprocessing with opencv
 
-# --- Loading --- #
-
-def load_frame_from_image(image_path, background=None):
-    try:
-        frame = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    except:
-        print("Error: Could not open image.")
-        return None
-
-    # convert to greyscale
-    if len(frame.shape) >= 3:
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    if background != None:
-        # subtract background from frame
-        bg_sub_frame = subtract_background_from_frame(frame, background)
-
-        return frame, bg_sub_frame
-    else:
-        return frame
-
-def load_frames_from_folder(folder_path, frame_filenames, frame_nums, background=None):
-    print("Loading frames from {}...".format(folder_path))
-    if frame_filenames == None and folder_path != None:
-        # get filenames of all frame images in the folder
-        frame_filenames = get_frame_filenames_from_folder(folder_path)
-
-        if len(frame_filenames) == 0:
-            # no frames found in the folder; end here
-            if background != None:
-                return [None]*2
-            else:
-                return None
-
-    n_frames_total = len(frame_filenames) # total number of frames in the folder
-
-    # no frame numbers given; use all frames
-    if frame_nums == None:
-        frame_nums = range(n_frames_total)
-
-    n_frames = len(frame_nums) # number of frames to use for the background
-
-    # initialize list of frames
-    frames = []
-
-    if background != None:
-        # initialize list of background subtracted frames
-        bg_sub_frames = []
-
-    for frame_number in frame_nums:
-        # load the frame
-        if background != None:
-            frame, bg_sub_frame = load_frame_from_image(os.path.join(folder_path, frame_filenames[frame_number]), background)
-
-            # add to background subtracted frames list
-            bg_sub_frames.append(bg_sub_frame)
-        else:
-            frame = load_frame_from_image(os.path.join(folder_path, frame_filenames[frame_number]), None)
-
-        # add to frames list
-        frames.append(frame)
-
-    print("{} frames loaded.".format(n_frames_total))
-
-    if background != None:
-        return frames, bg_sub_frames
-    else:
-        return frames
-
-def load_frames_from_video(video_path, cap, frame_nums, background=None, batch_offset=None):
-    if batch_offset != None:
-        transform = np.float32([[1, 0, -batch_offset[0]], [0, 1, -batch_offset[1]]])
-
-    if cap == None and video_path != None:
-        new_cap = True # creating a new capture object; we will release it at the end
-
-        # open the video
-        try:
-            cap = cv2.VideoCapture(video_path)
-        except:
-            print("Error: Could not open video.")
-            if background != None:
-                return [None]*2
-            else:
-                return None
-    else:
-        new_cap = False # reusing an existinc capture object
-
-    # get video info
-    fps, n_frames_total = get_video_info(video_path)
-
-    # no frame numbers given; use all frames
-    if frame_nums == None:
-        frame_nums = range(n_frames_total)
-
-    # print(n_frames_total)
-
-    n_frames = len(frame_nums) # number of frames to use for the background
-
-    # initialize list of frames
-    frames = []
-
-    if background != None:
-        # initialize list of background subtracted frames
-        bg_sub_frames = []
-
-    # check whether frame numbers are sequential (ie. [1, 2, 3, ...])
-    # or not (ie. [20, 30, 40, ...])
-    frame_nums_are_sequential = frame_nums == list(range(frame_nums[0], frame_nums[-1]+1))
-
-    if frame_nums_are_sequential:
-        # frame numbers are sequential - just set frame position once
-        try:
-            cap.set(cv2.CV_CAP_PROP_POS_FRAMES, frame_nums[0]-1)
-        except:
-            cap.set(1, frame_nums[0]-1)
-
-    for frame_num in frame_nums:
-        if not frame_nums_are_sequential:  
-            # frame numbers are not sequential - set frame position
-            try:
-                cap.set(cv2.CV_CAP_PROP_POS_FRAMES, frame_num-1)
-            except:
-                cap.set(1, frame_num-1)
-                
-        _, frame = cap.read()
-
-        if frame != None:
-            # convert to greyscale
-            if len(frame.shape) >= 3:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            if batch_offset != None:
-                offset_frame = cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
-            else:
-                offset_frame = frame
-
-            # add to frames list
-            frames.append(offset_frame)
-
-            if background != None:
-                # subtract background from frame
-                bg_sub_frame = subtract_background_from_frame(offset_frame, background)
-
-                if batch_offset != None:
-                    offset_bg_sub_frame = cv2.warpAffine(bg_sub_frame, transform, (bg_sub_frame.shape[1], bg_sub_frame.shape[0]), borderValue=255)
-                else:
-                    offset_bg_sub_frame = bg_sub_frame
-
-                # add to frames list
-                bg_sub_frames.append(offset_bg_sub_frame)
-
-    if new_cap:
-        # release the capture object
-        cap.release()
-
-    if background != None:
-        return frames, bg_sub_frames
-    else:
-        return frames
-
 # --- Background subtraction --- #
 
-def get_background_from_folder(folder_path, frame_filenames=None, frame_nums=None, save_frames=False, progress_signal=None):
-    if frame_filenames == None and folder_path != None:
-        # get filenames of all frame images in the folder
-        frame_filenames = get_frame_filenames_from_folder(folder_path)
+def subtract_background_from_frames(frames, background, rescale_brightness=True):
+    # subtract background from frame
+    bg_sub_frames = frames - background.reshape(1, frames.shape[1], frames.shape[2])
+    bg_sub_frames[bg_sub_frames < 10] = 255
 
-        if len(frame_filenames)  == 0:
-            # no frames found in the folder; end here
-            if save_frames:
-                return [None]*2
-            else:
-                return None
-
-    n_frames_total = len(frame_filenames) # total number of frames in the folder
-
-    # no frame numbers given; use all frames
-    if frame_nums == None:
-        frame_nums = range(n_frames_total)
-
-    n_frames = len(frame_nums) # number of frames to use for the background
-
-    # initialize background
-    background = None
-
-    if save_frames:
-        # initialize list of frames
-        frames = []
-
-    for frame_number in frame_nums:
-        # send an update signal to the GUI every 10% of progress
-        percent_complete = int(100*frame_number/n_frames)
-        if progress_signal and percent_complete % 10 == 0:
-            progress_signal.emit(percent_complete)
-
-        # get frame
-        frame = load_frame_from_image(os.path.join(folder_path, frame_filenames[frame_number]))
-
-        # convert to greyscale
-        if len(frame.shape) >= 3:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        if save_frames:
-            # add to frames list
-            frames.append(frame)
-
-        # update background
-        if background == None:
-            background = frame
-        else:
-            mask = np.less(background, frame)
-            background[mask] = frame[mask]
-
-    if save_frames:
-        return background, frames
-    else:
-        return background
-
-def get_background_from_video(video_path, cap, frame_nums=None, save_frames=False, progress_signal=None, batch_offset=None):
-    if batch_offset != None:
-        transform = np.float32([[1, 0, -batch_offset[0]], [0, 1, -batch_offset[1]]])
-
-    if cap == None and video_path != None:
-        new_cap = True # creating a new capture object; we will release it at the end
-
-        # open the video
-        try:
-            cap = cv2.VideoCapture(video_path)
-        except:
-            print("Error: Could not open video.")
-            if save_frames:
-                return [None]*2
-            else:
-                return None
-    else:
-        new_cap = False # reusing an existing capture object
-
-    # get video info
-    fps, n_frames_total = get_video_info(video_path)
-
-    # no frame numbers given; use all frames
-    if frame_nums == None:
-        frame_nums = range(n_frames_total)
-
-    n_frames = len(frame_nums) # number of frames to use for the background
-    
-    # initialize background
-    background = None
-
-    if save_frames:
-        # initialize list of frames
-        frames = []
-
-    for frame_number in frame_nums:
-        # send an update signal to the GUI every 10% of progress
-        percent_complete = int(100*frame_number/n_frames)
-        if progress_signal and percent_complete % 10 == 0:
-            progress_signal.emit(percent_complete)
-
-        _, frame = cap.read()
-
-        if frame != None:
-            # convert to greyscale
-            if len(frame.shape) >= 3:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            if batch_offset != None:
-                offset_frame = cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
-            else:
-                offset_frame = frame
-
-            if save_frames:
-                # add to frames list
-                frames.append(offset_frame)
-
-            # update background
-            if background == None:
-                background = offset_frame
-            else:
-                mask = np.less(background, offset_frame)
-                background[mask] = offset_frame[mask]
-
-    if new_cap:
-        # release the capture object
-        cap.release()
-
-    if save_frames:
-        return background, frames
-    else:
-        return background
-
-def subtract_background_from_frames(frames, background):
-    # initialize list of background subtracted frames
-    bg_sub_frames = []
-
-    for frame in frames:
-        # subtract background from frame
-        bg_sub_frame = subtract_background_from_frame(frame, background)
-        bg_sub_frames.append(bg_sub_frame)
+    if rescale_brightness:
+        bg_sub_frames = rescale_dynamic_range(bg_sub_frames, frames)
 
     return bg_sub_frames
 
-def subtract_background_from_frame(frame, background):
-    # subtract background from frame
-    bg_sub_frame = frame - background
-    bg_sub_frame[bg_sub_frame < 10] = 255
 
-    return bg_sub_frame
+# --- Dynamic Range / Threshold Calculation --- #
+def rescale_dynamic_range(frames, reference_frames):
+    rescaled_frames = np.zeros(frames.shape).astype(np.uint8)
+
+    min_pixel_coord = np.unravel_index(np.argmin(frames[0]), frames[0].shape)
+
+    min_brightness_in_reference_frames = np.amin(reference_frames[:, min_pixel_coord[0], min_pixel_coord[1]])
+
+    brightness_difference = frames[0, min_pixel_coord[0], min_pixel_coord[1]] - min_brightness_in_reference_frames
+
+    rescaled_frames = frames - brightness_difference
+
+    return rescaled_frames
+
+def remove_noise(frames):
+    denoised_frames = []
+
+    for frame in frames:
+        denoised_frames.append(cv2.fastNlMeansDenoisingMulti(frame, h=3, templateWindowSize=7, searchWindowSize=7))
+
+    return denoised_frames
+    # return frames
 
 # --- Tracking --- #
 
@@ -363,11 +93,11 @@ def open_and_track_image(params, tracking_dir, progress_signal=None):
 
     # load the frame
     if background != None:
-        frame, bg_sub_frame = load_frame_from_image(image_path, background)
+        frame, bg_sub_frame = open_image(image_path, background)
 
         frame = bg_sub_frame
     else:
-        frame = load_frame_from_image(image_path, None)
+        frame = open_image(image_path, None)
 
     if params['invert']:
         # invert the frame
@@ -503,11 +233,11 @@ def open_and_track_folder(params, tracking_dir, progress_signal=None): # todo: a
     for frame_nums in big_split_frame_nums:
         # load this big chunk of frames
         if subtract_background:
-            frames, bg_sub_frames = load_frames_from_folder(folder_path, frame_filenames, frame_nums, background)
+            frames, bg_sub_frames = open_folder(folder_path, frame_filenames, frame_nums, background)
 
             frames = bg_sub_frames
         else:
-            frames = load_frames_from_folder(folder_path, frame_filenames, frame_nums, None)
+            frames = open_folder(folder_path, frame_filenames, frame_nums, None)
 
         if params['invert']:
             # invert the frames
@@ -622,11 +352,11 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
         # load this big chunk of frames
         if subtract_background:
-            frames, bg_sub_frames = load_frames_from_video(video_path, cap, frame_nums, background, batch_offset)
+            frames, bg_sub_frames = open_video(video_path, cap, frame_nums, background, batch_offset)
 
             frames = bg_sub_frames
         else:
-            frames = load_frames_from_video(video_path, cap, frame_nums, None, batch_offset)
+            frames = open_video(video_path, cap, frame_nums, None, batch_offset)
 
         if len(frames) != len(frame_nums):
             frame_nums = frame_nums[:len(frames)]
@@ -682,7 +412,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
         if params['save_video']:
 
-            frames = load_frames_from_video(video_path, cap, frame_nums, None, batch_offset)
+            frames = open_video(video_path, cap, frame_nums, None, batch_offset)
             if params['invert']:
                 # invert the frames
                 frames = [255 - frames[i] for i in range(len(frames))]
@@ -724,7 +454,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     print("Finished tracking. Total time: {}s.".format(end_time - start_time))
 
 def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
-    video_paths         = params['media_paths']
+    video_pathsxx = params['media_paths']
 
     # track each video with the same parameters
     for i in range(len(video_paths)):
@@ -734,12 +464,12 @@ def get_video_batch_align_offsets(params):
     video_paths = params['media_paths']
 
     # store first frame of the first video
-    source_frame = load_frames_from_video(video_paths[0], None, [1], None)[0]
+    source_frame = open_video(video_paths[0], [0], True)[0]
 
     batch_offsets = [None]
 
     for k in range(1, len(video_paths)):
-        first_frame = load_frames_from_video(video_paths[k], None, [1], None)[0]
+        first_frame = open_video(video_paths[k], None, [1], None)[0]
 
         transform = cv2.estimateRigidTransform(source_frame, first_frame, False)
 
@@ -924,19 +654,21 @@ def get_centroids(eye_threshold_image, eye_resize_factor=1, prev_eye_coords=None
 def track_freeswimming_tail(frame, params, crop_params, body_position):
     adjust_thresholds  = params['adjust_thresholds']
     tail_crop          = params['tail_crop']
-    eye_resize_factor = params['eye_resize_factor']
+    eye_resize_factor  = params['eye_resize_factor']
     min_tail_body_dist = params['min_tail_body_dist']*eye_resize_factor
     max_tail_body_dist = params['max_tail_body_dist']*eye_resize_factor
     n_tail_points      = params['n_tail_points']
     tail_threshold     = crop_params['tail_threshold']
 
+    print(body_position)
+
     # create array of tail crop coords
     if tail_crop == None:
         tail_crop_coords = np.array([[0, frame.shape[0]], [0, frame.shape[1]]])
     else:
-        tail_crop_coords = np.array([[np.maximum(0, body_position[0]-int(tail_crop[0]*eye_resize_factor)), np.minimum(frame.shape[0], body_position[0]+int(tail_crop[0]*eye_resize_factor))],
-                                     [np.maximum(0, body_position[1]-int(tail_crop[1]*eye_resize_factor)), np.minimum(frame.shape[1], body_position[1]+int(tail_crop[1]*eye_resize_factor))]])
-    
+        tail_crop_coords = np.array([[np.maximum(0, int(body_position[0]-tail_crop[0]*eye_resize_factor)), np.minimum(frame.shape[0], int(body_position[0]+tail_crop[0]*eye_resize_factor))],
+                                     [np.maximum(0, int(body_position[1]-tail_crop[1]*eye_resize_factor)), np.minimum(frame.shape[1], int(body_position[1]+tail_crop[1]*eye_resize_factor))]])
+    print(tail_crop_coords.shape, frame.shape)
     # get body center position relative to the tail crop
     rel_body_position = (body_position.T - tail_crop_coords[:, 0]).T
 
@@ -1062,9 +794,9 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
 
         for k in range(-1, 2):
             for l in range(-1, 2):
-                pixel_sum += tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, y+k)), np.minimum(x_size-1, np.maximum(0, x+l))]
-                y_sum     += k*tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, y+k)), np.minimum(x_size-1, np.maximum(0, x+l))]
-                x_sum     += l*tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, y+k)), np.minimum(x_size-1, np.maximum(0, x+l))]
+                pixel_sum += tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, int(y+k))), np.minimum(x_size-1, np.maximum(0, int(x+l)))]
+                y_sum     += k*tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, int(y+k))), np.minimum(x_size-1, np.maximum(0, int(x+l)))]
+                x_sum     += l*tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, int(y+k))), np.minimum(x_size-1, np.maximum(0, int(x+l)))]
 
         if pixel_sum != 0:
             y_sum /= float(pixel_sum)
