@@ -145,7 +145,7 @@ class Controller():
             # update tail, body & eye thresholds with estimates
             current_crop_params = self.params['crop_params'][self.current_crop]
             current_crop_params['tail_threshold'], current_crop_params['body_threshold'], current_crop_params['eye_threshold'] = utilities.estimate_thresholds(self.current_frame)
-            self.crops_window.update_gui_from_params(self.params['crop_params'])
+            self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -222,7 +222,6 @@ class Controller():
                     self.bg_sub_frames[self.curr_media_num] = tracking.subtract_background_from_frames(self.frames[self.curr_media_num], self.params['backgrounds'][self.curr_media_num])
 
             # enable gui controls
-            self.crops_window.set_gui_disabled(False)
             self.param_window.set_gui_disabled(False)
 
     def open_media_batch(self, media_types, media_paths):
@@ -476,11 +475,11 @@ class Controller():
             # create tabs for all saved crops
             for j in range(len(self.params['crop_params'])):
                 self.current_crop += 1
-                self.crops_window.create_crop_tab(self.params['crop_params'][j])
+                self.param_window.create_crop_tab(self.params['crop_params'][j])
 
             # update gui controls
             self.param_window.update_gui_from_params(self.params)
-            self.crops_window.update_gui_from_params(self.params['crop_params'])
+            self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -731,7 +730,7 @@ class Controller():
         self.params['crop_params'][self.current_crop]['offset'] = offset
 
         # update crop gui
-        self.crops_window.update_gui_from_params(self.params['crop_params'])
+        self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
         # reset headfixed tracking
         tracking.clear_headfixed_tracking()
@@ -754,7 +753,7 @@ class Controller():
 
         self.current_crop = len(self.params['crop_params'])-1
 
-        self.crops_window.create_crop_tab(new_crop_params)
+        self.param_window.create_crop_tab(new_crop_params)
 
     def change_crop(self, index):
         if self.current_frame is not None and index != -1:
@@ -762,7 +761,7 @@ class Controller():
             self.current_crop = index
 
             # update the gui with these crop params
-            self.crops_window.update_gui_from_params(self.params['crop_params'])
+            self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
             # update the image preview
             self.reshape_frame()
@@ -780,7 +779,7 @@ class Controller():
             del self.params['crop_params'][index]
 
             # remove crop tab
-            self.crops_window.remove_crop_tab(index)
+            self.param_window.remove_crop_tab(index)
 
             # set current crop to last tab
             self.current_crop = len(self.params['crop_params']) - 1
@@ -795,7 +794,7 @@ class Controller():
                 del self.params['crop_params'][index]
 
                 # remove crop tab
-                self.crops_window.remove_crop_tab(index)
+                self.param_window.remove_crop_tab(index)
 
             # reset current crop
             self.params['crop_params'] = []
@@ -816,7 +815,7 @@ class Controller():
             self.params['crop_params'][self.current_crop] = current_crop_params
 
             # update crop gui
-            self.crops_window.update_gui_from_params(self.params['crop_params'])
+            self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
             # reshape current frame
             self.reshape_frame()
@@ -827,7 +826,6 @@ class Controller():
     def close_all(self):
         self.closing = True
         self.param_window.close()
-        self.crops_window.close()
         self.preview_window.close()
 
 class FreeswimmingController(Controller):
@@ -846,12 +844,7 @@ class FreeswimmingController(Controller):
         # create parameters window
         self.param_window = FreeswimmingParamWindow(self)
 
-        # create crops window
-        self.crops_window = FreeswimmingCropsWindow(self)
-        # self.create_crop()
-
         self.param_window.set_gui_disabled(True)
-        self.crops_window.set_gui_disabled(True)
 
     def switch_frame(self, n, new_load=False):
         Controller.switch_frame(self, n, new_load)
@@ -930,14 +923,14 @@ class FreeswimmingController(Controller):
 
         # get crop params from gui
         for c in range(len(self.params['crop_params'])):
-            crop_y   = int(float(self.crops_window.param_controls[c]['crop_y' + '_textbox'].text()))
-            crop_x   = int(float(self.crops_window.param_controls[c]['crop_x' + '_textbox'].text()))
-            offset_y = int(float(self.crops_window.param_controls[c]['offset_y' + '_textbox'].text()))
-            offset_x = int(float(self.crops_window.param_controls[c]['offset_x' + '_textbox'].text()))
+            crop_y   = int(float(self.param_window.crop_param_controls[c]['crop_y' + '_textbox'].text()))
+            crop_x   = int(float(self.param_window.crop_param_controls[c]['crop_x' + '_textbox'].text()))
+            offset_y = int(float(self.param_window.crop_param_controls[c]['offset_y' + '_textbox'].text()))
+            offset_x = int(float(self.param_window.crop_param_controls[c]['offset_x' + '_textbox'].text()))
 
-            body_threshold = int(float(self.crops_window.param_controls[c]['body_threshold' + '_textbox'].text()))
-            eye_threshold = int(float(self.crops_window.param_controls[c]['eye_threshold' + '_textbox'].text()))
-            tail_threshold = int(float(self.crops_window.param_controls[c]['tail_threshold' + '_textbox'].text()))
+            body_threshold = int(float(self.param_window.crop_param_controls[c]['body_threshold' + '_textbox'].text()))
+            eye_threshold = int(float(self.param_window.crop_param_controls[c]['eye_threshold' + '_textbox'].text()))
+            tail_threshold = int(float(self.param_window.crop_param_controls[c]['tail_threshold' + '_textbox'].text()))
 
             valid_params = (1 <= crop_y <= self.current_frame.shape[0]
                         and 1 <= crop_x <= self.current_frame.shape[1]
@@ -1035,11 +1028,7 @@ class HeadfixedController(Controller):
         # create parameters window
         self.param_window = HeadfixedParamWindow(self)
 
-        # create crops window
-        self.crops_window = HeadfixedCropsWindow(self)
-
         self.param_window.set_gui_disabled(True)
-        self.crops_window.set_gui_disabled(True)
 
     def track_frame(self):
         if self.params['tail_start_coords'] != None:
@@ -1053,10 +1042,10 @@ class HeadfixedController(Controller):
 
         # get crop params from gui
         for c in range(len(self.params['crop_params'])):
-            crop_y   = int(float(self.crops_window.param_controls[c]['crop_y' + '_textbox'].text()))
-            crop_x   = int(float(self.crops_window.param_controls[c]['crop_x' + '_textbox'].text()))
-            offset_y = int(float(self.crops_window.param_controls[c]['offset_y' + '_textbox'].text()))
-            offset_x = int(float(self.crops_window.param_controls[c]['offset_x' + '_textbox'].text()))
+            crop_y   = int(float(self.param_window.crop_param_controls[c]['crop_y' + '_textbox'].text()))
+            crop_x   = int(float(self.param_window.crop_param_controls[c]['crop_x' + '_textbox'].text()))
+            offset_y = int(float(self.param_window.crop_param_controls[c]['offset_y' + '_textbox'].text()))
+            offset_x = int(float(self.param_window.crop_param_controls[c]['offset_x' + '_textbox'].text()))
 
             valid_params = (1 <= crop_y <= self.current_frame.shape[0]
                         and 1 <= crop_x <= self.current_frame.shape[1]
