@@ -233,7 +233,10 @@ class PreviewWindow(QMainWindow):
         # update image
         self.image = tracking.scale_frame(image, 1.0/params['scale_factor'], utilities.translate_interpolation('Nearest Neighbor'))
 
-        body_crop = params['body_crop']
+        try:
+            body_crop = params['body_crop']
+        except:
+            body_crop = None
 
         try:
             tail_start_coords = params['tail_start_coords']

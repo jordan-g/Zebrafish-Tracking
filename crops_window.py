@@ -39,7 +39,7 @@ class CropsWindow(QMainWindow):
         self.main_layout.setSpacing(5)
 
         # initialize list of dicts used for accessing all crop parameter controls
-        self.param_controls = []
+        self.crop_param_controls = []
 
         # create tabs widget
         self.crop_tabs_widget = QTabWidget()
@@ -98,7 +98,7 @@ class CropsWindow(QMainWindow):
             param_box.setText(str(default_value))
 
         # add to list of crop or global controls
-        self.param_controls[-1][label] = param_box
+        self.crop_param_controls[-1][label] = param_box
 
     def add_slider(self, label, description, minimum, maximum, value, slider_moved_func, parent, tick_interval=1, single_step=1, slider_scale_factor=1, int_values=False):
         # make layout to hold slider and textbox
@@ -142,8 +142,8 @@ class CropsWindow(QMainWindow):
         parent.addRow(description, control_layout)
 
         # add to list of controls
-        self.param_controls[-1][slider_label]  = slider
-        self.param_controls[-1][textbox_label] = textbox
+        self.crop_param_controls[-1][slider_label]  = slider
+        self.crop_param_controls[-1][textbox_label] = textbox
 
     def slider_pressed(self, slider):
         label = slider.objectName()
@@ -181,7 +181,7 @@ class CropsWindow(QMainWindow):
         slider_label  = label + "_slider"
         textbox_label = label + "_textbox"
 
-        slider = self.param_controls[crop_index][slider_label]
+        slider = self.crop_param_controls[crop_index][slider_label]
 
         if value == None:
             value = slider.minimum()
@@ -193,7 +193,7 @@ class CropsWindow(QMainWindow):
         slider.blockSignals(False)
 
         # change textbox value
-        textbox = self.param_controls[crop_index][textbox_label]
+        textbox = self.crop_param_controls[crop_index][textbox_label]
         self.update_textbox_from_slider(slider, textbox, slider_scale_factor=slider_scale_factor, int_values=int_values)
 
     def set_gui_disabled(self, disbaled_bool):
@@ -220,7 +220,7 @@ class CropsWindow(QMainWindow):
         crop_tab_layout.addLayout(self.form_layout)
 
         # add dict for storing param controls for this crop
-        self.param_controls.append({})
+        self.crop_param_controls.append({})
 
         # add param controls
         self.create_param_controls(crop_params)
@@ -257,7 +257,7 @@ class CropsWindow(QMainWindow):
         self.crop_tabs_widget.removeTab(index)
 
         # delete this tab's controls, widget & layout
-        del self.param_controls[index]
+        del self.crop_param_controls[index]
         del self.crop_tab_widgets[index]
         del self.crop_tab_layouts[index]
 
@@ -279,13 +279,13 @@ class CropsWindow(QMainWindow):
             self.add_slider('offset_x', 'Offset x:', 0, 1, 0, self.controller.update_crop_params_from_gui, self.form_layout, tick_interval=50, int_values=True)
     
     def update_gui_from_params(self, crop_params):
-        if len(crop_params) == len(self.param_controls):
+        if len(crop_params) == len(self.crop_param_controls):
             # update crop gui for each crop
             for c in range(len(crop_params)):
-                self.param_controls[c]['crop_y' + '_slider'].setMaximum(self.controller.current_frame.shape[0])
-                self.param_controls[c]['crop_x' + '_slider'].setMaximum(self.controller.current_frame.shape[1])
-                self.param_controls[c]['offset_y' + '_slider'].setMaximum(self.controller.current_frame.shape[0]-1)
-                self.param_controls[c]['offset_x' + '_slider'].setMaximum(self.controller.current_frame.shape[1]-1)
+                self.crop_param_controls[c]['crop_y' + '_slider'].setMaximum(self.controller.current_frame.shape[0])
+                self.crop_param_controls[c]['crop_x' + '_slider'].setMaximum(self.controller.current_frame.shape[1])
+                self.crop_param_controls[c]['offset_y' + '_slider'].setMaximum(self.controller.current_frame.shape[0]-1)
+                self.crop_param_controls[c]['offset_x' + '_slider'].setMaximum(self.controller.current_frame.shape[1]-1)
 
                 # update param controls with current parameters
                 self.set_slider_value('crop_y', crop_params[c]['crop'][0], c, int_values=True)
@@ -314,7 +314,7 @@ class FreeswimmingCropsWindow(CropsWindow):
     def update_gui_from_params(self, crop_params):
         CropsWindow.update_gui_from_params(self, crop_params)
 
-        if len(crop_params) == len(self.param_controls):
+        if len(crop_params) == len(self.crop_param_controls):
             for c in range(len(crop_params)):
                 self.set_slider_value('body_threshold', crop_params[c]['body_threshold'], c, int_values=True)
                 self.set_slider_value('eye_threshold', crop_params[c]['eye_threshold'], c, int_values=True)
@@ -343,7 +343,7 @@ class HeadfixedCropsWindow(CropsWindow):
         self.main_layout.setSpacing(5)
 
         # initialize list of dicts used for accessing all crop parameter controls
-        self.param_controls = []
+        self.crop_param_controls = []
 
         # create tabs widget
         self.crop_tabs_widget = QTabWidget()
