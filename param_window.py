@@ -104,7 +104,7 @@ class ParamWindow(QMainWindow):
         self.create_main_buttons()
 
         # set window titlebar buttons
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowFullscreenButtonHint)
 
         # disable controls
         self.set_gui_disabled(True)
@@ -164,6 +164,10 @@ class ParamWindow(QMainWindow):
         self.track_all_action.setStatusTip('Track all of the currently loaded media.')
         self.track_all_action.triggered.connect(self.controller.track_media)
 
+        self.exit_action = QAction('Exit', self)
+        self.exit_action.setShortcut('Ctrl+Q')
+        self.exit_action.triggered.connect(self.controller.close_all)
+
         # create menu bar & add actions
         menubar  = self.menuBar()
         file_menu = menubar.addMenu('&File')
@@ -173,6 +177,7 @@ class ParamWindow(QMainWindow):
         file_menu.addAction(self.save_params_action)
         file_menu.addAction(self.track_frame_action)
         file_menu.addAction(self.track_all_action)
+        file_menu.addAction(self.exit_action)
 
         self.open_background_action = QAction('Open Background...', self)
         self.open_background_action.setShortcut('Ctrl+Alt+B')

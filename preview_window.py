@@ -9,10 +9,10 @@ import cv2
 
 # import the Qt library
 try:
-    from PyQt4.QtCore import Qt, QThread
+    from PyQt4.QtCore import Qt, QThread, QSize
     from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
 except:
-    from PyQt5.QtCore import Qt, QThread
+    from PyQt5.QtCore import Qt, QThread, QSize
     from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
     from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
 
@@ -38,9 +38,9 @@ class PreviewQLabel(QLabel):
         QLabel.__init__(self)
 
         self.preview_window = preview_window
-        self.scale_factor = None
-        self.pix                 = None  # image label's pixmap
-        self.pix_size            = None  # size of image label's pixmap
+        self.scale_factor   = None
+        self.pix            = None  # image label's pixmap
+        self.pix_size       = None  # size of image label's pixmap
 
         # accept clicks
         self.setAcceptDrops(True)
@@ -98,6 +98,9 @@ class PreviewQLabel(QLabel):
         # generate pixmap
         self.pix = QPixmap(qimage)
 
+        if self.pix_size == None:
+            self.pix_size = self.preview_window.get_available_pix_size()
+
         # update label vs. image scale factor
         self.set_scale_factor(float(self.pix_size)/max(self.pix.width(), self.pix.height()))
 
@@ -142,15 +145,20 @@ class PreviewWindow(QMainWindow):
         # create main widget
         self.main_widget = QWidget(self)
         self.main_widget.setStyleSheet("background-color: #666;")
+        self.main_widget.setMinimumSize(QSize(400, 400))
 
         # create main layout
         self.main_layout = QVBoxLayout(self.main_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
 
         # create label that shows frames
+        self.image_layout = QHBoxLayout()
         self.image_label = PreviewQLabel(self)
         self.image_label.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
         self.image_label.setAlignment(Qt.AlignCenter)
-        self.main_layout.addWidget(self.image_label)
+        self.image_layout.addWidget(self.image_label)
+        self.main_layout.addLayout(self.image_layout)
 
         # create label that shows crop instructions
         self.instructions_label = QLabel("")
@@ -178,7 +186,7 @@ class PreviewWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
 
         # set window buttons
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowFullscreenButtonHint)
 
         self.show()
 
@@ -186,17 +194,20 @@ class PreviewWindow(QMainWindow):
         # get new size
         size = event.size()
 
-        # change width to within min & max values
-        width = max(min(size.width(), 900), 400)
-
-        # set new size of pixmap
-        self.image_label.pix_size = width - 40
+        # update label's pixmap size
+        self.image_label.pix_size = self.get_available_pix_size()
 
         # update size of image label
         self.image_label.update_size()
 
-        # constrain window to square size
-        self.resize(width, width)
+    def get_available_pix_size(self):
+        available_width  = self.width()
+        available_height = self.height() - self.image_slider.height()
+
+        if available_height < available_width:
+            return available_height
+        else:
+            return available_width
 
     def start_selecting_crop(self):
         # start selecting crop
@@ -293,6 +304,12 @@ class PreviewWindow(QMainWindow):
         cv2.cvtColor(image, cv2.COLOR_BGR2RGB, image)
 
         self.image_label.update_pixmap(image)
+
+        # update label's pixmap size
+        self.image_label.pix_size = self.get_available_pix_size()
+
+        # update size of image label
+        self.image_label.update_size()
 
     def crop_selection(self, start_crop_coord, end_crop_coord):
         if self.selecting_crop:

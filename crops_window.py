@@ -122,7 +122,6 @@ class CropsWindow(QMainWindow):
         # make textbox & add to layout
         textbox = QLineEdit()
         textbox.setObjectName(label)
-        # textbox.setMinimumHeight(10)
         textbox.setFixedWidth(40)
         textbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         textbox.returnPressed.connect(self.controller.update_crop_params_from_gui)
