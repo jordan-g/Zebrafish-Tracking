@@ -19,7 +19,6 @@ from multiprocessing import sharedctypes
 from functools import partial
 from itertools import chain
 import matplotlib.pyplot as plt
-import ipyparallel
 
 from moviepy.video.io.ffmpeg_reader import *
 from skimage.morphology import skeletonize
