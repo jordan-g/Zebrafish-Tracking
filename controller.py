@@ -1135,7 +1135,7 @@ class GetBackgroundThread(QThread):
 
 class TrackMediaThread(QThread):
     finished = pyqtSignal(float)
-    progress = pyqtSignal(float)
+    progress = pyqtSignal(str, int, float)
 
     def set_parameters(self, params, tracking_path):
         self.params = params

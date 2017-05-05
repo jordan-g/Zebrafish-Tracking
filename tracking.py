@@ -184,9 +184,9 @@ def track_frames(params, progress_signal, n_frames_tracked, n_frames_total, medi
                 results['eye_coords'] /= scale_factor
 
             # add coords to coord arrays
-            if coords[0] != None:
-                tail_coords_array[k, frame_number, :, :coords[0].shape[1]]    = results['tail_coords']
-                spline_coords_array[k, frame_number, :, :coords[1].shape[1]]  = results['spline_coords']
+            if results['tail_coords'] != None:
+                tail_coords_array[k, frame_number, :, :results['tail_coords'].shape[1]]    = results['tail_coords']
+                spline_coords_array[k, frame_number, :, :results['spline_coords'].shape[1]]  = results['spline_coords']
 
             heading_angle_array[k, frame_number, :] = results['heading_angle']
             body_position_array[k, frame_number, :] = results['body_position']
@@ -340,19 +340,12 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # start timer
     start_time = time.time()
 
-    # open the video
-    try:
-        cap = cv2.VideoCapture(video_path)
-    except:
-        print("Error: Could not open video.")
-        return
-
     # get video info
     fps, n_frames_total = get_video_info(video_path)
 
     if subtract_background and background == None:
         # get background
-        background = get_background_from_video(video_path, cap, batch_offset=batch_offset)
+        background = open_video(video_path, return_frames=False, calc_background=True)
 
     # initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
@@ -376,12 +369,9 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         frame_nums = big_split_frame_nums[i]
 
         # load this big chunk of frames
+        frames = open_video(video_path, frame_nums)
         if subtract_background:
-            frames, bg_sub_frames = open_video(video_path, cap, frame_nums, background, batch_offset)
-
-            frames = bg_sub_frames
-        else:
-            frames = open_video(video_path, cap, frame_nums, None, batch_offset)
+            frames = subtract_background_from_frames(frames, background, rescale_brightness=True)
 
         if len(frames) != len(frame_nums):
             frame_nums = frame_nums[:len(frames)]
@@ -436,7 +426,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
             eye_coords_array[k]    = get_absolute_coords(eye_coords_array[k], params['crop_params'][k]['offset'], params['scale_factor'])
 
         if params['save_video']:
-            frames = open_video(video_path, cap, frame_nums, None, batch_offset)
+            frames = open_video(video_path, frame_nums)
             if params['invert']:
                 # invert the frames
                 frames = [255 - frames[i] for i in range(len(frames))]
@@ -445,9 +435,13 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
                 frame = frames[k]
                 frame_num = frame_nums[k]
                 # print(frame_num)
-                coords = [tail_coords_array[:, frame_num, :, :], spline_coords_array[:, frame_num, :, :],
-                          heading_angle_array[:, frame_num, :], body_position_array[:, frame_num, :], eye_coords_array[:, frame_num, :, :]]
-                tracked_frame = add_tracking_to_frame(frame, coords, n_crops=n_crops)
+                results = {'tail_coords'  : tail_coords_array[:, frame_num, :, :],
+                           'spline_coords': spline_coords_array[:, frame_num, :, :],
+                           'eye_coords'   : eye_coords_array[:, frame_num, :, :],
+                           'heading_angle': heading_angle_array[:, frame_num, :],
+                           'body_position': body_position_array[:, frame_num, :]}
+
+                tracked_frame = add_tracking_to_frame(frame, results, n_crops=n_crops)
 
                 writer.write(tracked_frame)
 
@@ -478,7 +472,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     print("Finished tracking. Total time: {}s.".format(end_time - start_time))
 
 def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
-    video_pathsxx = params['media_paths']
+    video_paths = params['media_paths']
 
     # track each video with the same parameters
     for i in range(len(video_paths)):
@@ -509,11 +503,11 @@ def apply_align_offset_to_frame(frame, batch_offset):
 
 def track_cropped_frame(frame, params, crop_params):
     tracking_type  = params['type']
-    scale_factor  = params['scale_factor']
+    scale_factor   = params['scale_factor']
     interpolation  = utilities.translate_interpolation(params['interpolation'])
-    body_crop      = params['body_crop']
 
     if tracking_type == "freeswimming":
+        body_crop       = params['body_crop']
         track_tail_bool = params['track_tail']
         track_eyes_bool = params['track_eyes']
 
@@ -1057,7 +1051,7 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
     
     if first_frame:
         # set current point
-        current_point = np.array(tail_start_coords)
+        current_point = np.array(tail_start_coords).astype(int)
         
         # get histogram of pixel brightness for the frame
         if frame.ndim == 2:
@@ -1067,7 +1061,7 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
         
         # get average background brightness
         background_brightness = histogram[1][histogram[0].argmax()]/2 + histogram[1][min(histogram[0].argmax()+1, len(histogram[0]))]/2
-
+        print(type(frame), type(current_point), current_point)
         # get average tail brightness from a 2x2 area around the current point
         if frame.ndim == 2:
             tail_brightness = frame[current_point[1]-2:current_point[1]+3, current_point[0]-2:current_point[0]+3].mean()
@@ -1161,16 +1155,16 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
             convolution_results += [results]
 
             # get the index of the point with max brightness, and adjust to match the size of the tail slice
-            result_index = results.argmax() - results.size/2 + guess_slice.size/2
+            result_index = int(round(results.argmax() - results.size/2 + guess_slice.size/2))
 
             # get point that corresponds to this index
-            new_point = np.array([x_indices[result_index_new], y_indices[result_index_new]])
+            new_point = np.array([x_indices[result_index], y_indices[result_index]])
         else:
             # convolve the tail slice with the tail profile
             results = np.convolve(tail_funcs[count], guess_slice, "valid")
 
             # get the index of the point with max brightness, and adjust to match the size of the tail slice
-            result_index = results.argmax() - results.size/2 + guess_slice.size/2
+            result_index = int(round(results.argmax() - results.size/2 + guess_slice.size/2))
 
             # get point that corresponds to this index
             new_point = np.array([x_indices[result_index], y_indices[result_index]])

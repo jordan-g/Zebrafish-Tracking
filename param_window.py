@@ -127,7 +127,7 @@ class ParamWindow(QMainWindow):
         self.crops_widget = QWidget(self)
         self.crops_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
         self.crops_layout = QVBoxLayout(self.crops_widget)
-        self.crops_widget.setMaximumHeight(300)
+        self.crops_widget.setMaximumHeight(400)
         self.crops_layout.setContentsMargins(0, 0, 0, 0)
         self.crops_layout.setSpacing(0)
 
@@ -157,14 +157,14 @@ class ParamWindow(QMainWindow):
 
         # add delete crop button
         self.remove_crop_button = QPushButton(u'\u2717 Remove Crop', self)
-        self.remove_crop_button.setMaximumWidth(120)
+        # self.remove_crop_button.setMaximumWidth(120)
         self.remove_crop_button.clicked.connect(lambda:self.controller.remove_crop(self.controller.current_crop))
         self.remove_crop_button.setDisabled(True)
         crop_button_layout.addWidget(self.remove_crop_button)
 
         # add new crop button
         self.create_crop_button = QPushButton(u'\u270E New Crop', self)
-        self.create_crop_button.setMaximumWidth(100)
+        # self.create_crop_button.setMaximumWidth(100)
         self.create_crop_button.clicked.connect(lambda:self.controller.create_crop())
         self.create_crop_button.setDisabled(True)
         crop_button_layout.addWidget(self.create_crop_button)
@@ -204,12 +204,12 @@ class ParamWindow(QMainWindow):
 
         # add crop buttons
         self.reset_crop_button = QPushButton(u'\u25A8 Reset Crop', self)
-        self.reset_crop_button.setMaximumWidth(110)
+        # self.reset_crop_button.setMaximumWidth(110)
         self.reset_crop_button.clicked.connect(self.controller.reset_crop)
         crop_button_layout.addWidget(self.reset_crop_button)
 
         self.select_crop_button = QPushButton(u'\u25A3 Select Crop', self)
-        self.select_crop_button.setMaximumWidth(110)
+        # self.select_crop_button.setMaximumWidth(110)
         self.select_crop_button.clicked.connect(self.controller.select_crop)
         crop_button_layout.addWidget(self.select_crop_button)
 
@@ -394,50 +394,50 @@ class ParamWindow(QMainWindow):
 
         # add buttons
         self.save_button = QPushButton(u'\u2713 Save', self)
-        self.save_button.setMaximumWidth(80)
+        # self.save_button.setMaximumWidth(80)
         self.save_button.clicked.connect(self.controller.save_params)
         self.save_button.setToolTip("Quick-save the current parameters. Use 'Reload' to load these parameters later.")
         button_layout_1.addWidget(self.save_button)
 
         self.track_button = QPushButton(u'\u279E Track', self)
-        self.track_button.setMaximumWidth(90)
+        # self.track_button.setMaximumWidth(90)
         self.track_button.clicked.connect(self.controller.track_frame)
         self.track_button.setToolTip("Track the currently-previewed frame (for parameter tuning).")
         button_layout_1.addWidget(self.track_button)
 
         self.track_all_button = QPushButton(u'\u27A0 Track All', self)
-        self.track_all_button.setMaximumWidth(180)
+        # self.track_all_button.setMaximumWidth(180)
         self.track_all_button.clicked.connect(self.controller.track_media)
         self.track_all_button.setStyleSheet("font-weight: bold")
         self.track_all_button.setToolTip("Track all of the currently loaded media with the current parameters.")
         button_layout_1.addWidget(self.track_all_button)
 
         self.reload_last_save_button = QPushButton(u'\u27AA Reload', self)
-        self.reload_last_save_button.setMaximumWidth(90)
+        # self.reload_last_save_button.setMaximumWidth(90)
         self.reload_last_save_button.clicked.connect(self.controller.load_last_params)
         self.reload_last_save_button.setToolTip("Reload the previously auto-saved parameters.")
         button_layout_2.addWidget(self.reload_last_save_button)
 
         self.load_params_button = QPushButton(u'Load Params\u2026', self)
-        self.load_params_button.setMaximumWidth(180)
+        # self.load_params_button.setMaximumWidth(180)
         self.load_params_button.clicked.connect(lambda:self.controller.load_params(None))
         self.load_params_button.setToolTip("Load a set of parameters.")
         button_layout_2.addWidget(self.load_params_button)
 
         self.save_params_button = QPushButton(u'Save Params\u2026', self)
-        self.save_params_button.setMaximumWidth(180)
+        # self.save_params_button.setMaximumWidth(180)
         self.save_params_button.clicked.connect(self.controller.save_params)
         self.save_params_button.setToolTip("Save the current set of parameters.")
         button_layout_2.addWidget(self.save_params_button)
 
         self.load_background_button = QPushButton(u'Load Background', self)
-        self.load_background_button.setMaximumWidth(180)
+        # self.load_background_button.setMaximumWidth(180)
         self.load_background_button.clicked.connect(self.controller.load_background)
         self.load_background_button.setToolTip("Load a saved background image for background subtraction.")
         button_layout_3.addWidget(self.load_background_button)
 
         self.save_background_button = QPushButton(u'Save Background', self)
-        self.save_background_button.setMaximumWidth(180)
+        # self.save_background_button.setMaximumWidth(180)
         self.save_background_button.clicked.connect(self.controller.save_background)
         self.save_background_button.setToolTip("Save the calculated background subtraction image.")
         button_layout_3.addWidget(self.save_background_button)
