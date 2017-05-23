@@ -216,7 +216,7 @@ class PreviewWindow(QMainWindow):
         # add instruction text
         self.instructions_label.setText("Click & drag to select crop area.")
 
-    def plot_image(self, image, params, crop_params, tracking_results, new_load=False, new_frame=False, show_slider=True):
+    def plot_image(self, image, params, crop_params, tracking_results, new_load=False, new_frame=False, show_slider=True, crop_around_body=False):
         if new_load:
             if show_slider:
                 if not self.image_slider.isVisible():
@@ -249,20 +249,24 @@ class PreviewWindow(QMainWindow):
 
         if tracking_results != None:
             body_position = tracking_results['body_position']
+            heading_angle = tracking_results['heading_angle']
 
             # add tracking to image
-            image = tracking.add_tracking_to_frame(self.image, tracking_results, cropped=True)
+            self.image = tracking.add_tracking_to_frame(self.image, tracking_results, cropped=True)
 
             if body_crop != None and body_position != None:
-                # copy image
-                overlay = self.image.copy()
+                if not crop_around_body:
+                    # copy image
+                    overlay = self.image.copy()
 
-                # draw tail crop overlay
-                cv2.rectangle(overlay, (int(body_position[1]-body_crop[1]), int(body_position[0]-body_crop[0])),
-                                        (int(body_position[1]+body_crop[1]), int(body_position[0]+body_crop[0])), (242, 242, 65), -1)
+                    # draw tail crop overlay
+                    cv2.rectangle(overlay, (int(body_position[1]-body_crop[1]), int(body_position[0]-body_crop[0])),
+                                            (int(body_position[1]+body_crop[1]), int(body_position[0]+body_crop[0])), (242, 242, 65), -1)
 
-                # overlay with the original image
-                cv2.addWeighted(overlay, 0.2, self.image, 0.8, 0, self.image)
+                    # overlay with the original image
+                    cv2.addWeighted(overlay, 0.2, self.image, 0.8, 0, self.image)
+                else:
+                    _, self.image = tracking.crop_frame_around_body(self.image, body_position, params['body_crop'], params['scale_factor'])
 
         # update image label
         self.update_image_label(self.image)

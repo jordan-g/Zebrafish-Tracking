@@ -27,32 +27,31 @@ default_headfixed_crop_params = { 'offset': np.array([0, 0]), # crop (y, x) offs
 default_freeswimming_crop_params = { 'offset': np.array([0, 0]), # crop (y, x) offset
                                      'crop': None,               # crop area
                                      'body_threshold': 140,      # pixel brightness to use for thresholding to find the body (0-255)
-                                     'eye_threshold': 60,        # pixel brightness to use for thresholding to find the eyes (0-255)
+                                     'eyes_threshold': 60,       # pixel brightness to use for thresholding to find the eyes (0-255)
                                      'tail_threshold': 200 }     # pixel brightness to use for thresholding to find the tail (0-255)
 
-default_headfixed_params = {'scale_factor': 1.0,                            # factor by which to down/upscale the original frame
-                            'interpolation': 'Nearest Neighbor',             # interpolation to use when down/upscaling the original frame
+default_headfixed_params = {'scale_factor': 1.0,                   # factor by which to down/upscale the original video
+                            'interpolation': 'Nearest Neighbor',   # interpolation to use when down/upscaling the original video
                             'crop_params': [],
-                            'invert': False,                                 # invert the frame
-                            'type': "headfixed",                             # "headfixed" / "freeswimming"
-                            'save_video': True,                              # whether to make a video with tracking overlaid
-                            'saved_video_fps': 30,                           # fps for the generated video
-                            'n_tail_points': 30,                             # number of tail points to use
-                            'subtract_background': False,                    # whether to perform background subtraction
-                            'tail_direction': "Right",                       # "right" / "left" / "up" / "down"
-                            'media_types': [],                               # types of media that are tracked - "video" / "folder" / "image"
-                            'media_paths': [],                               # paths to media that are tracked
-                            'backgrounds': [],                               # backgrounds calculated for background subtraction
-                            'tail_start_coords': None,                       # (y, x) coordinates of the start of the tail
-                            'use_multiprocessing': True,                     # whether to use multiprocessing
-                            'align_batches': False,                          # whether to perform spatial alignment of batches of media
-                            'batch_offsets': None,                           # spatial alignment offsets
-                            'gui_params': { 'auto_track': False }}           # automatically track a frame when you switch to it
+                            'invert': False,                       # whether to invert the video
+                            'type': "headfixed",                   # "headfixed" / "freeswimming"
+                            'save_video': True,                    # whether to make a video with tracking overlaid
+                            'saved_video_fps': 30,                 # fps for the generated video
+                            'n_tail_points': 30,                   # number of tail points to use
+                            'subtract_background': False,          # whether to perform background subtraction
+                            'tail_direction': "Right",             # "right" / "left" / "up" / "down"
+                            'tail_angle': 0,                       # overrides tail direction parameter
+                            'bg_sub_threshold': 30,                # threshold used in background subtraction
+                            'video_paths': [],                     # paths to videos that will be tracked
+                            'backgrounds': [],                     # backgrounds calculated for background subtraction
+                            'tail_start_coords': None,             # (y, x) coordinates of the start of the tail
+                            'use_multiprocessing': True,           # whether to use multiprocessing
+                            'gui_params': { 'auto_track': False }} # automatically track a frame when you switch to it
 
-default_freeswimming_params = {'scale_factor': 1.0,                         # factor by which to down/upscale the original frame
-                               'interpolation': 'Nearest Neighbor',          # interpolation to use when down/upscaling the original frame
+default_freeswimming_params = {'scale_factor': 1.0,                          # factor by which to down/upscale the original video
+                               'interpolation': 'Nearest Neighbor',          # interpolation to use when down/upscaling the original video
                                'crop_params': [],
-                               'invert': False,                              # invert the frame
+                               'invert': False,                              # whether to invert the video
                                'type': "freeswimming",                       # "headfixed" / "freeswimming"
                                'save_video': True,                           # whether to make a video with tracking overlaid
                                'saved_video_fps': 30,                        # fps for the generated video
@@ -63,20 +62,19 @@ default_freeswimming_params = {'scale_factor': 1.0,                         # fa
                                'track_eyes': True,                           # whether to track the eyes
                                'min_tail_body_dist': 10,                     # min. distance between the body center and the tail
                                'max_tail_body_dist': 30,                     # max. distance between the body center and the tail
-                               'body_crop': np.array([100, 100]),            # dimensions of crop around zebrafish eyes to use for tail tracking - (y, x)
-                               'media_types': [],                            # types of media that are tracked - "video" / "folder" / "image"
-                               'media_paths': [],                            # paths to media that are tracked
+                               'bg_sub_threshold': 30,                       # threshold used in background subtraction
+                               'body_crop': np.array([100, 100]),            # dimensions of crop around zebrafish body to use for tail tracking - (height, width)
+                               'video_paths': [],                            # paths to videos that will be tracked
                                'backgrounds': [],                            # backgrounds calculated for background subtraction
                                'use_multiprocessing': True,                  # whether to use multiprocessing
-                               'align_batches': False,                       # whether to perform spatial alignment of batches of media
-                               'batch_offsets': None,                        # spatial alignment offsets
                                'gui_params': { 'show_body_threshold': False, # show body threshold in preview window
-                                               'show_eye_threshold': False,  # show eye threshold in preview window
+                                               'show_eyes_threshold': False, # show eye threshold in preview window
                                                'show_tail_threshold': False, # show tail threshold in preview window
                                                'show_tail_skeleton': False,  # show tail skeleton in preview window
-                                               'auto_track': False }}        # automatically track a frame when you switch to it
+                                               'auto_track': False,          # automatically track a frame when you switch to it
+                                               'zoom_body_crop': False }}    # automatically zoom to fit body crop
 
-max_n_frames = 200 # maximum # of frames to load for previewing
+max_n_frames = 100 # maximum # of frames to load for previewing
 
 class Controller():
     def __init__(self, default_params, default_crop_params):
@@ -90,33 +88,35 @@ class Controller():
         self.current_frame         = None
         self.scaled_frame          = None
         self.cropped_frame         = None
+        self.body_cropped_frame    = None
         self.frames                = []
         self.bg_sub_frames         = []
         self.tracking_results      = []
         self.current_crop          = -1   # which crop is being looked at (-1 means no crop is loaded)
-        self.curr_media_num        = 0    # which media (from a loaded batch) is being looked at
+        self.curr_video_num        = 0    # which video (from a loaded batch) is being looked at
         self.n_frames              = 0    # total number of frames to preview
         self.n                     = 0    # index of currently selected frame
         self.tracking_path         = None # path to where tracking data will be saved
         self.get_background_thread = None
-        self.track_media_thread    = None
+        self.track_videos_thread   = None
         self.closing               = False
-        self.first_load            = True # False if we are reloading parameters or media has already been loaded; True otherwise
+        self.first_load            = True # False if we are reloading parameters or videos have already been loaded; True otherwise
         self.background_calc_paths = []
+        self.tracking              = False
 
         # create preview window
         self.preview_window  = PreviewWindow(self)
 
-    def select_and_open_media(self):
+    def select_and_open_videos(self):
         if pyqt_version == 4:
-            media_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select media to track', '', 'Videos (*.mov *.tif *.mp4 *.avi);; Images (*.jpg  *.jpeg *.tif *.tiff *.png)')
+            video_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select videos to track.', '', 'Videos (*.mov *.mp4 *.avi)')
         elif pyqt_version == 5:
-            media_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select media to track', '', 'Videos (*.mov *.tif *.mp4 *.avi);; Images (*.jpg  *.jpeg *.tif *.tiff *.png)')[0]
+            video_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select videos to track.', '', 'Videos (*.mov *.mp4 *.avi)')[0]
 
             # convert paths to str
-            media_paths = [ str(media_path) for media_path in media_paths ]
+            video_paths = [ str(video_path) for video_path in video_paths ]
 
-        if len(media_paths) > 0 and media_paths[0] != '':
+        if len(video_paths) > 0 and video_paths[0] != '':
             if self.first_load:
                 # clear all crops
                 self.clear_crops()
@@ -127,14 +127,8 @@ class Controller():
                 # reset current crop
                 self.current_crop = -1
 
-            # set media types
-            if media_paths[0].endswith('.jpg') or media_paths[0].endswith('.jpeg') or media_paths[0].endswith('.tif') or media_paths[0].endswith('.tiff') or media_paths[0].endswith('.png'):
-                media_types = ["image"]*len(media_paths)
-            else:
-                media_types = ["video"]*len(media_paths)
-
-            # open the media
-            self.open_media_batch(media_types, media_paths)
+            # open the videos
+            self.open_video_batch(video_paths)
 
             if self.first_load:
                 # create a crop
@@ -144,57 +138,37 @@ class Controller():
 
             # update tail, body & eye thresholds with estimates
             current_crop_params = self.params['crop_params'][self.current_crop]
-            current_crop_params['tail_threshold'], current_crop_params['body_threshold'], current_crop_params['eye_threshold'] = utilities.estimate_thresholds(self.current_frame)
+            current_crop_params['tail_threshold'], current_crop_params['body_threshold'], current_crop_params['eyes_threshold'] = utilities.estimate_thresholds(self.current_frame)
             self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
 
-    def open_media(self, media_type, media_path):
-        ''' Open one media file. '''
+    def open_video(self, video_path):
+        ''' Open one video file. '''
 
         # reset tracking results
         self.tracking_results = []
 
-        if media_path not in ("", None):
-            # load frames
-            if media_type == "image":
-                self.frames[self.curr_media_num] = [open_media.open_image(media_path)]
-            elif media_type == "folder":
-                # get filenames of all frame images in the folder
-                frame_filenames = open_media.get_frame_filenames_from_folder(media_path)
+        if video_path not in ("", None):
+            # get video info
+            fps, n_frames_total = open_media.get_video_info(video_path)
 
-                if len(frame_filenames) == 0:
-                    # no frames found in the folder; end here
-                    return
+            # load evenly spaced frames
+            frame_nums = split_evenly(n_frames_total, max_n_frames)
 
-                n_frames_total = len(frame_filenames) # total number of frames in the folder
+            # load frames from the video
+            self.frames[self.curr_video_num] = open_media.open_video(video_path, frame_nums, True, invert=self.params['invert'])
+            
+            if self.params['backgrounds'][self.curr_video_num] != None:
+                # get background-subtracted frames
+                self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
 
-                # load evenly spaced frames
-                frame_nums = split_evenly(n_frames_total, max_n_frames)
-
-                # load frames from the folder
-                if self.params['backgrounds'][self.curr_media_num] != None:
-                    self.frames[self.curr_media_num], self.bg_sub_frames[self.curr_media_num] = open_media.open_folder(media_path, frame_filenames, frame_nums, background=self.params['backgrounds'][self.curr_media_num])
-                else:
-                    self.frames[self.curr_media_num] = open_media.open_folder(media_path, frame_filenames, frame_nums, None)
-            elif media_type == "video":
-                # get video info
-                fps, n_frames_total = open_media.get_video_info(media_path)
-
-                # load evenly spaced frames
-                frame_nums = split_evenly(n_frames_total, max_n_frames)
-
-                # load frames from the video
-                self.frames[self.curr_media_num] = open_media.open_video(media_path, frame_nums, True)
-                if self.params['backgrounds'][self.curr_media_num] != None:
-                    self.bg_sub_frames[self.curr_media_num] = tracking.subtract_background_from_frames(self.frames[self.curr_media_num], self.params['backgrounds'][self.curr_media_num])
-
-                    # Enable "Subtract background" checkbox in param window
-                    self.param_window.param_controls["subtract_background"].setEnabled(True)
-                else:
-                    # Disable "Subtract background" checkbox in param window
-                    self.param_window.param_controls["subtract_background"].setEnabled(False)
+                # enable "Subtract background" checkbox in param window
+                self.param_window.param_controls["subtract_background"].setEnabled(True)
+            else:
+                # disable "Subtract background" checkbox in param window
+                self.param_window.param_controls["subtract_background"].setEnabled(False)
 
             if self.frames == None:
                 # no frames found; end here
@@ -202,13 +176,13 @@ class Controller():
                 return
 
             # set current frame to first frame
-            self.current_frame = self.frames[self.curr_media_num][0]
+            self.current_frame = self.frames[self.curr_video_num][0]
 
             # get number of frames
-            self.n_frames = len(self.frames[self.curr_media_num])
+            self.n_frames = len(self.frames[self.curr_video_num])
 
             if self.params['type'] == "headfixed":
-                # determine tail direction
+                # estimate tail direction
                 total_luminosities = [np.sum(self.current_frame[-1:-10, :]), np.sum(self.current_frame[0:10, :]),
                                       np.sum(self.current_frame[:, -1:-10]), np.sum(self.current_frame[:, 0:10])]
 
@@ -216,165 +190,155 @@ class Controller():
 
                 self.param_window.update_gui_from_params(self.params)
             
-            if media_type != "image":
-                if self.params['backgrounds'][self.curr_media_num] != None:
-                    # generate background subtracted frames
-                    self.bg_sub_frames[self.curr_media_num] = tracking.subtract_background_from_frames(self.frames[self.curr_media_num], self.params['backgrounds'][self.curr_media_num])
+            if self.params['backgrounds'][self.curr_video_num] != None:
+                # generate background subtracted frames
+                self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
 
-            # enable gui controls
+            # enable GUI controls
             self.param_window.set_gui_disabled(False)
 
-    def open_media_batch(self, media_types, media_paths):
-        ''' Open a batch of media files. '''
+    def open_video_batch(self, video_paths):
+        ''' Open a batch of video files. '''
 
-        self.first_load = self.first_load or len(self.params['media_paths']) == 0
+        self.first_load = self.first_load or len(self.params['video_paths']) == 0
 
-        if (self.first_load and len(self.params['media_paths']) == 0) or not self.first_load:
-            # update media paths & type parameters
-            self.params['media_paths'] += media_paths
-            self.params['media_types'] += media_types
-            self.params['backgrounds'] += [None]*len(media_paths)
+        if (self.first_load and len(self.params['video_paths']) == 0) or not self.first_load:
+            # update video paths
+            self.params['video_paths'] += video_paths
+            self.params['backgrounds'] += [None]*len(video_paths)
 
-        self.frames        += [None]*len(media_paths)
-        self.bg_sub_frames += [None]*len(media_paths)
+        self.frames        += [None]*len(video_paths)
+        self.bg_sub_frames += [None]*len(video_paths)
 
         if self.first_load:
-            # update current media number
-            self.curr_media_num = 0
+            # update current video number
+            self.curr_video_num = 0
 
-        # update loaded media label
-        if len(self.params['media_paths']) > 1:
-            self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(self.params['media_paths']), self.curr_media_num+1))
+        # update loaded videos label
+        if len(self.params['video_paths']) > 1:
+            self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> videos. Showing #{}.".format(len(self.params['video_paths']), self.curr_video_num+1))
         else:
-            self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(self.params['media_paths'][0])))
-
-        self.params['batch_offsets'] = tracking.get_video_batch_align_offsets(self.params)
+            self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(self.params['video_paths'][0])))
 
         if self.first_load:
-            # open the first media from the batch
-            self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
+            # open the first video from the batch
+            self.open_video(video_paths[self.curr_video_num])
 
         # get backgrounds
-        if media_types[0] != "image":
-            self.param_window.param_controls["subtract_background"].setEnabled(False)
-            self.param_window.open_background_action.setEnabled(False)
-            self.param_window.save_background_action.setEnabled(False)
+        self.param_window.param_controls["subtract_background"].setEnabled(False)
+        self.param_window.open_background_action.setEnabled(False)
+        self.param_window.save_background_action.setEnabled(False)
 
-            # update tracking progress label in param window
-            self.param_window.tracking_progress_label.setText("Calculating backgrounds... 0%.")
+        # update tracking progress label in param window
+        self.param_window.tracking_progress_label.setText("Calculating backgrounds... 0%.")
 
-            for k in range(len(self.params['media_paths']) - len(media_paths), len(self.params['media_paths'])):
-                if self.params['backgrounds'][k] == None:
-                    # create new thread to calculate the background
-                    self.get_background_thread = GetBackgroundThread(self.param_window)
-                    self.get_background_thread.set_parameters(self.params['media_paths'][k], self.params['media_types'][k], k)
+        for k in range(len(self.params['video_paths']) - len(video_paths), len(self.params['video_paths'])):
+            if self.params['backgrounds'][k] == None:
+                # create new thread to calculate the background
+                self.get_background_thread = GetBackgroundThread(self.param_window)
+                self.get_background_thread.set_parameters(self.params['video_paths'][k], k, self.params['invert'])
 
-                    self.background_calc_paths.append(self.params['media_paths'][k])
+                self.background_calc_paths.append(self.params['video_paths'][k])
 
-                    self.get_background_thread.progress.connect(self.background_calculation_progress)
+                self.get_background_thread.progress.connect(self.background_calculation_progress)
 
-                    # set callback function to be called when the background has been calculated
-                    self.get_background_thread.finished.connect(self.background_calculated)
+                # set callback function to be called when the background has been calculated
+                self.get_background_thread.finished.connect(self.background_calculated)
 
-                    # start thread
-                    self.get_background_thread.start()
-                else:
-                    self.background_calc_paths.append(self.params['media_paths'][k])
-                    
-                    # background is already calculated; call the callback function
-                    self.background_calculated(self.params['backgrounds'][k], self.params['media_paths'][k])
+                # start thread
+                self.get_background_thread.start()
+            else:
+                self.background_calc_paths.append(self.params['video_paths'][k])
+                
+                # background is already calculated; call the callback function
+                self.background_calculated(self.params['backgrounds'][k], self.params['video_paths'][k])
 
-        for k in range(len(self.params['media_paths']) - len(media_paths), len(self.params['media_paths'])):
-            self.param_window.add_media_item(os.path.basename(self.params['media_paths'][k]))
+        for k in range(len(self.params['video_paths']) - len(video_paths), len(self.params['video_paths'])):
+            self.param_window.add_video_item(os.path.basename(self.params['video_paths'][k]))
 
-        self.param_window.change_selected_media_row(self.curr_media_num)
+        self.param_window.change_selected_video_row(self.curr_video_num)
 
-    def prev_media(self):
-        if self.curr_media_num != 0:
-            media_paths = self.params['media_paths']
-            media_types = self.params['media_types']
+    def prev_video(self):
+        if self.curr_video_num != 0:
+            video_paths = self.params['video_paths']
             
-            # update current media number
-            self.curr_media_num -= 1
+            # update current video number
+            self.curr_video_num -= 1
 
-            # update loaded media label
-            if len(media_paths) > 1:
-                self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(media_paths), self.curr_media_num+1))
+            # update loaded video label
+            if len(video_paths) > 1:
+                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(video_paths), self.curr_video_num+1))
             else:
-                self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
+                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(video_paths[0])))
 
-            if self.frames[self.curr_media_num] == None:
-                # open the previous media from the batch
-                self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
+            if self.frames[self.curr_video_num] == None:
+                # open the previous video from the batch
+                self.open_video(video_paths[self.curr_video_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
 
-            self.param_window.change_selected_media_row(self.curr_media_num)
+            self.param_window.change_selected_video_row(self.curr_video_num)
 
-    def next_media(self):
-        if self.curr_media_num != len(self.params['media_paths'])-1:
-            media_paths = self.params['media_paths']
-            media_types = self.params['media_types']
+    def next_video(self):
+        if self.curr_video_num != len(self.params['video_paths'])-1:
+            video_paths = self.params['video_paths']
             
-            # update current media number
-            self.curr_media_num += 1
+            # update current video number
+            self.curr_video_num += 1
 
-            # update loaded media label
-            if len(media_paths) > 1:
-                self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(media_paths), self.curr_media_num+1))
+            # update loaded video label
+            if len(video_paths) > 1:
+                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(video_paths), self.curr_video_num+1))
             else:
-                self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
+                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(video_paths[0])))
 
-            if self.frames[self.curr_media_num] == None:
-                # open the next media from the batch
-                self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
+            if self.frames[self.curr_video_num] == None:
+                # open the next video from the batch
+                self.open_video(video_paths[self.curr_video_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
 
-            self.param_window.change_selected_media_row(self.curr_media_num)
+            self.param_window.change_selected_video_row(self.curr_video_num)
 
-    def switch_media(self, media_num):
-        if 0 <= media_num <= len(self.params['media_paths'])-1:
-            media_paths = self.params['media_paths']
-            media_types = self.params['media_types']
+    def switch_video(self, video_num):
+        if 0 <= video_num <= len(self.params['video_paths'])-1:
+            video_paths = self.params['video_paths']
 
-            # update current media number
-            self.curr_media_num = media_num
+            # update current video number
+            self.curr_video_num = video_num
 
-            # update loaded media label
-            if len(media_paths) > 1:
-                self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(media_paths), self.curr_media_num+1))
+            # update loaded video label
+            if len(video_paths) > 1:
+                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(video_paths), self.curr_video_num+1))
             else:
-                self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(media_paths[0])))
+                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(video_paths[0])))
 
-            if self.frames[self.curr_media_num] == None:
-                # open the next media from the batch
-                self.open_media(media_types[self.curr_media_num], media_paths[self.curr_media_num])
+            if self.frames[self.curr_video_num] == None:
+                # open the next video from the batch
+                self.open_video(video_paths[self.curr_video_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
 
-    def remove_media(self):
-        self.background_calc_paths.remove(self.params['media_paths'][self.curr_media_num])
+    def remove_video(self):
+        self.background_calc_paths.remove(self.params['video_paths'][self.curr_video_num])
 
-        del self.params['media_paths'][self.curr_media_num]
-        del self.params['media_types'][self.curr_media_num]
-        del self.params['backgrounds'][self.curr_media_num]
-        del self.params['batch_offsets'][self.curr_media_num]
-        del self.frames[self.curr_media_num]
-        del self.bg_sub_frames[self.curr_media_num]
+        del self.params['video_paths'][self.curr_video_num]
+        del self.params['backgrounds'][self.curr_video_num]
+        del self.frames[self.curr_video_num]
+        del self.bg_sub_frames[self.curr_video_num]
 
-        self.param_window.remove_media_item(self.curr_media_num)
+        self.param_window.remove_video_item(self.curr_video_num)
 
-        if self.curr_media_num != 0 or len(self.params['media_paths']) == 0:
-            self.curr_media_num -= 1
+        if self.curr_video_num != 0 or len(self.params['video_paths']) == 0:
+            self.curr_video_num -= 1
 
-        if self.curr_media_num != -1:
-            if self.frames[self.curr_media_num] == None:
-                # open the next media from the batch
-                self.open_media(self.params['media_types'][self.curr_media_num], self.params['media_paths'][self.curr_media_num])
+        if self.curr_video_num != -1:
+            if self.frames[self.curr_video_num] == None:
+                # open the next video from the batch
+                self.open_video(self.params['video_paths'][self.curr_video_num])
 
                 # switch to first frame
                 self.switch_frame(0, new_load=True)
@@ -384,15 +348,15 @@ class Controller():
             self.param_window.set_gui_disabled(True)
             self.clear_crops()
 
-        print(self.params['media_paths'], self.curr_media_num)
+        print(self.params['video_paths'], self.curr_video_num)
 
-        # update loaded media label
-        if len(self.params['media_paths']) > 1:
-            self.param_window.loaded_media_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(self.params['media_paths']), self.curr_media_num+1))
-        elif len(self.params['media_paths']) > 0:
-            self.param_window.loaded_media_label.setText("Loaded <b>{}</b>.".format(os.path.basename(self.params['media_paths'][0])))
+        # update loaded video label
+        if len(self.params['video_paths']) > 1:
+            self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(self.params['video_paths']), self.curr_video_num+1))
+        elif len(self.params['video_paths']) > 0:
+            self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(self.params['video_paths'][0])))
         else:
-            self.param_window.loaded_media_label.setText("No media loaded.")
+            self.param_window.loaded_videos_label.setText("No videos loaded.")
 
     def background_calculation_progress(self, progress):
         n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
@@ -402,18 +366,18 @@ class Controller():
         # update tracking progress label in param window
         self.param_window.tracking_progress_label.setText("Calculating backgrounds... {:.1f}%.".format(true_progress))
 
-    def background_calculated(self, background, media_path):
-        if self.current_frame.shape == background.shape and media_path in self.background_calc_paths:
-            print("Background for {} calculated.".format(media_path))
+    def background_calculated(self, background, video_path):
+        if self.current_frame.shape == background.shape and video_path in self.background_calc_paths:
+            print("Background for {} calculated.".format(video_path))
 
-            media_num = self.params['media_paths'].index(media_path)
+            video_num = self.params['video_paths'].index(video_path)
 
             # update params
-            self.params['backgrounds'][media_num] = background
+            self.params['backgrounds'][video_num] = background
 
-            if self.frames[media_num] != None and self.bg_sub_frames[media_num] == None:
+            if self.frames[video_num] != None and self.bg_sub_frames[video_num] == None:
                 # generate background subtracted frames
-                self.bg_sub_frames[media_num] = tracking.subtract_background_from_frames(self.frames[media_num], self.params['backgrounds'][media_num])
+                self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
 
             n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
             n_backgrounds_total      = len(self.params['backgrounds'])
@@ -426,7 +390,7 @@ class Controller():
                 # update tracking progress label in param window
                 self.param_window.tracking_progress_label.setText("Calculating backgrounds... {:.1f}%.".format(percent))
 
-            if self.curr_media_num == media_num:
+            if self.curr_video_num == video_num:
                 # Enable "Subtract background" checkbox in param window
                 self.param_window.param_controls["subtract_background"].setEnabled(True)
 
@@ -439,17 +403,19 @@ class Controller():
                 self.param_window.open_background_action.setEnabled(True)
                 self.param_window.save_background_action.setEnabled(True)
 
-    def media_tracked(self, tracking_time):
+    def videos_tracked(self, tracking_time):
         self.param_window.tracking_progress_label.setText("Tracking completed in <b>{:.3f}s</b>.".format(tracking_time))
+        self.tracking = False
 
     def update_background_subtract_progress(self, percent):
         self.param_window.param_controls["subtract_background"].setText("Subtract background (Calculating...{}%)".format(percent))
     
-    def update_media_tracking_progress(self, media_type, media_number, percent):
-        if len(self.params['media_paths']) > 1:
-            self.param_window.tracking_progress_label.setText("Tracking <b>{} {}</b>: {}%.".format(media_type, media_number+1, percent))
+    def update_video_tracking_progress(self, video_number, percent):
+        n_videos = len(self.params['video_paths'])
+        if n_videos > 1:
+            self.param_window.tracking_progress_label.setText("Tracking <b>video {}/{}</b>: {:.1f}%.".format(video_number+1, n_videos, percent))
         else:
-            self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>: {}%.".format(os.path.basename(self.params['media_paths'][0]), percent))
+            self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>. Total progress: {:.1f}%.".format(os.path.basename(self.params['video_paths'][0]), percent))
 
     def load_params(self, params_path=None):
         print(params_path)
@@ -467,8 +433,8 @@ class Controller():
 
             self.current_crop = -1
 
-            # re-open media path specified in the loaded params
-            self.open_media_batch(self.params['media_types'], self.params['media_paths'])
+            # re-open the video paths specified in the loaded params
+            self.open_video_batch(self.params['video_paths'])
 
             self.first_load = False
 
@@ -514,22 +480,19 @@ class Controller():
             self.n = n
 
         # set current frame
-        if self.params['subtract_background'] and self.bg_sub_frames[self.curr_media_num] != None:
+        if self.params['subtract_background'] and self.bg_sub_frames[self.curr_video_num] != None:
             frames = self.bg_sub_frames
         else:
             frames = self.frames
 
-        if self.params['align_batches'] == True and self.params['batch_offsets'][self.curr_media_num] != None:
-            self.current_frame = tracking.apply_align_offset_to_frame(frames[self.curr_media_num][self.n], self.params['batch_offsets'][self.curr_media_num])
-        else:
-            self.current_frame = frames[self.curr_media_num][self.n]
+        self.current_frame = frames[self.curr_video_num][self.n]
 
         # reshape the image (shrink, crop & invert)
         self.reshape_frame()
 
         # invert the frame
-        if self.params['invert'] == True:
-            self.invert_frame()
+        # if self.params['invert'] == True:
+        #     self.invert_frame()
 
         if self.params['type'] == "freeswimming":
             # generate thresholded frames
@@ -570,10 +533,18 @@ class Controller():
         self.scaled_frame   = (255 - self.scaled_frame)
         self.cropped_frame  = (255 - self.cropped_frame)
 
+    def invert_frames(self):
+        self.frames[self.curr_video_num] = 255 - self.frames[self.curr_video_num]
+
     def update_preview(self, image=None, new_load=False, new_frame=False):
         if image == None:
             # use the cropped current frame by default
             image = self.scaled_frame
+
+        if self.params['type'] == "freeswimming":
+            crop_around_body = self.params['gui_params']['zoom_body_crop'] and self.tracking_results != None and self.tracking_results['body_position'] != None and self.tracking_results['heading_angle']
+        else:
+            crop_around_body = False
 
         if image != None:
             # if we have more than one frame, show the slider
@@ -583,28 +554,55 @@ class Controller():
             gui_params = self.params['gui_params']
             
             # send signal to update image in preview window
-            self.preview_window.plot_image(image, self.params, self.params['crop_params'][self.current_crop], self.tracking_results, new_load, new_frame, show_slider)
+            self.preview_window.plot_image(image, self.params, self.params['crop_params'][self.current_crop], self.tracking_results, new_load, new_frame, show_slider, crop_around_body=crop_around_body)
 
     def toggle_invert_image(self, checkbox):
         self.params['invert'] = checkbox.isChecked()
 
+        self.bg_sub_frames[self.curr_video_num] = None
+
         # invert the frame
-        self.invert_frame()
+        # self.invert_frame()
+        self.invert_frames()
 
-        if self.params['type'] == "freeswimming":
-            # generate thresholded frames
-            self.generate_thresholded_frames()
+        self.switch_frame(self.n)
 
-        # update the image preview
-        self.update_preview()
+        if self.get_background_thread != None:
+            # another thread is already tracking something; don't let it affect the GUI
+            self.get_background_thread.progress.disconnect(self.background_calculation_progress)
+            self.get_background_thread.finished.disconnect(self.background_calculated)
+
+        for k in range(len(self.params['video_paths'])):
+            # create new thread to calculate the background
+            self.get_background_thread = GetBackgroundThread(self.param_window)
+            self.get_background_thread.set_parameters(self.params['video_paths'][k], k, self.params['invert'])
+
+            self.background_calc_paths.append(self.params['video_paths'][k])
+
+            self.get_background_thread.progress.connect(self.background_calculation_progress)
+
+            # set callback function to be called when the background has been calculated
+            self.get_background_thread.finished.connect(self.background_calculated)
+
+            # start thread
+            self.get_background_thread.start()
+
+        # self.switch_frame(self.n)
+
+        # if self.params['type'] == "freeswimming":
+        #     # generate thresholded frames
+        #     self.generate_thresholded_frames()
+
+        # # update the image preview
+        # self.update_preview()
 
     def generate_thresholded_frames(self):
         # get params of currently selected crop
         current_crop_params = self.params['crop_params'][self.current_crop]
 
         # generate thresholded frames
-        self.body_threshold_frame = tracking.simplify_body_threshold_frame(tracking.get_threshold_frame(self.scaled_frame, current_crop_params['body_threshold']))*255
-        self.eye_threshold_frame  = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['eye_threshold'])*255
+        self.body_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['body_threshold'])*255
+        self.eyes_threshold_frame  = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['eyes_threshold'])*255
         self.tail_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['tail_threshold'])*255
         self.tail_skeleton_frame  = tracking.get_tail_skeleton_frame(self.tail_threshold_frame/255)*255
 
@@ -621,17 +619,11 @@ class Controller():
         self.params['track_eyes'] = checkbox.isChecked()
 
     def toggle_subtract_background(self, checkbox):
-        if self.params['backgrounds'][self.curr_media_num] != None:
+        if self.params['backgrounds'][self.curr_video_num] != None:
             self.params['subtract_background'] = checkbox.isChecked()
 
             # reshape the image
             self.switch_frame(self.n)
-
-    def toggle_align_batches(self, checkbox):
-        self.params['align_batches'] = checkbox.isChecked()
-
-        # reshape the image
-        self.switch_frame(self.n)
 
     def toggle_multiprocessing(self, checkbox):
         self.params['use_multiprocessing'] = checkbox.isChecked()
@@ -639,11 +631,16 @@ class Controller():
     def toggle_auto_tracking(self, checkbox):
         self.params['gui_params']['auto_track'] = checkbox.isChecked()
 
+    def toggle_zoom_body_crop(self, checkbox):
+        self.params['gui_params']['zoom_body_crop'] = checkbox.isChecked()
+
+        self.update_preview()
+
     def track_frame(self):
         if self.current_frame != None:
             # print(self.current_frame, self.scaled_frame)
             # get params from gui
-            self.update_params_from_gui()
+            # self.update_params_from_gui()
 
             # track current frame
             self.tracking_results = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
@@ -660,43 +657,49 @@ class Controller():
 
             self.update_preview(image=None, new_load=False, new_frame=False)
 
-    def track_media(self):
+    def track_videos(self):
         # get save path
         self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
 
-        # track media
-        if self.track_media_thread != None:
-            # another thread is already tracking something; don't let it affect the GUI
-            self.track_media_thread.progress.disconnect(self.update_media_tracking_progress)
-            self.track_media_thread.finished.disconnect(self.media_tracked)
+        if self.tracking_path != "":
 
-        # create new thread to track the media
-        self.track_media_thread = TrackMediaThread(self.param_window)
-        self.track_media_thread.set_parameters(self.params, self.tracking_path)
+            # track videos
+            if self.track_videos_thread != None:
+                # another thread is already tracking something; don't let it affect the GUI
+                self.track_videos_thread.progress.disconnect(self.update_video_tracking_progress)
+                self.track_videos_thread.finished.disconnect(self.videos_tracked)
 
-        # set callback function to be called when the media has been tracked
-        self.track_media_thread.finished.connect(self.media_tracked)
+            # create new thread to track the videos
+            self.track_videos_thread = TrackVideosThread(self.param_window)
+            self.track_videos_thread.set_parameters(self.params, self.tracking_path)
 
-        # set callback function to be called as the media is being tracked (to show progress)
-        self.track_media_thread.progress.connect(self.update_media_tracking_progress)
+            # set callback function to be called when the videos has been tracked
+            self.track_videos_thread.finished.connect(self.videos_tracked)
 
-        if len(self.params['media_paths']) > 1:
-            self.param_window.tracking_progress_label.setText("Tracking <b>{} 1</b>: 0%.".format(self.params['media_type']))
-        else:
-            self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>: 0%.".format(os.path.basename(self.params['media_paths'][0])))
+            # set callback function to be called as the videos are being tracked (to show progress)
+            self.track_videos_thread.progress.connect(self.update_video_tracking_progress)
 
-        # start thread
-        self.track_media_thread.start()
+            n_videos = len(self.params['video_paths'])
+
+            if n_videos > 1:
+                self.param_window.tracking_progress_label.setText("Tracking <b>video 1/{}</b>: 0%.".format(n_videos))
+            else:
+                self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>: 0%.".format(os.path.basename(self.params['video_paths'][0])))
+
+            # start thread
+            self.track_videos_thread.start()
+
+            self.tracking = True
 
     def save_background(self):
-        if self.params['backgrounds'][self.curr_media_num] != None:
+        if self.params['backgrounds'][self.curr_video_num] != None:
             if pyqt_version == 4:
-                save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '{}_background'.format(os.path.splitext(self.params['media_paths'][0])[0]), 'Images (*.png *.tif *.jpg)'))
+                save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '{}_background'.format(os.path.splitext(self.params['video_paths'][0])[0]), 'Images (*.png *.tif *.jpg)'))
             elif pyqt_version == 5:
-                save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '{}_background'.format(os.path.splitext(self.params['media_paths'][0])[0]), 'Images (*.png *.tif *.jpg)')[0])
+                save_path = str(QFileDialog.getSaveFileName(self.param_window, 'Save background', '{}_background'.format(os.path.splitext(self.params['video_paths'][0])[0]), 'Images (*.png *.tif *.jpg)')[0])
             if not (save_path.endswith('.jpg') or save_path.endswith('.tif') or save_path.endswith('.png')):
                 save_path += ".png"
-            cv2.imwrite(save_path, self.params['backgrounds'][self.curr_media_num])
+            cv2.imwrite(save_path, self.params['backgrounds'][self.curr_video_num])
 
     def load_background(self):
         if self.current_frame != None:
@@ -709,8 +712,8 @@ class Controller():
 
             if background.shape == self.current_frame.shape:
                 # print("hey")
-                self.params['backgrounds'][self.curr_media_num] = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
-                self.background_calculated(self.params['backgrounds'][self.curr_media_num], self.curr_media_num)
+                self.params['backgrounds'][self.curr_video_num] = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
+                self.background_calculated(self.params['backgrounds'][self.curr_video_num], self.curr_video_num)
 
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
         # get start & end coordinates - end_add adds a pixel to the end coordinates (for a more accurate crop)
@@ -823,6 +826,31 @@ class Controller():
             # update the image preview
             self.update_preview(image=None, new_load=False, new_frame=True)
 
+    def update_scale_factor(self, scale_factor):
+        if self.current_frame != None:
+            if 0 < scale_factor <= 4:
+                self.params['scale_factor'] = scale_factor
+
+                self.param_window.hide_invalid_params_text()
+
+                self.switch_frame(self.n)
+            else:
+                self.param_window.set_invalid_params_text("Invalid scale factor value.")
+
+    def update_bg_sub_threshold(self, bg_sub_threshold):
+        if self.current_frame != None:
+            if 0 <= bg_sub_threshold <= 255:
+                self.params['bg_sub_threshold'] = bg_sub_threshold
+
+                if self.params['backgrounds'][self.curr_video_num] != None:
+                    self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
+
+                self.param_window.hide_invalid_params_text()
+
+                self.switch_frame(self.n)
+            else:
+                self.param_window.set_invalid_params_text("Invalid bg sub threshold value.")
+
     def close_all(self):
         self.closing = True
         self.param_window.close()
@@ -832,7 +860,7 @@ class FreeswimmingController(Controller):
     def __init__(self):
         # initialize variables
         self.body_threshold_frame = None
-        self.eye_threshold_frame  = None
+        self.eyes_threshold_frame  = None
         self.tail_threshold_frame = None
         self.tail_skeleton_frame  = None
 
@@ -858,8 +886,8 @@ class FreeswimmingController(Controller):
             # pick correct image to show in preview window
             if self.params['gui_params']["show_body_threshold"]:
                 image = self.body_threshold_frame
-            elif self.params['gui_params']["show_eye_threshold"]:
-                image = self.eye_threshold_frame
+            elif self.params['gui_params']["show_eyes_threshold"]:
+                image = self.eyes_threshold_frame
             elif self.params['gui_params']["show_tail_threshold"]:
                 image = self.tail_threshold_frame
             elif self.params['gui_params']["show_tail_skeleton"]:
@@ -876,7 +904,7 @@ class FreeswimmingController(Controller):
         if self.current_frame is not None and checkbox != None and checkbox.isChecked():
             # uncheck other threshold checkboxes
             if checkbox.text() == "Show body threshold":
-                self.param_window.param_controls["show_eye_threshold"].setChecked(False)
+                self.param_window.param_controls["show_eyes_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
             elif checkbox.text() == "Show eye threshold":
@@ -885,15 +913,15 @@ class FreeswimmingController(Controller):
                 self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
             elif checkbox.text() == "Show tail threshold":
                 self.param_window.param_controls["show_body_threshold"].setChecked(False)
-                self.param_window.param_controls["show_eye_threshold"].setChecked(False)
+                self.param_window.param_controls["show_eyes_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
             elif checkbox.text() == "Show tail skeleton":
                 self.param_window.param_controls["show_body_threshold"].setChecked(False)
-                self.param_window.param_controls["show_eye_threshold"].setChecked(False)
+                self.param_window.param_controls["show_eyes_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_threshold"].setChecked(False)
 
         self.params['gui_params']['show_body_threshold'] = self.param_window.param_controls["show_body_threshold"].isChecked()
-        self.params['gui_params']['show_eye_threshold']  = self.param_window.param_controls["show_eye_threshold"].isChecked()
+        self.params['gui_params']['show_eyes_threshold']  = self.param_window.param_controls["show_eyes_threshold"].isChecked()
         self.params['gui_params']['show_tail_threshold'] = self.param_window.param_controls["show_tail_threshold"].isChecked()
         self.params['gui_params']['show_tail_skeleton']  = self.param_window.param_controls["show_tail_skeleton"].isChecked()
 
@@ -903,8 +931,8 @@ class FreeswimmingController(Controller):
     def get_checked_threshold_checkbox(self):
         if self.param_window.param_controls["show_body_threshold"].isChecked():
             return self.param_window.param_controls["show_body_threshold"]
-        elif self.param_window.param_controls["show_eye_threshold"].isChecked():
-            return self.param_window.param_controls["show_eye_threshold"]
+        elif self.param_window.param_controls["show_eyes_threshold"].isChecked():
+            return self.param_window.param_controls["show_eyes_threshold"]
         elif self.param_window.param_controls["show_tail_threshold"].isChecked():
             return self.param_window.param_controls["show_tail_threshold"]
         elif self.param_window.param_controls["show_tail_skeleton"].isChecked():
@@ -929,7 +957,7 @@ class FreeswimmingController(Controller):
             offset_x = int(float(self.param_window.crop_param_controls[c]['offset_x' + '_textbox'].text()))
 
             body_threshold = int(float(self.param_window.crop_param_controls[c]['body_threshold' + '_textbox'].text()))
-            eye_threshold = int(float(self.param_window.crop_param_controls[c]['eye_threshold' + '_textbox'].text()))
+            eyes_threshold = int(float(self.param_window.crop_param_controls[c]['eyes_threshold' + '_textbox'].text()))
             tail_threshold = int(float(self.param_window.crop_param_controls[c]['tail_threshold' + '_textbox'].text()))
 
             valid_params = (1 <= crop_y <= self.current_frame.shape[0]
@@ -937,7 +965,7 @@ class FreeswimmingController(Controller):
                         and 0 <= offset_y < self.current_frame.shape[0]-1
                         and 0 <= offset_x < self.current_frame.shape[1]-1
                         and 0 <= body_threshold <= 255
-                        and 0 <= eye_threshold <= 255
+                        and 0 <= eyes_threshold <= 255
                         and 0 <= tail_threshold <= 255)
 
             if valid_params:
@@ -945,7 +973,7 @@ class FreeswimmingController(Controller):
                 self.params['crop_params'][c]['offset'] = np.array([offset_y, offset_x])
 
                 self.params['crop_params'][c]['body_threshold'] = body_threshold
-                self.params['crop_params'][c]['eye_threshold']  = eye_threshold
+                self.params['crop_params'][c]['eyes_threshold']  = eyes_threshold
                 self.params['crop_params'][c]['tail_threshold'] = tail_threshold
             else:
                 self.param_window.show_invalid_params_text()
@@ -975,6 +1003,7 @@ class FreeswimmingController(Controller):
                 body_crop_width    = int(float(self.param_window.param_controls['body_crop_width' + '_textbox'].text()))
                 min_tail_body_dist = int(float(self.param_window.param_controls['min_tail_body_dist'].text()))
                 max_tail_body_dist = int(float(self.param_window.param_controls['max_tail_body_dist'].text()))
+                bg_sub_threshold   = int(float(self.param_window.param_controls['bg_sub_threshold' + '_textbox'].text()))
                 interpolation      = str(self.param_window.param_controls['interpolation'].currentText())
             except ValueError:
                 self.param_window.show_invalid_params_text()
@@ -989,12 +1018,16 @@ class FreeswimmingController(Controller):
                         and max_tail_body_dist > min_tail_body_dist)
 
             if valid_params:
-                self.params['scale_factor']      = scale_factor
+                if self.params['bg_sub_threshold'] != bg_sub_threshold:
+                    self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
+                
+                self.params['scale_factor']       = scale_factor
                 self.params['saved_video_fps']    = saved_video_fps
                 self.params['n_tail_points']      = n_tail_points
                 self.params['body_crop']          = np.array([body_crop_height, body_crop_width])
                 self.params['min_tail_body_dist'] = min_tail_body_dist
                 self.params['max_tail_body_dist'] = max_tail_body_dist
+                self.params['bg_sub_threshold']   = bg_sub_threshold
                 self.params['interpolation']      = interpolation
 
                 self.param_window.hide_invalid_params_text()
@@ -1002,15 +1035,40 @@ class FreeswimmingController(Controller):
                 self.param_window.show_invalid_params_text()
                 return
 
-            # reshape current frame
-            self.reshape_frame()
+            # # reshape current frame
+            # self.reshape_frame()
 
-            if self.params['type'] == "freeswimming":
-                # generate thresholded frames
-                self.generate_thresholded_frames()
+            # if self.params['type'] == "freeswimming":
+            #     # generate thresholded frames
+            #     self.generate_thresholded_frames()
+
+            # # reshape the image
+            self.switch_frame(self.n)
 
             # update the image preview
-            self.update_preview(image=None, new_load=False, new_frame=True)
+            # self.update_preview(image=None, new_load=False, new_frame=True)
+
+    def update_body_crop_height(self, body_crop_height):
+        if self.current_frame != None:
+            if body_crop_height > 100:
+                self.params['body_crop'][0] = body_crop_height
+
+                self.param_window.hide_invalid_params_text()
+
+                self.switch_frame(self.n)
+            else:
+                self.param_window.set_invalid_params_text("Invalid body crop height value.")
+
+    def update_body_crop_width(self, body_crop_width):
+        if self.current_frame != None:
+            if body_crop_width > 1:
+                self.params['body_crop'][1] = body_crop_width
+
+                self.param_window.hide_invalid_params_text()
+
+                self.switch_frame(self.n)
+            else:
+                self.param_window.set_invalid_params_text("Invalid body crop width value.")
 
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
         Controller.update_crop_from_selection(self, start_crop_coord, end_crop_coord)
@@ -1116,26 +1174,35 @@ class HeadfixedController(Controller):
             # update the image preview
             self.update_preview(image=None, new_load=False, new_frame=True)
 
+    def update_tail_angle(self, tail_angle):
+        if self.current_frame != None:
+            if 0 <= tail_angle <= 360:
+                self.params['tail_angle'] = tail_angle
+
+                self.param_window.hide_invalid_params_text()
+
+                self.switch_frame(self.n)
+            else:
+                self.param_window.set_invalid_params_text("Invalid tail angle value.")
+
 class GetBackgroundThread(QThread):
     finished = pyqtSignal(np.ndarray, str)
     progress = pyqtSignal(int)
 
-    def set_parameters(self, media_path, media_type, media_num):
-        self.media_path   = media_path
-        self.media_type   = media_type
-        self.media_num    = media_num
+    def set_parameters(self, video_path, video_num, invert):
+        self.video_path = video_path
+        self.video_num  = video_num
+        self.invert     = invert
 
     def run(self):
-        if self.media_type == "folder":
-            background = open_media.open_folder(self.media_path, None, None, False, True, progress_signal=self.progress)
-        elif self.media_type == "video":
-            background = open_media.open_video(self.media_path, None, False, True, progress_signal=self.progress)
+        background = open_media.open_video(self.video_path, None, False, True, progress_signal=self.progress, invert=self.invert)
         
-        self.finished.emit(background, self.media_path)
+        if background != None:
+            self.finished.emit(background, self.video_path)
 
-class TrackMediaThread(QThread):
+class TrackVideosThread(QThread):
     finished = pyqtSignal(float)
-    progress = pyqtSignal(str, int, float)
+    progress = pyqtSignal(int, float)
 
     def set_parameters(self, params, tracking_path):
         self.params = params

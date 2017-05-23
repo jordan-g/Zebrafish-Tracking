@@ -53,37 +53,37 @@ class ParamWindow(QMainWindow):
         self.left_layout.setAlignment(Qt.AlignTop)
         self.left_layout.setSpacing(0)
 
-        self.media_list = QListWidget(self)
-        self.media_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.media_list.currentRowChanged.connect(self.controller.switch_media)
-        self.left_layout.addWidget(self.media_list)
+        self.videos_list = QListWidget(self)
+        self.videos_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.videos_list.currentRowChanged.connect(self.controller.switch_video)
+        self.left_layout.addWidget(self.videos_list)
 
-        self.media_list_items = []
+        self.videos_list_items = []
 
-        self.media_list_buttons = QHBoxLayout()
-        self.media_list_buttons.setSpacing(10)
-        self.left_layout.addLayout(self.media_list_buttons)
+        self.videos_list_buttons = QHBoxLayout()
+        self.videos_list_buttons.setSpacing(10)
+        self.left_layout.addLayout(self.videos_list_buttons)
 
-        self.add_media_button = QPushButton('+')
-        self.add_media_button.clicked.connect(self.controller.select_and_open_media)
-        self.add_media_button.setToolTip("Add media.")
-        self.media_list_buttons.addWidget(self.add_media_button)
+        self.add_videos_button = QPushButton('+')
+        self.add_videos_button.clicked.connect(self.controller.select_and_open_videos)
+        self.add_videos_button.setToolTip("Add videos to track.")
+        self.videos_list_buttons.addWidget(self.add_videos_button)
 
-        self.remove_media_button = QPushButton('-')
-        self.remove_media_button.clicked.connect(self.controller.remove_media)
-        self.remove_media_button.setToolTip("Remove selected media.")
-        self.media_list_buttons.addWidget(self.remove_media_button)
+        self.remove_video_button = QPushButton('-')
+        self.remove_video_button.clicked.connect(self.controller.remove_video)
+        self.remove_video_button.setToolTip("Remove selected video.")
+        self.videos_list_buttons.addWidget(self.remove_video_button)
 
-        # add media switching buttons
-        self.prev_media_button = QPushButton('<')
-        self.prev_media_button.clicked.connect(self.controller.prev_media)
-        self.prev_media_button.setToolTip("Switch to previous loaded media.")
-        self.media_list_buttons.addWidget(self.prev_media_button)
+        # add video switching buttons
+        self.prev_video_button = QPushButton('<')
+        self.prev_video_button.clicked.connect(self.controller.prev_video)
+        self.prev_video_button.setToolTip("Switch to the previous loaded video.")
+        self.videos_list_buttons.addWidget(self.prev_video_button)
 
-        self.next_media_button = QPushButton('>')
-        self.next_media_button.clicked.connect(self.controller.next_media)
-        self.next_media_button.setToolTip("Switch to next loaded media.")
-        self.media_list_buttons.addWidget(self.next_media_button)
+        self.next_video_button = QPushButton('>')
+        self.next_video_button.clicked.connect(self.controller.next_video)
+        self.next_video_button.setToolTip("Switch to next loaded video.")
+        self.videos_list_buttons.addWidget(self.next_video_button)
 
         # create main buttons
         self.create_main_buttons()
@@ -264,42 +264,32 @@ class ParamWindow(QMainWindow):
                 self.set_crop_param_slider_value('offset_y', crop_params[c]['offset'][0], c, int_values=True)
                 self.set_crop_param_slider_value('offset_x', crop_params[c]['offset'][1], c, int_values=True)
 
-    def clear_media_list(self):
-        for k in range(len(self.media_list_items)-1, -1, -1):
-            self.media_list.takeItem(k)
-            del self.media_list_items[k]
+    def clear_videos_list(self):
+        for k in range(len(self.videos_list_items)-1, -1, -1):
+            self.videos_list.takeItem(k)
+            del self.videos_list_items[k]
 
-    def add_media_item(self, item_name):
-        self.media_list_items.append(QListWidgetItem(item_name, self.media_list))
+    def add_video_item(self, item_name):
+        self.videos_list_items.append(QListWidgetItem(item_name, self.videos_list))
 
-    def remove_media_item(self, item_num):
-        if len(self.media_list_items) > 0 and item_num < len(self.media_list_items):
-            self.media_list.blockSignals(True)
-            self.media_list.takeItem(item_num)
-            del self.media_list_items[item_num]
-            self.media_list.blockSignals(False)
+    def remove_video_item(self, item_num):
+        if len(self.videos_list_items) > 0 and item_num < len(self.videos_list_items):
+            self.videos_list.blockSignals(True)
+            self.videos_list.takeItem(item_num)
+            del self.videos_list_items[item_num]
+            self.videos_list.blockSignals(False)
 
-    def change_selected_media_row(self, row_number):
-        self.media_list.blockSignals(True)
-        self.media_list.setCurrentRow(row_number)
-        self.media_list.blockSignals(False)
+    def change_selected_video_row(self, row_number):
+        self.videos_list.blockSignals(True)
+        self.videos_list.setCurrentRow(row_number)
+        self.videos_list.blockSignals(False)
 
     def create_menubar(self):
         # create actions
-        self.open_image_action = QAction('Open Image', self)
-        self.open_image_action.setShortcut('Ctrl+O')
-        self.open_image_action.setStatusTip('Open an image.')
-        self.open_image_action.triggered.connect(lambda:self.controller.select_and_open_media("image"))
-
-        self.open_folder_action = QAction('Open Folder', self)
-        self.open_folder_action.setShortcut('Ctrl+Shift+O')
-        self.open_folder_action.setStatusTip('Open a folder of images.')
-        self.open_folder_action.triggered.connect(lambda:self.controller.select_and_open_media("folder"))
-
         self.open_video_action = QAction('Open Video(s)', self)
-        self.open_video_action.setShortcut('Ctrl+Alt+O')
-        self.open_video_action.setStatusTip('Open one or more videos.')
-        self.open_video_action.triggered.connect(lambda:self.controller.select_and_open_media("video"))
+        self.open_video_action.setShortcut('Ctrl+O')
+        self.open_video_action.setStatusTip('Open one or more videos to track.')
+        self.open_video_action.triggered.connect(lambda:self.controller.select_and_open_videos)
 
         self.save_params_action = QAction('Save Parameters', self)
         self.save_params_action.setShortcuts(['Ctrl+S'])
@@ -311,10 +301,10 @@ class ParamWindow(QMainWindow):
         self.track_frame_action.setStatusTip('Track the currently previewed frame.')
         self.track_frame_action.triggered.connect(self.controller.track_frame)
 
-        self.track_all_action = QAction('Track All Media', self)
+        self.track_all_action = QAction('Track All Videos', self)
         self.track_all_action.setShortcut('Ctrl+Shift+T')
-        self.track_all_action.setStatusTip('Track all of the currently loaded media.')
-        self.track_all_action.triggered.connect(self.controller.track_media)
+        self.track_all_action.setStatusTip('Track all of the currently loaded videos.')
+        self.track_all_action.triggered.connect(self.controller.track_videos)
 
         self.exit_action = QAction('Exit', self)
         self.exit_action.setShortcut('Ctrl+Q')
@@ -323,8 +313,6 @@ class ParamWindow(QMainWindow):
         # create menu bar & add actions
         menubar  = self.menuBar()
         file_menu = menubar.addMenu('&File')
-        file_menu.addAction(self.open_image_action)
-        file_menu.addAction(self.open_folder_action)
         file_menu.addAction(self.open_video_action)
         file_menu.addAction(self.save_params_action)
         file_menu.addAction(self.track_frame_action)
@@ -354,9 +342,9 @@ class ParamWindow(QMainWindow):
         top_layout = QHBoxLayout()
         self.right_layout.addLayout(top_layout)
 
-        # create loaded media label
-        self.loaded_media_label = QLabel("No media loaded.")
-        top_layout.addWidget(self.loaded_media_label)
+        # create loaded videos label
+        self.loaded_videos_label = QLabel("No videos loaded.")
+        top_layout.addWidget(self.loaded_videos_label)
 
         # create tracking progress label
         self.tracking_progress_label = QLabel("---")
@@ -407,9 +395,9 @@ class ParamWindow(QMainWindow):
 
         self.track_all_button = QPushButton(u'\u27A0 Track All', self)
         # self.track_all_button.setMaximumWidth(180)
-        self.track_all_button.clicked.connect(self.controller.track_media)
+        self.track_all_button.clicked.connect(self.controller.track_videos)
         self.track_all_button.setStyleSheet("font-weight: bold")
-        self.track_all_button.setToolTip("Track all of the currently loaded media with the current parameters.")
+        self.track_all_button.setToolTip("Track all of the currently loaded videos with the current parameters.")
         button_layout_1.addWidget(self.track_all_button)
 
         self.reload_last_save_button = QPushButton(u'\u27AA Reload', self)
@@ -522,8 +510,8 @@ class ParamWindow(QMainWindow):
     def get_checked_threshold_checkbox(self):
         if self.param_controls["show_body_threshold"].isChecked():
             return self.param_controls["show_body_threshold"]
-        elif self.param_controls["show_eye_threshold"].isChecked():
-            return self.param_controls["show_eye_threshold"]
+        elif self.param_controls["show_eyes_threshold"].isChecked():
+            return self.param_controls["show_eyes_threshold"]
         elif self.param_controls["show_tail_threshold"].isChecked():
             return self.param_controls["show_tail_threshold"]
         elif self.param_controls["show_tail_skeleton"].isChecked():
@@ -616,11 +604,11 @@ class ParamWindow(QMainWindow):
 
         # connect slider to set textbox text & update params
         slider.valueChanged.connect(lambda:self.update_textbox_from_slider(slider, textbox, slider_scale_factor, int_values))
-        slider.valueChanged.connect(slider_moved_func)
+        slider.valueChanged.connect(lambda:slider_moved_func(int(float(textbox.text()))))
 
         # connect textbox to 
         textbox.editingFinished.connect(lambda:self.update_slider_from_textbox(slider, textbox, slider_scale_factor))
-        textbox.editingFinished.connect(slider_moved_func)
+        textbox.editingFinished.connect(lambda:slider_moved_func(int(float(textbox.text()))))
 
         # add row to form layout
         parent.addRow(description, control_layout)
@@ -709,6 +697,9 @@ class ParamWindow(QMainWindow):
     def hide_invalid_params_text(self):
         self.invalid_params_label.setText("")
 
+    def set_invalid_params_text(self, text):
+        self.invalid_params_label.setText(text)
+
     def closeEvent(self, event):
         self.controller.close_all()
 
@@ -727,12 +718,13 @@ class HeadfixedParamWindow(ParamWindow):
         self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.checkbox_layout, 0, 0)
         self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.checkbox_layout, 1, 0)
         self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 2, 0)
-        self.add_checkbox('align_batches', 'Auto alignment', self.controller.toggle_align_batches, params['align_batches'], self.checkbox_layout, 0, 1)
         self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 1, 1)
         self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 2, 1)
 
         # add sliders - (key, description, start, end, initial value, parent layout)
-        self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_params_from_gui, 10.0*params['scale_factor'], self.form_layout, slider_scale_factor=10.0)
+        self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.form_layout, slider_scale_factor=10.0)
+        self.add_slider('bg_sub_threshold', 'Background subtraction threshold:', 1, 100, self.controller.update_bg_sub_threshold, round(params['bg_sub_threshold']), self.form_layout, tick_interval=10, int_values=True)
+        self.add_slider('tail_angle', 'Tail angle:', 0, 360, self.controller.update_tail_angle, params['tail_angle'], self.form_layout, tick_interval=10)
 
         # add textboxes - (key, decription, initial value, parent layout)
         self.add_textbox('saved_video_fps', 'Saved video FPS:', params['saved_video_fps'], self.form_layout)
@@ -773,7 +765,7 @@ class FreeswimmingParamWindow(ParamWindow):
         # add checkboxes - (key, description, function to call, initial value, parent layout)
         self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.checkbox_layout, 0, 0)
         self.add_checkbox('show_body_threshold', "Show body threshold", self.controller.toggle_threshold_image, params['gui_params']['show_body_threshold'], self.checkbox_layout, 1, 0)
-        self.add_checkbox('show_eye_threshold', "Show eye threshold", self.controller.toggle_threshold_image, params['gui_params']['show_eye_threshold'], self.checkbox_layout, 2, 0)
+        self.add_checkbox('show_eyes_threshold', "Show eyes threshold", self.controller.toggle_threshold_image, params['gui_params']['show_eyes_threshold'], self.checkbox_layout, 2, 0)
         self.add_checkbox('show_tail_threshold', "Show tail threshold", self.controller.toggle_threshold_image, params['gui_params']['show_tail_threshold'], self.checkbox_layout, 3, 0)
         self.add_checkbox('show_tail_skeleton', "Show tail skeleton", self.controller.toggle_threshold_image, params['gui_params']['show_tail_skeleton'], self.checkbox_layout, 4, 0)
         self.add_checkbox('track_tail', "Track tail", self.controller.toggle_tail_tracking, params['track_tail'], self.checkbox_layout, 5, 0)
@@ -781,14 +773,15 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.checkbox_layout, 0, 1)
         self.add_checkbox('adjust_thresholds', 'Adjust thresholds', self.controller.toggle_adjust_thresholds, params['adjust_thresholds'], self.checkbox_layout, 1, 1)
         self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 2, 1)
-        self.add_checkbox('align_batches', 'Auto alignment', self.controller.toggle_align_batches, params['align_batches'], self.checkbox_layout, 3, 1)
         self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 4, 1)
         self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 5, 1)
+        self.add_checkbox('zoom_body_crop', 'Zoom around body crop', self.controller.toggle_zoom_body_crop, params['gui_params']['zoom_body_crop'], self.checkbox_layout, 6, 1)
 
         # add sliders - (key, description, start, end, callback function, initial value, parent layout)
-        self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_params_from_gui, 10.0*params['scale_factor'], self.form_layout, slider_scale_factor=10.0)
-        self.add_slider('body_crop_height', 'Body crop height:', 1, 100, self.controller.update_params_from_gui, round(params['body_crop'][0]), self.form_layout, tick_interval=10, int_values=True)
-        self.add_slider('body_crop_width', 'Body crop width:', 1, 100, self.controller.update_params_from_gui, round(params['body_crop'][1]), self.form_layout, tick_interval=10, int_values=True)
+        self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.form_layout, slider_scale_factor=10.0)
+        self.add_slider('body_crop_height', 'Body crop height:', 1, 100, self.controller.update_body_crop_height, round(params['body_crop'][0]), self.form_layout, tick_interval=10, int_values=True)
+        self.add_slider('body_crop_width', 'Body crop width:', 1, 100, self.controller.update_body_crop_width, round(params['body_crop'][1]), self.form_layout, tick_interval=10, int_values=True)
+        self.add_slider('bg_sub_threshold', 'Background subtraction threshold:', 1, 100, self.controller.update_bg_sub_threshold, round(params['bg_sub_threshold']), self.form_layout, tick_interval=10, int_values=True)
 
         # add textboxes - (key, decription, initial value, parent layout)
         self.add_textbox('min_tail_body_dist', 'Body/tail min. dist.:', params['min_tail_body_dist'], self.form_layout)
@@ -804,7 +797,7 @@ class FreeswimmingParamWindow(ParamWindow):
         if self.param_controls != None:
             self.param_controls['invert'].setChecked(params['invert'])
             self.param_controls['show_body_threshold'].setChecked(params['gui_params']['show_body_threshold'])
-            self.param_controls['show_eye_threshold'].setChecked(params['gui_params']['show_eye_threshold'])
+            self.param_controls['show_eyes_threshold'].setChecked(params['gui_params']['show_eyes_threshold'])
             self.param_controls['show_tail_threshold'].setChecked(params['gui_params']['show_tail_threshold'])
             self.param_controls['show_tail_skeleton'].setChecked(params['gui_params']['show_tail_skeleton'])
             self.param_controls['track_tail'].setChecked(params['track_tail'])
@@ -814,10 +807,12 @@ class FreeswimmingParamWindow(ParamWindow):
             self.param_controls['subtract_background'].setChecked(params['subtract_background'])
             self.param_controls['use_multiprocessing'].setChecked(params['use_multiprocessing'])
             self.param_controls['auto_track'].setChecked(params['gui_params']['auto_track'])
+            self.param_controls['zoom_body_crop'].setChecked(params['gui_params']['zoom_body_crop'])
 
             self.set_slider_value('scale_factor', params['scale_factor'], slider_scale_factor=10)
             self.set_slider_value('body_crop_height', params['body_crop'][0], int_values=True)
             self.set_slider_value('body_crop_width', params['body_crop'][1], int_values=True)
+            self.set_slider_value('bg_sub_threshold', params['bg_sub_threshold'], int_values=True)
 
             self.param_controls['min_tail_body_dist'].setText(str(params['min_tail_body_dist']))
             self.param_controls['max_tail_body_dist'].setText(str(params['max_tail_body_dist']))
@@ -831,7 +826,7 @@ class FreeswimmingParamWindow(ParamWindow):
 
         # add textboxes - (key, decription, initial value, parent layout)
         self.add_crop_param_slider('body_threshold', 'Body threshold:', 0, 255, crop_params['body_threshold'], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=1, int_values=True)
-        self.add_crop_param_slider('eye_threshold', 'Eye threshold:', 0, 255, crop_params['eye_threshold'], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=1, int_values=True)
+        self.add_crop_param_slider('eyes_threshold', 'Eyes threshold:', 0, 255, crop_params['eyes_threshold'], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=1, int_values=True)
         self.add_crop_param_slider('tail_threshold', 'Tail threshold:', 0, 255, crop_params['tail_threshold'], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=1, int_values=True)
 
     def update_gui_from_crop_params(self, crop_params):
@@ -840,5 +835,5 @@ class FreeswimmingParamWindow(ParamWindow):
         if len(crop_params) == len(self.crop_param_controls):
             for c in range(len(crop_params)):
                 self.set_crop_param_slider_value('body_threshold', crop_params[c]['body_threshold'], c, int_values=True)
-                self.set_crop_param_slider_value('eye_threshold', crop_params[c]['eye_threshold'], c, int_values=True)
+                self.set_crop_param_slider_value('eyes_threshold', crop_params[c]['eyes_threshold'], c, int_values=True)
                 self.set_crop_param_slider_value('tail_threshold', crop_params[c]['tail_threshold'], c, int_values=True)

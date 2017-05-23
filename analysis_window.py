@@ -527,7 +527,9 @@ class AnalysisWindow(QMainWindow):
                 self.tail_angle_array = an.get_headfixed_tail_angles(self.tail_coords_array, self.params['tail_direction'])
 
             # get array of average angle of the last few points of the tail
-            self.tail_end_angle_array = np.mean(self.tail_angle_array[:, :, -3:], axis=-1)
+            # self.tail_end_angle_array = np.mean(self.tail_angle_array[:, :, -3:], axis=-1)
+            # self.tail_end_angle_array = self.tail_angle_array[:, :, -1]
+            self.tail_end_angle_array = an.get_tail_end_angles(self.tail_angle_array, num_to_average=3)
             
             # clear crops
             self.clear_crops()
@@ -735,7 +737,7 @@ class Controller():
             else:
                 tail_angle_array = None
         elif tracking_params['type'] == "headfixed":
-            tail_angle_array = an.get_headfixed_tail_angles(tail_coords_array, tracking_params['tail_direction'])
+            tail_angle_array = an.get_headfixed_tail_angles(tail_coords_array, tail_angle=tracking_params['tail_angle'], tail_direction=tracking_params['tail_direction'])
         else:
             tail_angle_array = None
 
@@ -743,7 +745,9 @@ class Controller():
             self.current_plot_type = "tail"
 
             # get array of average angle of the last few points of the tail
-            tail_end_angle_array = np.mean(tail_angle_array[:, :, -3:], axis=-1)
+            # tail_end_angle_array = tail_angle_array[:, :, -1]
+            tail_end_angle_array = an.get_tail_end_angles(tail_angle_array, num_to_average=3)
+            # print(tail_end_angle_array.shape)
         else:
             self.current_plot_type = "body"
             tail_end_angle_array = None
@@ -1005,6 +1009,11 @@ def convert_direction_to_angle(direction):
         return 3.0*np.pi/2.0
     else:
         return 2.0*np.pi
+
+def moving_average(a, n=3) :
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
 
 if __name__ == "__main__":
     qApp = QApplication(sys.argv)

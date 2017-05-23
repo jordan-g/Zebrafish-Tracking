@@ -78,13 +78,18 @@ def open_folder(folder_path, frame_nums=None, frame_filenames=None, return_frame
     else:
         return results
 
-def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None):
-    # open the video
-    try:
-        capture = FFMPEG_VideoReader(video_path)
-    except:
-        print("Error: Could not open video.")
-        return None
+def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False):
+    if capture == None:
+        new_capture = True
+
+        # open the video
+        try:
+            capture = cv2.VideoCapture(video_path)
+        except:
+            print("Error: Could not open video.")
+            return None
+    else:
+        new_capture = False
 
     # get video info
     fps, n_frames_total = get_video_info(video_path)
@@ -95,6 +100,8 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
 
     n_frames = len(frame_nums) # number of frames to use for the background
 
+    frame_range = range(frame_nums[0], frame_nums[-1]+1)
+
     # check whether frame numbers are sequential (ie. [0, 1, 2, ...])
     # or not (ie. [20, 30, 40, ...])
     frame_nums_are_sequential = list(frame_nums) == list(range(frame_nums[0], frame_nums[-1]+1))
@@ -103,57 +110,73 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     frames      = None
     background  = None
 
-    for i in range(n_frames_total):
-        frame = capture.read_frame()
+    if seek_to_starting_frame:
+        try:
+            capture.set(cv2.CV_CAP_PROP_POS_FRAMES, frame_nums[0]-1)
+        except:
+            capture.set(1, frame_nums[0]-1)
 
-        # stop if the frame couldn't be read
-        if frame == None:
-            pass
-        else:
+    for i in frame_range:
+        if not frame_nums_are_sequential:
+            success = capture.grab()
+            # stop if the frame couldn't be read
+
+        if i in frame_nums:
+            if not frame_nums_are_sequential:
+                _, frame = capture.retrieve()
+            else:
+                _, frame = capture.read()
+
+            if invert:
+                frame = 255 - frame
+
             # convert to greyscale
             if len(frame.shape) >= 3:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            if i == 0:
+            if frame_count == 0:
                 if return_frames:
                     # initialize array to hold all frames
-                    frames = np.zeros((n_frames, frame.shape[0], frame.shape[1]))
+                    frames = np.zeros((n_frames, frame.shape[0], frame.shape[1])).astype(np.uint8)
 
                 if calc_background:
                     # initialize background array
-                    background = frame.copy()
+                    background = frame.copy().astype(np.uint8)
 
-            if i in frame_nums:
-                if return_frames:
-                    frames[frame_count] = frame
+            if return_frames:
+                frames[frame_count] = frame
 
-                frame_count += 1
-
-                if progress_signal:
-                    # send an update signal to the GUI every 10% of progress
-                    percent_complete = int(100.0*float(frame_count)/n_frames)
-                    progress_signal.emit(percent_complete)
+            if progress_signal:
+                # send an update signal to the GUI every 10% of progress
+                percent_complete = int(100.0*float(frame_count)/n_frames)
+                progress_signal.emit(percent_complete)
 
             if calc_background:
                 # update background array
                 mask = np.less(background, frame)
                 background[mask] = frame[mask]
 
-    # close the capture object
-    capture.close()
+            frame_count += 1
+
+    if new_capture:
+        # close the capture object
+        capture.release()
 
     print("{} frame{} opened.".format(n_frames, "s"*(n_frames > 1)))
 
-    results = []
-    if return_frames:
-        results.append(frames.astype(np.uint8))
-    if calc_background:
-        results.append(background.astype(np.uint8))
+    # if calc_background and return_frames:
+    #     background = np.median(frames, axis=0)
 
-    if len(results) == 1:
-        return results[0]
+    if return_frames and frames == None:
+        print("Error: Could not get any frames from the video.")
+        return None
+
+    if return_frames and calc_background:
+        return frames, background
+    elif calc_background:
+        return background
     else:
-        return results
+        return frames
 
 # --- Helper functions --- #
 
