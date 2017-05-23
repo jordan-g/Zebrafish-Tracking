@@ -41,10 +41,10 @@ def fix_heading_angles(heading_angle_array):
         for j in range(n_heading_points):
             # correct for abrupt jumps in angle due to vectors switching quadrants between frames
             for i in range(1, n_frames):
-                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= np.pi/2.0:
-                    heading_angle_array[k, i, j] -= np.pi
-                elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -np.pi/2.0:
-                    heading_angle_array[k, i, j] += np.pi
+                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.9*np.pi:
+                    heading_angle_array[k, i:, j] -= np.pi
+                elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.9*np.pi:
+                    heading_angle_array[k, i:, j] += np.pi
 
     return heading_angle_array
 
@@ -278,9 +278,9 @@ def contiguous_regions(condition):
 
     # Find the indicies of changes in "condition"
     d = np.diff(condition)
-    idx, = d.nonzero() 
+    idx, = d.nonzero()
 
-    # We need to start things after the change in "condition". Therefore, 
+    # We need to start things after the change in "condition". Therefore,
     # we'll shift the index by 1 to the right.
     idx += 1
 

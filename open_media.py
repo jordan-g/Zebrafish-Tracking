@@ -127,36 +127,38 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             else:
                 _, frame = capture.read()
 
-            if invert:
-                frame = 255 - frame
+            if frame != None:
 
-            # convert to greyscale
-            if len(frame.shape) >= 3:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                if invert:
+                    frame = 255 - frame
 
-            if frame_count == 0:
+                # convert to greyscale
+                if len(frame.shape) >= 3:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                if frame_count == 0:
+                    if return_frames:
+                        # initialize array to hold all frames
+                        frames = np.zeros((n_frames, frame.shape[0], frame.shape[1])).astype(np.uint8)
+
+                    if calc_background:
+                        # initialize background array
+                        background = frame.copy().astype(np.uint8)
+
                 if return_frames:
-                    # initialize array to hold all frames
-                    frames = np.zeros((n_frames, frame.shape[0], frame.shape[1])).astype(np.uint8)
+                    frames[frame_count] = frame
+
+                if progress_signal:
+                    # send an update signal to the GUI every 10% of progress
+                    percent_complete = int(100.0*float(frame_count)/n_frames)
+                    progress_signal.emit(percent_complete)
 
                 if calc_background:
-                    # initialize background array
-                    background = frame.copy().astype(np.uint8)
+                    # update background array
+                    mask = np.less(background, frame)
+                    background[mask] = frame[mask]
 
-            if return_frames:
-                frames[frame_count] = frame
-
-            if progress_signal:
-                # send an update signal to the GUI every 10% of progress
-                percent_complete = int(100.0*float(frame_count)/n_frames)
-                progress_signal.emit(percent_complete)
-
-            if calc_background:
-                # update background array
-                mask = np.less(background, frame)
-                background[mask] = frame[mask]
-
-            frame_count += 1
+                frame_count += 1
 
     if new_capture:
         # close the capture object
