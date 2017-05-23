@@ -1010,7 +1010,7 @@ class FreeswimmingController(Controller):
                 return
 
             valid_params = (scale_factor > 0
-                        and saved_video_fps > 0
+                        and saved_video_fps >= 0
                         and n_tail_points > 0
                         and body_crop_height > 0
                         and body_crop_width > 0
@@ -1154,7 +1154,7 @@ class HeadfixedController(Controller):
                 return
 
             valid_params = (0 < scale_factor <= 1
-                        and saved_video_fps > 0
+                        and saved_video_fps >= 0
                         and n_tail_points > 0)
 
             if valid_params:

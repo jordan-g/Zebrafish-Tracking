@@ -3,7 +3,11 @@ import tracking
 import numpy as np
 import matplotlib.pyplot as plt
 
+# OIR Files - 0.67 s / frame
+
 tracking_path = "test/may.19.17 fish3 loom lv30 0.3 10s_tracking.npz"
+# tracking_path = "test/May.19.17 day2Fish loom lv30 0.3 at 10s_tracking.npz"
+# tracking_path = "test/May.19.17 day2fish deep lv30 0.3 escape 3_tracking.npz"
 video_path = "may.19.17 fish3 loom lv30 0.3 10s.avi"
 behavior_times = [4160]
 
