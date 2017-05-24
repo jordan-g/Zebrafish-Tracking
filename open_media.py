@@ -78,7 +78,7 @@ def open_folder(folder_path, frame_nums=None, frame_filenames=None, return_frame
     else:
         return results
 
-def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False):
+def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False, greyscale=True):
     if capture == None:
         new_capture = True
 
@@ -133,13 +133,16 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
                     frame = 255 - frame
 
                 # convert to greyscale
-                if len(frame.shape) >= 3:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                if len(frame.shape) >= 3 and greyscale:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
                 if frame_count == 0:
                     if return_frames:
                         # initialize array to hold all frames
-                        frames = np.zeros((n_frames, frame.shape[0], frame.shape[1])).astype(np.uint8)
+                        if len(frame.shape) >= 3:
+                            frames = np.zeros((n_frames, frame.shape[0], frame.shape[1], frame.shape[2])).astype(np.uint8)
+                        else:
+                            frames = np.zeros((n_frames, frame.shape[0], frame.shape[1])).astype(np.uint8)
 
                     if calc_background:
                         # initialize background array

@@ -4,6 +4,12 @@ import matplotlib.animation as an # Imports matplotlib.animation as an.
 import open_media
 import analysis
 import sys
+import utilities
+import psutil
+import cv2
+import os
+
+plt.close('all')
 
 # Set the number of frames to load. If 0, all frames are loaded.
 n_frames = 0
@@ -32,17 +38,28 @@ print("FPS: {}, # frames: {}.".format(fps, n_frames_total))
 if n_frames == 0:
     n_frames = n_frames_total
 
+# Create a video capture object that we can re-use
+try:
+    capture = cv2.VideoCapture(video_path)
+except:
+    print("Error: Could not open video.")
+
+# Calculate the amount of frames to keep in memory at a time -- enough to fill 1/2 of the available memory
+mem = psutil.virtual_memory()
+mem_to_use = 0.5*mem.available
+frame = open_media.open_video(video_path, [0], capture=capture, greyscale=False)[0]
+frame_size = frame.shape[0]*frame.shape[1]
+big_chunk_size = int(mem_to_use / frame_size)
+
+# Split frame numbers into big chunks - we keep only one big chunk of frames in memory at a time
+big_split_frame_nums = utilities.split_list_into_chunks(range(n_frames), big_chunk_size)
+
 ffmpeg_writer = an.writers["ffmpeg"] # Creates an ffmpeg writer.
 metadata = dict(title = "Animation for Assignment 10", author = "Nicholas Guilbeault") # Creates metadata for the visual animation.
-writer = ffmpeg_writer(fps = 60, metadata = metadata, bitrate = 1600) # Specifies features of the animation. The FPS is set to 15 and the bitrate is set to 1600.
-
-# Load frames
-print("Loading {} frames...".format(n_frames))
-frames = open_media.open_video(video_path, range(n_frames))
-print("Done.")
+writer = ffmpeg_writer(fps = 60, metadata = metadata, bitrate = 3200) # Specifies features of the animation. The FPS is set to 15 and the bitrate is set to 1600.
 
 # Create the figure & subplots
-figure_plot = plt.figure(figsize=(8, 3))
+figure_plot = plt.figure(figsize=(10, 4))
 subplot_1 = plt.subplot2grid((2, 2), (0, 0), rowspan=2)
 subplot_2 = plt.subplot2grid((2, 2), (0, 1))
 subplot_3 = plt.subplot2grid((2, 2), (1, 1))
@@ -52,6 +69,8 @@ xlim_start = -100
 xlim_end = 100
 
 subplot_1.set_axis_off()
+plt.tight_layout()
+subplot_1.autoscale_view('tight')
 
 subplot_2.set_xlim(xlim_start, xlim_end) # Sets the x axis limits.
 subplot_2.set_ylim(-3, 3) # Sets the y axis limits.
@@ -71,29 +90,53 @@ plt.tight_layout() # Sets the plot layout.
 subplot_3.plot(range(n_frames), heading_angle_array[:n_frames], 'r', lw=0.5)
 
 # Create the operators for plotting the animation.
-subplot_frame_operator = subplot_1.imshow(frames[0], vmin=0, vmax=255, animated=True, cmap='gray')
+if frame.ndim == 3:
+    subplot_frame_operator = subplot_1.imshow(frame, vmin=0, vmax=255, animated=True, interpolation='none')
+else:
+    subplot_frame_operator = subplot_1.imshow(frame, vmin=0, vmax=255, animated=True, cmap='gray', interpolation='none')
 subplot_tail_operator, = subplot_2.plot([], [], c = "b", marker = "o", ms = 3)
 subplot_heading_operator, = subplot_3.plot([], [], c = "r", marker = "o", ms = 3)
 
+# Initialize frame counter
+frame_counter = 0
+
 # Create the animation and save it into a video file.
 print("Creating the animation and saving it into a video file...\n") # Prints a message
-with writer.saving(figure_plot, "Animation.mp4", 200): # Facilitates the writing of the animation. Plots the animation onto the figure and saves the animation into a file called NG_Assignment10_Animation.mp4.
-    for i in range(n_frames): # Sets the number of iterations.
-        print("Processing frame {} of {}.".format(i+1, n_frames))
+with writer.saving(figure_plot, "{}_animation.mp4".format(os.path.splitext(os.path.basename(video_path))[0]), 200): # Facilitates the writing of the animation. Plots the animation onto the figure and saves the animation into a file called NG_Assignment10_Animation.mp4.
+    for i in range(len(big_split_frame_nums)):
+        print("Processing frames {} to {}...".format(big_split_frame_nums[i][0], big_split_frame_nums[i][-1]))
 
-        # Sets the value for each variable at each time step.
-        frame = frames[i]
-        xlim_start += 1
-        xlim_end   += 1
+        # Get the frame numbers to process
+        frame_nums = big_split_frame_nums[i]
 
-        subplot_frame_operator.set_array(frame)
+        # Boolean indicating whether to have the capture object seek to the starting frame
+        # This only needs to be done at the beginning to seek to frame 0
+        seek_to_starting_frame = i == 0
 
-        subplot_2.set_xlim(xlim_start, xlim_end)
-        subplot_tail_operator.set_data(i, tail_end_angle_array[i])
+        print("Opening frames...")
 
-        subplot_3.set_xlim(xlim_start, xlim_end)
-        subplot_heading_operator.set_data(i, heading_angle_array[i])
+        # Load this big chunk of frames
+        frames = open_media.open_video(video_path, frame_nums, capture=capture, seek_to_starting_frame=seek_to_starting_frame, greyscale=False)
 
-        writer.grab_frame() # Grabs the figure information and writes the data into a video frame.
+        for i in range(len(frame_nums)): # Sets the number of iterations.
+            print("Processing frame {} of {}.".format(i+1, len(frame_nums)))
+
+            # Sets the value for each variable at each time step.
+            frame = frames[i]
+            xlim_start += 1
+            xlim_end   += 1
+
+            subplot_frame_operator.set_array(frame)
+
+            subplot_2.set_xlim(xlim_start, xlim_end)
+            subplot_tail_operator.set_data(frame_counter, tail_end_angle_array[frame_counter])
+
+            subplot_3.set_xlim(xlim_start, xlim_end)
+            subplot_heading_operator.set_data(frame_counter, heading_angle_array[frame_counter])
+
+            writer.grab_frame() # Grabs the figure information and writes the data into a video frame.
+
+            # Increment the frame counter
+            frame_counter += 1
 
 print("Finished.\n") # Prints the last message.

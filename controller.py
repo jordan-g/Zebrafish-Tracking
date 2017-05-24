@@ -155,7 +155,7 @@ class Controller():
             fps, n_frames_total = open_media.get_video_info(video_path)
 
             # load evenly spaced frames
-            frame_nums = split_evenly(n_frames_total, max_n_frames)
+            frame_nums = utilities.split_evenly(n_frames_total, max_n_frames)
 
             # load frames from the video
             self.frames[self.curr_video_num] = open_media.open_video(video_path, frame_nums, True, invert=self.params['invert'])
@@ -1219,9 +1219,3 @@ class TrackVideosThread(QThread):
             end_time = time.time()
 
             self.finished.emit(end_time - start_time)
-
-# --- Helper functions --- #
-def split_evenly(n, m, start=0):
-    # generate a list of m evenly spaced numbers in the range of (start, start + n)
-    # eg. split_evenly(100, 5, 30) = [40, 60, 80, 100, 120]
-    return [i*n//m + n//(2*m) + start for i in range(m)]

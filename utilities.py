@@ -4,6 +4,11 @@ import peakdetect
 import numpy as np
 import matplotlib.pyplot as plt
 
+try:
+    xrange
+except:
+    xrange = range
+
 def estimate_thresholds(frame, delta=0.0001, n_bins=20, plot_histogram=False):
     # get number of pixels in the frame
     n_pixels = np.product(frame.shape)
@@ -55,3 +60,36 @@ def translate_interpolation(interpolation_string):
         interpolation = cv2.INTER_LANCZOS4
 
     return interpolation
+
+def split_evenly(n, m, start=0):
+    # generate a list of m evenly spaced numbers in the range of (start, start + n)
+    # eg. split_evenly(100, 5, 30) = [40, 60, 80, 100, 120]
+    return [i*n//m + n//(2*m) + start for i in range(m)]
+
+def yield_chunks_from_array(array, n):
+    '''
+    Yield successive n-sized chunks from an array.
+
+    Arguments:
+        array (ndarray) : Input array.
+        n (int)         : Size of each chunk to yield.
+
+    Yields:
+        chunk (ndarray) : n-sized chunk from the input array.
+    '''
+    for i in xrange(0, array.shape[0], n):
+        yield array[i:i + n]
+
+def split_list_into_chunks(l, n):
+    '''
+    Return a list of n-sized chunks from l.
+
+    Arguments:
+        l (list) : Input list.
+        n (int)  : Size of each chunk.
+
+    Returns:
+        l_2 (list) : List of n-sized chunks of l.
+    '''
+
+    return [ l[i:i + n] for i in xrange(0, len(l), n) ]

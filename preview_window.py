@@ -308,7 +308,7 @@ class PreviewWindow(QMainWindow):
             self.update_image_label(image)
 
     def update_image_label(self, image):
-        cv2.cvtColor(image, cv2.COLOR_BGR2RGB, image)
+        # cv2.cvtColor(image, cv2.COLOR_BGR2RGB, image)
 
         self.image_label.update_pixmap(image)
 

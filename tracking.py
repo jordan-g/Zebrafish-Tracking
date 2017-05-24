@@ -94,76 +94,6 @@ def remove_noise(frames):
 
 # --- Tracking --- #
 
-def track_frames(params, background, frames):
-    # Extract parameters
-    crop_params         = params['crop_params']
-    tracking_type       = params['type']
-    n_tail_points       = params['n_tail_points']
-    scale_factor        = params['scale_factor']
-    interpolation       = utilities.translate_interpolation(params['interpolation'])
-    subtract_background = params['subtract_background']
-    bg_sub_threshold    = params['bg_sub_threshold']
-    invert              = params['invert']
-
-    # Get number of frames & number of crops
-    n_frames = len(frames)
-    n_crops  = len(crop_params)
-
-    # Initialize tracking data arrays
-    tail_coords_array    = np.zeros((n_crops, n_frames, 2, n_tail_points)) + np.nan
-    spline_coords_array  = np.zeros((n_crops, n_frames, 2, n_tail_points)) + np.nan
-    heading_angle_array  = np.zeros((n_crops, n_frames, 1)) + np.nan
-    body_position_array  = np.zeros((n_crops, n_frames, 2)) + np.nan
-    eye_coords_array     = np.zeros((n_crops, n_frames, 2, 2)) + np.nan
-
-    # Set booleans for head & tail tracking
-    track_head = tracking_type == "freeswimming"
-    track_tail = tracking_type == "headfixed" or params['track_tail'] == True
-
-    if invert:
-        # Invert the frames if necessary
-        frames = 255 - frames
-
-    if subtract_background:
-        # Subtract the background in-place
-        subtract_background_from_frames(frames, background, bg_sub_threshold, in_place=True)
-
-    for frame_number in range(n_frames):
-        # Get the frame
-        frame = frames[frame_number]
-
-        for k in range(n_crops):
-            # Get the crop & offset
-            crop   = crop_params[k]['crop']
-            offset = crop_params[k]['offset']
-
-            # Shrink & crop the frame
-            cropped_frame        = crop_frame(frame, offset, crop)
-            scaled_cropped_frame = scale_frame(cropped_frame, scale_factor, interpolation)
-
-            # Track the frame
-            results = track_cropped_frame(scaled_cropped_frame, params, crop_params[k])
-
-            # Re-scale coordinates
-            if results['tail_coords'] != None:
-                results['tail_coords'] /= scale_factor
-            if results['spline_coords'] != None:
-                results['spline_coords'] /= scale_factor
-            if results['body_position'] != None:
-                results['body_position'] /= scale_factor
-            if results['eye_coords'] != None:
-                results['eye_coords'] /= scale_factor
-
-            # Add coordinates to tracking data arrays
-            if results['tail_coords'] != None:
-                tail_coords_array[k, frame_number, :, :results['tail_coords'].shape[1]]     = results['tail_coords']
-                spline_coords_array[k, frame_number, :, :results['spline_coords'].shape[1]] = results['spline_coords']
-            heading_angle_array[k, frame_number, :] = results['heading_angle']
-            body_position_array[k, frame_number, :] = results['body_position']
-            eye_coords_array[k, frame_number, :, :] = results['eye_coords']
-
-    return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array
-
 def open_and_track_video(video_path, params, tracking_dir, video_number=0, progress_signal=None): # todo: add video creation from tracking data
     # Extract parameters
     subtract_background = params['subtract_background']
@@ -215,7 +145,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     big_chunk_size = int(mem_to_use / frame_size)
 
     # Split frame numbers into big chunks - we keep only one big chunk of frames in memory at a time
-    big_split_frame_nums = split_list_into_chunks(range(n_frames_total), big_chunk_size)
+    big_split_frame_nums = utilities.split_list_into_chunks(range(n_frames_total), big_chunk_size)
 
     if use_multiprocessing:
         # Create a pool of workers
@@ -252,7 +182,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         if use_multiprocessing:
             # Split the frames into small chunks - we let multiple processes deal with a chunk at a time
             small_chunk_size = 100
-            split_frames = yield_chunks_from_array(frames, small_chunk_size)
+            split_frames = utilities.yield_chunks_from_array(frames, small_chunk_size)
 
             # Get the pool of workers to track the chunks of frames
             result_list = []
@@ -365,28 +295,75 @@ def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
     for i in range(len(video_paths)):
         open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal)
 
-def get_video_batch_align_offsets(params):
-    video_paths = params['video_paths']
+def track_frames(params, background, frames):
+    # Extract parameters
+    crop_params         = params['crop_params']
+    tracking_type       = params['type']
+    n_tail_points       = params['n_tail_points']
+    scale_factor        = params['scale_factor']
+    interpolation       = utilities.translate_interpolation(params['interpolation'])
+    subtract_background = params['subtract_background']
+    bg_sub_threshold    = params['bg_sub_threshold']
+    invert              = params['invert']
 
-    # store first frame of the first video
-    source_frame = open_video(video_paths[0], [0], True)[0]
+    # Get number of frames & number of crops
+    n_frames = len(frames)
+    n_crops  = len(crop_params)
 
-    batch_offsets = [None]
+    # Initialize tracking data arrays
+    tail_coords_array    = np.zeros((n_crops, n_frames, 2, n_tail_points)) + np.nan
+    spline_coords_array  = np.zeros((n_crops, n_frames, 2, n_tail_points)) + np.nan
+    heading_angle_array  = np.zeros((n_crops, n_frames, 1)) + np.nan
+    body_position_array  = np.zeros((n_crops, n_frames, 2)) + np.nan
+    eye_coords_array     = np.zeros((n_crops, n_frames, 2, 2)) + np.nan
 
-    for k in range(1, len(video_paths)):
-        first_frame = open_video(video_paths[k], None, [1], None)[0]
+    # Set booleans for head & tail tracking
+    track_head = tracking_type == "freeswimming"
+    track_tail = tracking_type == "headfixed" or params['track_tail'] == True
 
-        transform = cv2.estimateRigidTransform(source_frame, first_frame, False)
+    if invert:
+        # Invert the frames if necessary
+        frames = 255 - frames
 
-        offset = transform[:, 2]
+    if subtract_background:
+        # Subtract the background in-place
+        subtract_background_from_frames(frames, background, bg_sub_threshold, in_place=True)
 
-        batch_offsets.append(offset)
+    for frame_number in range(n_frames):
+        # Get the frame
+        frame = frames[frame_number]
 
-    return batch_offsets
+        for k in range(n_crops):
+            # Get the crop & offset
+            crop   = crop_params[k]['crop']
+            offset = crop_params[k]['offset']
 
-def apply_align_offset_to_frame(frame, batch_offset):
-    transform = np.float32([[1, 0, -batch_offset[0]], [0, 1, -batch_offset[1]]])
-    return cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
+            # Shrink & crop the frame
+            cropped_frame        = crop_frame(frame, offset, crop)
+            scaled_cropped_frame = scale_frame(cropped_frame, scale_factor, interpolation)
+
+            # Track the frame
+            results = track_cropped_frame(scaled_cropped_frame, params, crop_params[k])
+
+            # Re-scale coordinates
+            if results['tail_coords'] != None:
+                results['tail_coords'] /= scale_factor
+            if results['spline_coords'] != None:
+                results['spline_coords'] /= scale_factor
+            if results['body_position'] != None:
+                results['body_position'] /= scale_factor
+            if results['eye_coords'] != None:
+                results['eye_coords'] /= scale_factor
+
+            # Add coordinates to tracking data arrays
+            if results['tail_coords'] != None:
+                tail_coords_array[k, frame_number, :, :results['tail_coords'].shape[1]]     = results['tail_coords']
+                spline_coords_array[k, frame_number, :, :results['spline_coords'].shape[1]] = results['spline_coords']
+            heading_angle_array[k, frame_number, :] = results['heading_angle']
+            body_position_array[k, frame_number, :] = results['body_position']
+            eye_coords_array[k, frame_number, :, :] = results['eye_coords']
+
+    return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array
 
 def track_cropped_frame(frame, params, crop_params):
     tracking_type  = params['type']
@@ -415,9 +392,7 @@ def track_cropped_frame(frame, params, crop_params):
                 eye_coords = track_eyes(body_crop_frame, params, crop_params)
 
                 if eye_coords != None:
-                    # eye_heading_angle = get_heading_from_eye_coords(eye_coords)
-
-                    # heading_angle = (heading_angle + eye_heading_angle)/2.0
+                    heading_angle = get_heading_from_eye_coords(eye_coords, heading_angle)
 
                     # convert eye coords to be relative to initial frame
                     eye_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
@@ -452,7 +427,7 @@ def track_cropped_frame(frame, params, crop_params):
 
     return results
 
-# --- Head tracking --- #
+# --- Heading tracking --- #
 
 def track_body(frame, params, crop_params, crop_around_body=True):
     adjust_thresholds = params['adjust_thresholds']
@@ -483,16 +458,23 @@ def track_body(frame, params, crop_params, crop_around_body=True):
 
     return heading_angle, body_position
 
-# def get_heading_from_eye_coords(eye_coords):
-#     # get coordinates of eyes
-#     y_1 = eye_coords[0, 0]
-#     y_2 = eye_coords[0, 1]
-#     x_1 = eye_coords[1, 0]
-#     x_2 = eye_coords[1, 1]
+def get_heading_from_eye_coords(eye_coords, body_heading_angle):
+    # get heading angle based on eye coordinates
+    angle = 180.0 + np.arctan((eye_coords[0, 1] - eye_coords[0, 0])/(eye_coords[1, 1] - eye_coords[1, 0]))*180.0/np.pi
 
-#     angle = 180.0 + np.arctan((y_2 - y_1)/(x_2 - x_1))*180.0/np.pi
+    if body_heading_angle != None:
+        # make it aligned with the body threshold heading angle
+        if np.abs(angle - body_heading_angle) > 90:
+            angle -= 180
 
-#     return angle
+        # if it's still not within 90º, just set it to the body threshold heading angle
+        if np.abs(angle - body_heading_angle) > 90:
+            angle = heading_angle
+
+        # set the angle to the average of this angle & the body threshold heading angle
+        angle = (body_heading_angle + angle)/2.0
+
+    return angle
 
 def track_eyes(frame, params, crop_params):
     adjust_thresholds = params['adjust_thresholds']
@@ -1181,8 +1163,6 @@ def clear_headfixed_tracking():
     background_brightness = None
     tail_length           = None
 
-# --- Post-processing --- #
-
 # --- Helper functions --- #
 
 def crop_frame_around_body(frame, body_position, body_crop, scale_factor=1):
@@ -1200,24 +1180,6 @@ def crop_frame_around_body(frame, body_position, body_crop, scale_factor=1):
 
     return body_crop_coords, body_crop_frame
 
-def get_num_frames_in_folder(folder_path):
-    n_frames = 0
-
-    for filename in sort_nicely(os.listdir(folder_path)):
-        if filename.endswith('.tif') or filename.endswith('.png') or filename.endswith('.jpg'):
-            n_frames += 1
-
-    return n_frames
-
-def get_frame_filenames_from_folder(folder_path):
-    frame_filenames = [] # list of frame filenames
-
-    for filename in sort_nicely(os.listdir(folder_path)):
-        if filename.endswith('.tif') or filename.endswith('.png') or filename.endswith('.jpg'):
-            frame_filenames.append(filename)
-
-    return frame_filenames
-
 def get_video_info(video_path):
     # get video info
     fps      = ffmpeg_parse_infos(video_path)["video_fps"]
@@ -1234,7 +1196,7 @@ def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
 
     # convert to BGR
     if len(frame.shape) < 3:
-        tracked_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        tracked_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
     else:
         tracked_frame = frame
 
@@ -1252,16 +1214,20 @@ def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
             eye_coords    = eye_coords[np.newaxis, :, :]
 
     for k in range(n_crops):
+        if heading_angle != None and not np.isnan(heading_angle[k, 0]):
+                if body_position != None and not np.isnan(body_position[k, 0]) and not np.isnan(body_position[k, 1]):
+                    cv2.line(tracked_frame, (int(round(body_position[k, 1] - 20*np.sin(heading_angle[k, 0]*np.pi/180.0))), int(round(body_position[k, 0] + 20*np.cos(heading_angle[k, 0]*np.pi/180.0)))),
+                                            (int(round(body_position[k, 1] + 20*np.sin(heading_angle[k, 0]*np.pi/180.0))), int(round(body_position[k, 0] - 20*np.cos(heading_angle[k, 0]*np.pi/180.0)))), (49, 191, 114), 1)
+
         # add body center point
-        if body_position != None:
-            if not np.isnan(body_position[k, 0]) and not np.isnan(body_position[k, 1]):
-                cv2.circle(tracked_frame, (int(round(body_position[k, 1])), int(round(body_position[k, 0]))), 1, (50, 128, 255), -1)
+        if body_position != None and not np.isnan(body_position[k, 0]) and not np.isnan(body_position[k, 1]):
+                cv2.circle(tracked_frame, (int(round(body_position[k, 1])), int(round(body_position[k, 0]))), 1, (255, 128, 50), -1)
 
         # add eye points
         if eye_coords != None and eye_coords.shape[-1] == 2:
             for i in range(2):
                 if not np.isnan(eye_coords[k, 0, i]) and not np.isnan(eye_coords[k, 1, i]):
-                    cv2.circle(tracked_frame, (int(round(eye_coords[k, 1, i])), int(round(eye_coords[k, 0, i]))), 1, (0, 0, 255), -1)
+                    cv2.circle(tracked_frame, (int(round(eye_coords[k, 1, i])), int(round(eye_coords[k, 0, i]))), 1, (255, 0, 0), -1)
 
         if spline_coords != None and spline_coords[k, 0, 0] != np.nan:
             # add spline
@@ -1270,16 +1236,15 @@ def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
                 if (not np.isnan(spline_coords[k, 0, i]) and not np.isnan(spline_coords[k, 1, i])
                     and not np.isnan(spline_coords[k, 0, i+1]) and not np.isnan(spline_coords[k, 1, i+1])):
                     cv2.line(tracked_frame, (int(round(spline_coords[k, 1, i])), int(round(spline_coords[k, 0, i]))),
-                                            (int(round(spline_coords[k, 1, i+1])), int(round(spline_coords[k, 0, i+1]))), (255, 0, 0), 1)
+                                            (int(round(spline_coords[k, 1, i+1])), int(round(spline_coords[k, 0, i+1]))), (0, 0, 255), 1)
 
         if tail_coords != None and tail_coords[k, 0, 0] != np.nan:
             # add tail points
             tail_length = tail_coords.shape[2]
             for i in range(tail_length):
                 if not np.isnan(tail_coords[k, 0, i]) and not np.isnan(tail_coords[k, 1, i]):
-                    # cv2.circle(tracked_frame, (int(round(tail_coords[k, 1, i])), int(round(tail_coords[k, 0, i]))), 1, (255, 255, 0), -1)
                     cv2.line(tracked_frame, (int(round(tail_coords[k, 1, i])), int(round(tail_coords[k, 0, i]))),
-                                            (int(round(tail_coords[k, 1, i])), int(round(tail_coords[k, 0, i]))), (255, 255, 0), 1)
+                                            (int(round(tail_coords[k, 1, i])), int(round(tail_coords[k, 0, i]))), (0, 255, 255), 1)
 
     return tracked_frame
 
@@ -1305,14 +1270,6 @@ def get_threshold_frame(frame, threshold):
 
     return threshold_frame
 
-def simplify_body_threshold_frame(frame):
-    # remove noise from the thresholded image
-    kernel = np.ones((2, 2),np.uint8)
-    frame = cv2.erode(frame, kernel, iterations=1)
-    frame = cv2.dilate(frame, kernel, iterations=1)
-
-    return frame
-
 def get_tail_skeleton_frame(tail_threshold_frame):
     return skeletonize(tail_threshold_frame).astype(np.uint8)
 
@@ -1323,6 +1280,19 @@ def get_relative_coords(coords, offset, scale_factor):
     return (coords - offset)*scale_factor
 
 def get_absolute_coords(coords, offset, scale_factor):
+    '''
+    Convert an array of cropped frame coordinates to absolute (original frame) coordinates.
+
+    Arguments:
+        coords (ndarray) : Array of coordinates.
+        offset (ndarray) : (y, x) frame crop offset.
+        scale_factor (float) : Scaling factor of the cropped frame.
+
+    Returns:
+        abs_coords (ndarray) : Coordinates in the original frame.
+
+    '''
+
     if coords.ndim == 1:
         return coords/scale_factor + offset
     elif coords.ndim == 2:
@@ -1330,86 +1300,27 @@ def get_absolute_coords(coords, offset, scale_factor):
     elif coords.ndim == 3:
         return coords/scale_factor + offset[np.newaxis, :, np.newaxis]
 
-def tryint(s):
-    try:
-        return int(s)
-    except:
-        return s
+# --- Misc. --- #
 
-def alphanum_key(s):
-    """ Turn a string into a list of string and number chunks.
-        "z23a" -> ["z", 23, "a"]
-    """
-    return [ tryint(c) for c in re.split('([0-9]+)', s) ]
+def get_video_batch_align_offsets(params):
+    video_paths = params['video_paths']
 
-def sort_nicely(l):
-    """ Sort the given list in the way that humans expect.
-    """
-    l.sort(key=alphanum_key)
+    # store first frame of the first video
+    source_frame = open_video(video_paths[0], [0], True)[0]
 
-    return l
+    batch_offsets = [None]
 
-def split_evenly(n, m, start=0):
-    # generate a list of m evenly spaced numbers in the range of (start, start + n)
-    # eg. split_evenly(100, 5, 30) = [40, 60, 80, 100, 120]
-    return [i*n//m + n//(2*m) + start for i in range(m)]
+    for k in range(1, len(video_paths)):
+        first_frame = open_video(video_paths[k], None, [1], None)[0]
 
-def get_ellipse(moments, direct):
-    # GET_ELLIPSE Equivalent ellipse of an image
-    #   E = IM.GET_ELLIPSE(IMG) finds the equivalent ellipse of an image IMG. 
-    #   IMG is a n-by-m image, and E is a structure containing the ellipse 
-    #   properties.
-    #
-    #   E = IM.GET_ELLIPSE(..., false) will not try to assign a
-    #   direction based on the third moment. The orientation of the object will
-    #   be unchanged but the direction is pi-undetermined.
-    #
-    #   See also: IM.draw_ellipse
-     
-    # --- Default values
-    if direct == None:
-        direct = true
+        transform = cv2.estimateRigidTransform(source_frame, first_frame, False)
 
-    # --- Get the Moments
-    m00 = moments['m00']
-    m10 = moments['m10']
-    m01 = moments['m01']
-    m11 = moments['m11']
-    m02 = moments['m02']
-    m20 = moments['m20']
-     
-    # --- Ellipse properties
+        offset = transform[:, 2]
 
-    # Barycenter
-    x = m10/m00
-    y = m01/m00
-     
-    # Central moments (intermediary step)
-    a = m20/m00 - x**2
-    b = 2*(m11/m00 - x*y)
-    c = m02/m00 - y**2
-     
-    # Orientation (radians)
-    theta = 1/2*np.arctan(b/(a-c)) + int(a < c)*np.pi/2
-     
-    # Minor and major axis
-    w = np.sqrt(6*(a+c-np.sqrt(b**2+(a-c)**2)))/2
-    l = np.sqrt(6*(a+c+np.sqrt(b**2+(a-c)**2)))/2
-     
-    # Ellipse focal points
-    d = np.sqrt(l**2-w**2)
-    x1 = x + d*np.cos(theta)
-    y1 = y + d*np.sin(theta)
-    x2 = x - d*np.cos(theta)
-    y2 = y - d*np.sin(theta)
-     
-    return x1, y1, x2, y2
+        batch_offsets.append(offset)
 
-def yield_chunks_from_array(array, n):
-    """Yield successive n-sized chunks from an array."""
-    for i in xrange(0, array.shape[0], n):
-        yield array[i:i + n]
+    return batch_offsets
 
-def split_list_into_chunks(l, n):
-    """Return a list of n-sized chunks from l."""
-    return [ l[i:i + n] for i in xrange(0, len(l), n) ]
+def apply_align_offset_to_frame(frame, batch_offset):
+    transform = np.float32([[1, 0, -batch_offset[0]], [0, 1, -batch_offset[1]]])
+    return cv2.warpAffine(frame, transform, (frame.shape[1], frame.shape[0]), borderValue=255)
