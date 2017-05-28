@@ -32,9 +32,10 @@ if __name__ == "__main__":
     # create controller
     if mode_select_dialog.clickedButton() == headfixed_button:
         controller = HeadfixedController()
+        sys.exit(qApp.exec_())
     elif mode_select_dialog.clickedButton() == freeswimming_button:
         controller = FreeswimmingController()
+        sys.exit(qApp.exec_())
     else:
         mode_select_dialog.close()
-
-    sys.exit(qApp.exec_())
+        qApp.quit()

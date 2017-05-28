@@ -65,12 +65,14 @@ subplot_2 = plt.subplot2grid((2, 2), (0, 1))
 subplot_3 = plt.subplot2grid((2, 2), (1, 1))
 
 # Set initial min & max xlim
-xlim_start = -100
-xlim_end = 100
+xlim_start = -100/fps
+xlim_end = 100/fps
 
 subplot_1.set_axis_off()
 plt.tight_layout()
 subplot_1.autoscale_view('tight')
+
+timepoints = np.linspace(0, n_frames/fps, n_frames)
 
 subplot_2.set_xlim(xlim_start, xlim_end) # Sets the x axis limits.
 subplot_2.set_ylim(-3, 3) # Sets the y axis limits.
@@ -79,7 +81,7 @@ subplot_2.set_ylabel("Tail Angle", fontsize = 5) # Sets the y axis label.
 subplot_2.minorticks_off() # Sets the minor tick marks.
 subplot_2.tick_params(axis = "both", labelsize = 5) # Sets the size of the tick labels.
 plt.tight_layout() # Sets the plot layout.
-subplot_2.plot(range(n_frames), tail_end_angle_array[:n_frames], 'b', lw=0.5)
+subplot_2.plot(timepoints, tail_end_angle_array[:n_frames], 'b', lw=0.5)
 
 subplot_3.set_xlim(xlim_start, xlim_end) # Sets the x axis limits.
 subplot_3.set_xlabel("Frame", fontsize = 5) # Sets the x axis label.
@@ -87,7 +89,7 @@ subplot_3.set_ylabel("Heading Angle", fontsize = 5) # Sets the y axis label.
 subplot_3.minorticks_off() # Sets the minor tick marks.
 subplot_3.tick_params(axis = "both", labelsize = 5) # Sets the size of the tick labels.
 plt.tight_layout() # Sets the plot layout.
-subplot_3.plot(range(n_frames), heading_angle_array[:n_frames], 'r', lw=0.5)
+subplot_3.plot(timepoints, heading_angle_array[:n_frames], 'r', lw=0.5)
 
 # Create the operators for plotting the animation.
 if frame.ndim == 3:
@@ -123,16 +125,17 @@ with writer.saving(figure_plot, "{}_animation.mp4".format(os.path.splitext(os.pa
 
             # Sets the value for each variable at each time step.
             frame = frames[i]
-            xlim_start += 1
-            xlim_end   += 1
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            xlim_start += 1/fps
+            xlim_end   += 1/fps
 
             subplot_frame_operator.set_array(frame)
 
             subplot_2.set_xlim(xlim_start, xlim_end)
-            subplot_tail_operator.set_data(frame_counter, tail_end_angle_array[frame_counter])
+            subplot_tail_operator.set_data(frame_counter/fps, tail_end_angle_array[frame_counter])
 
             subplot_3.set_xlim(xlim_start, xlim_end)
-            subplot_heading_operator.set_data(frame_counter, heading_angle_array[frame_counter])
+            subplot_heading_operator.set_data(frame_counter/fps, heading_angle_array[frame_counter])
 
             writer.grab_frame() # Grabs the figure information and writes the data into a video frame.
 

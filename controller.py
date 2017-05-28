@@ -4,6 +4,7 @@ from crops_window import *
 import tracking
 import open_media
 import utilities
+import time
 
 # import the Qt library
 try:
@@ -36,11 +37,11 @@ default_headfixed_params = {'scale_factor': 1.0,                   # factor by w
                             'invert': False,                       # whether to invert the video
                             'type': "headfixed",                   # "headfixed" / "freeswimming"
                             'save_video': True,                    # whether to make a video with tracking overlaid
-                            'saved_video_fps': 30,                 # fps for the generated video
+                            'saved_video_fps': 0,                  # fps for the generated video
                             'n_tail_points': 30,                   # number of tail points to use
                             'subtract_background': False,          # whether to perform background subtraction
-                            'tail_direction': "Right",             # "right" / "left" / "up" / "down"
-                            'tail_angle': 0,                       # overrides tail direction parameter
+                            'heading_direction': "Down",           # "right" / "left" / "up" / "down"
+                            'heading_angle': 0,                    # overrides heading direction parameter
                             'bg_sub_threshold': 30,                # threshold used in background subtraction
                             'video_paths': [],                     # paths to videos that will be tracked
                             'backgrounds': [],                     # backgrounds calculated for background subtraction
@@ -74,7 +75,7 @@ default_freeswimming_params = {'scale_factor': 1.0,                          # f
                                                'auto_track': False,          # automatically track a frame when you switch to it
                                                'zoom_body_crop': False }}    # automatically zoom to fit body crop
 
-max_n_frames = 100 # maximum # of frames to load for previewing
+max_n_frames = 1000 # maximum # of frames to load for previewing
 
 class Controller():
     def __init__(self, default_params, default_crop_params):
@@ -183,10 +184,10 @@ class Controller():
 
             if self.params['type'] == "headfixed":
                 # estimate tail direction
-                total_luminosities = [np.sum(self.current_frame[-1:-10, :]), np.sum(self.current_frame[0:10, :]),
-                                      np.sum(self.current_frame[:, -1:-10]), np.sum(self.current_frame[:, 0:10])]
+                total_luminosities = [np.sum(self.current_frame[-1:-10, :]), np.sum(self.current_frame[:, 0:10]),
+                                      np.sum(self.current_frame[0:10, :]), np.sum(self.current_frame[:, -1:-10])]
 
-                self.params['tail_direction'] = tail_direction_options[np.argmax(total_luminosities)]
+                self.params['heading_direction'] = heading_direction_options[np.argmin(total_luminosities)]
 
                 self.param_window.update_gui_from_params(self.params)
             
@@ -215,10 +216,7 @@ class Controller():
             self.curr_video_num = 0
 
         # update loaded videos label
-        if len(self.params['video_paths']) > 1:
-            self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> videos. Showing #{}.".format(len(self.params['video_paths']), self.curr_video_num+1))
-        else:
-            self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(self.params['video_paths'][0])))
+        self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
 
         if self.first_load:
             # open the first video from the batch
@@ -229,10 +227,12 @@ class Controller():
         self.param_window.open_background_action.setEnabled(False)
         self.param_window.save_background_action.setEnabled(False)
 
-        # update tracking progress label in param window
-        self.param_window.tracking_progress_label.setText("Calculating backgrounds... 0%.")
+        # range of video indices for which the background needs to be calculated
+        background_calc_range = range(len(self.params['video_paths']) - len(video_paths), len(self.params['video_paths']))
 
-        for k in range(len(self.params['video_paths']) - len(video_paths), len(self.params['video_paths'])):
+        self.param_window.update_background_progress_text(len(background_calc_range), 0)
+
+        for k in background_calc_range:
             if self.params['backgrounds'][k] == None:
                 # create new thread to calculate the background
                 self.get_background_thread = GetBackgroundThread(self.param_window)
@@ -260,20 +260,15 @@ class Controller():
 
     def prev_video(self):
         if self.curr_video_num != 0:
-            video_paths = self.params['video_paths']
-            
             # update current video number
             self.curr_video_num -= 1
 
             # update loaded video label
-            if len(video_paths) > 1:
-                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(video_paths), self.curr_video_num+1))
-            else:
-                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(video_paths[0])))
+            self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
 
             if self.frames[self.curr_video_num] == None:
                 # open the previous video from the batch
-                self.open_video(video_paths[self.curr_video_num])
+                self.open_video(self.params['video_paths'][self.curr_video_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -282,20 +277,15 @@ class Controller():
 
     def next_video(self):
         if self.curr_video_num != len(self.params['video_paths'])-1:
-            video_paths = self.params['video_paths']
-            
             # update current video number
             self.curr_video_num += 1
 
             # update loaded video label
-            if len(video_paths) > 1:
-                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(video_paths), self.curr_video_num+1))
-            else:
-                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(video_paths[0])))
+            self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
 
             if self.frames[self.curr_video_num] == None:
                 # open the next video from the batch
-                self.open_video(video_paths[self.curr_video_num])
+                self.open_video(self.params['video_paths'][self.curr_video_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -304,20 +294,15 @@ class Controller():
 
     def switch_video(self, video_num):
         if 0 <= video_num <= len(self.params['video_paths'])-1:
-            video_paths = self.params['video_paths']
-
             # update current video number
             self.curr_video_num = video_num
 
             # update loaded video label
-            if len(video_paths) > 1:
-                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(video_paths), self.curr_video_num+1))
-            else:
-                self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(video_paths[0])))
+            self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
 
             if self.frames[self.curr_video_num] == None:
                 # open the next video from the batch
-                self.open_video(video_paths[self.curr_video_num])
+                self.open_video(self.params['video_paths'][self.curr_video_num])
 
             # switch to first frame
             self.switch_frame(0, new_load=True)
@@ -343,6 +328,8 @@ class Controller():
                 # switch to first frame
                 self.switch_frame(0, new_load=True)
         else:
+            self.current_frame = None
+            self.preview_window.plot_image(None, None, None, None)
             self.first_load = True
             self.param_window.param_controls["subtract_background"].setText("Subtract background")
             self.param_window.set_gui_disabled(True)
@@ -351,20 +338,19 @@ class Controller():
         print(self.params['video_paths'], self.curr_video_num)
 
         # update loaded video label
-        if len(self.params['video_paths']) > 1:
-            self.param_window.loaded_videos_label.setText("Loaded <b>{}</b> items. Showing #{}.".format(len(self.params['video_paths']), self.curr_video_num+1))
-        elif len(self.params['video_paths']) > 0:
-            self.param_window.loaded_videos_label.setText("Loaded <b>{}</b>.".format(os.path.basename(self.params['video_paths'][0])))
-        else:
-            self.param_window.loaded_videos_label.setText("No videos loaded.")
+        self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
 
     def background_calculation_progress(self, progress):
         n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
         n_backgrounds_total      = len(self.params['backgrounds'])
-        true_progress = 100*(n_backgrounds_calculated + progress/100)/n_backgrounds_total
+
+        if n_backgrounds_total == 1:
+            true_progress = min(progress, 100)
+        else:
+            true_progress = min(100*n_backgrounds_calculated/n_backgrounds_total, 100)
 
         # update tracking progress label in param window
-        self.param_window.tracking_progress_label.setText("Calculating backgrounds... {:.1f}%.".format(true_progress))
+        self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, true_progress)
 
     def background_calculated(self, background, video_path):
         if self.current_frame.shape == background.shape and video_path in self.background_calc_paths:
@@ -375,20 +361,15 @@ class Controller():
             # update params
             self.params['backgrounds'][video_num] = background
 
+            n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
+            n_backgrounds_total      = len(self.params['backgrounds'])
+            percent                  = min(100*n_backgrounds_calculated/n_backgrounds_total, 100)
+            
+            self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, percent)
+
             if self.frames[video_num] != None and self.bg_sub_frames[video_num] == None:
                 # generate background subtracted frames
                 self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
-
-            n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
-            n_backgrounds_total      = len(self.params['backgrounds'])
-            percent                  = 100*n_backgrounds_calculated/n_backgrounds_total
-
-            if percent == 100:
-                # update tracking progress label in param window
-                self.param_window.tracking_progress_label.setText("Backgrounds calculated.")
-            else:
-                # update tracking progress label in param window
-                self.param_window.tracking_progress_label.setText("Calculating backgrounds... {:.1f}%.".format(percent))
 
             if self.curr_video_num == video_num:
                 # Enable "Subtract background" checkbox in param window
@@ -404,18 +385,12 @@ class Controller():
                 self.param_window.save_background_action.setEnabled(True)
 
     def videos_tracked(self, tracking_time):
-        self.param_window.tracking_progress_label.setText("Tracking completed in <b>{:.3f}s</b>.".format(tracking_time))
+        self.param_window.update_tracking_progress_text(1, 0, 100, tracking_time)
         self.tracking = False
 
-    def update_background_subtract_progress(self, percent):
-        self.param_window.param_controls["subtract_background"].setText("Subtract background (Calculating...{}%)".format(percent))
-    
     def update_video_tracking_progress(self, video_number, percent):
         n_videos = len(self.params['video_paths'])
-        if n_videos > 1:
-            self.param_window.tracking_progress_label.setText("Tracking <b>video {}/{}</b>: {:.1f}%.".format(video_number+1, n_videos, percent))
-        else:
-            self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>. Total progress: {:.1f}%.".format(os.path.basename(self.params['video_paths'][0]), percent))
+        self.param_window.update_tracking_progress_text(n_videos, video_number, percent)
 
     def load_params(self, params_path=None):
         print(params_path)
@@ -681,10 +656,7 @@ class Controller():
 
             n_videos = len(self.params['video_paths'])
 
-            if n_videos > 1:
-                self.param_window.tracking_progress_label.setText("Tracking <b>video 1/{}</b>: 0%.".format(n_videos))
-            else:
-                self.param_window.tracking_progress_label.setText("Tracking <b>{}</b>: 0%.".format(os.path.basename(self.params['video_paths'][0])))
+            self.param_window.update_tracking_progress_text(n_videos, 0, 0)
 
             # start thread
             self.track_videos_thread.start()
@@ -831,7 +803,7 @@ class Controller():
             if 0 < scale_factor <= 4:
                 self.params['scale_factor'] = scale_factor
 
-                self.param_window.hide_invalid_params_text()
+                self.param_window.set_invalid_params_text("")
 
                 self.switch_frame(self.n)
             else:
@@ -845,11 +817,107 @@ class Controller():
                 if self.params['backgrounds'][self.curr_video_num] != None:
                     self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
 
-                self.param_window.hide_invalid_params_text()
+                self.param_window.set_invalid_params_text("")
 
                 self.switch_frame(self.n)
             else:
-                self.param_window.set_invalid_params_text("Invalid bg sub threshold value.")
+                self.param_window.set_invalid_params_text("Invalid background subtraction threshold value.")
+
+    def update_crop_height(self, crop_height):
+        if self.current_frame != None:
+            try:
+                crop_height = int(float(crop_height))
+                if not(1 <= crop_height <= self.current_frame.shape[0]):
+                    raise
+
+                self.params['crop_params'][self.current_crop]['crop'][0] = crop_height
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid crop height value.")
+
+    def update_crop_width(self, crop_width):
+        if self.current_frame != None:
+            try:
+                crop_width = int(float(crop_width))
+                if not(1 <= crop_width <= self.current_frame.shape[1]):
+                    raise
+
+                self.params['crop_params'][self.current_crop]['crop'][1] = crop_width
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid crop width value.")
+
+    def update_y_offset(self, y_offset):
+        if self.current_frame != None:
+            try:
+                y_offset = int(float(y_offset))
+                if not(0 <= y_offset <= self.current_frame.shape[0]-1):
+                    raise
+
+                self.params['crop_params'][self.current_crop]['offset'][0] = y_offset
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid y offset value.")
+
+    def update_x_offset(self, x_offset):
+        if self.current_frame != None:
+            try:
+                x_offset = int(float(x_offset))
+                if not(0 <= x_offset <= self.current_frame.shape[1]-1):
+                    raise
+
+                self.params['crop_params'][self.current_crop]['offset'][1] = x_offset
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid x offset value.")
+
+    def update_saved_video_fps(self, saved_video_fps):
+        if self.current_frame != None:
+            try:
+                saved_video_fps = float(saved_video_fps)
+                if not(saved_video_fps > 1):
+                    raise
+
+                self.params['saved_video_fps'] = saved_video_fps
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid saved video FPS value.")
+
+    def update_n_tail_points(self, n_tail_points):
+        if self.current_frame != None:
+            try:
+                n_tail_points = int(float(n_tail_points))
+                if not(n_tail_points > 1):
+                    raise
+
+                self.params['n_tail_points'] = n_tail_points
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid number of tail points value.")
+
+    def add_angle_overlay(self, angle):
+        self.preview_window.add_angle_overlay(angle)
+
+    def remove_angle_overlay(self):
+        self.preview_window.remove_angle_overlay()
 
     def close_all(self):
         self.closing = True
@@ -976,7 +1044,7 @@ class FreeswimmingController(Controller):
                 self.params['crop_params'][c]['eyes_threshold']  = eyes_threshold
                 self.params['crop_params'][c]['tail_threshold'] = tail_threshold
             else:
-                self.param_window.show_invalid_params_text()
+                self.param_window.set_invalid_params_text("Invalid crop parameters.")
 
                 self.params['crop_params'] = old_crop_params
 
@@ -1006,7 +1074,7 @@ class FreeswimmingController(Controller):
                 bg_sub_threshold   = int(float(self.param_window.param_controls['bg_sub_threshold' + '_textbox'].text()))
                 interpolation      = str(self.param_window.param_controls['interpolation'].currentText())
             except ValueError:
-                self.param_window.show_invalid_params_text()
+                self.param_window.set_invalid_params_text("Invalid tracking parameters.")
                 return
 
             valid_params = (scale_factor > 0
@@ -1030,9 +1098,9 @@ class FreeswimmingController(Controller):
                 self.params['bg_sub_threshold']   = bg_sub_threshold
                 self.params['interpolation']      = interpolation
 
-                self.param_window.hide_invalid_params_text()
+                self.param_window.set_invalid_params_text("")
             else:
-                self.param_window.show_invalid_params_text()
+                self.param_window.set_invalid_params_text("Invalid parameters.")
                 return
 
             # # reshape current frame
@@ -1048,27 +1116,110 @@ class FreeswimmingController(Controller):
             # update the image preview
             # self.update_preview(image=None, new_load=False, new_frame=True)
 
-    def update_body_crop_height(self, body_crop_height):
+    def update_min_tail_body_dist(self, min_tail_body_dist):
         if self.current_frame != None:
-            if body_crop_height > 100:
-                self.params['body_crop'][0] = body_crop_height
+            try:
+                min_tail_body_dist = int(float(min_tail_body_dist))
+                if not(min_tail_body_dist > 1 and min_tail_body_dist <= self.params['max_tail_body_dist']):
+                    raise
 
-                self.param_window.hide_invalid_params_text()
+                self.params['min_tail_body_dist'] = min_tail_body_dist
+
+                self.param_window.set_invalid_params_text("")
 
                 self.switch_frame(self.n)
-            else:
+            except:
+                self.param_window.set_invalid_params_text("Invalid minimum tail-body distance value.")
+
+    def update_max_tail_body_dist(self, max_tail_body_dist):
+        if self.current_frame != None:
+            try:
+                max_tail_body_dist = int(float(max_tail_body_dist))
+                if not(max_tail_body_dist > 1 and max_tail_body_dist >= self.params['min_tail_body_dist']):
+                    raise
+
+                self.params['max_tail_body_dist'] = max_tail_body_dist
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid maximum tail-body distance value.")
+
+    def update_body_crop_height(self, body_crop_height):
+        if self.current_frame != None:
+            try:
+                body_crop_height = int(float(body_crop_height))
+                if not(body_crop_height > 1):
+                    raise
+
+                self.params['crop_params']['body_crop'][0] = body_crop_height
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
                 self.param_window.set_invalid_params_text("Invalid body crop height value.")
 
     def update_body_crop_width(self, body_crop_width):
         if self.current_frame != None:
-            if body_crop_width > 1:
-                self.params['body_crop'][1] = body_crop_width
+            try:
+                body_crop_width = int(float(body_crop_width))
+                if not(body_crop_width > 1):
+                    raise
 
-                self.param_window.hide_invalid_params_text()
+                self.params['crop_params']['body_crop'][1] = body_crop_width
+
+                self.param_window.set_invalid_params_text("")
 
                 self.switch_frame(self.n)
-            else:
+            except:
                 self.param_window.set_invalid_params_text("Invalid body crop width value.")
+
+    def update_body_threshold(self, body_threshold):
+        if self.current_frame != None:
+            try:
+                body_threshold_frame = int(float(body_threshold))
+                if not(0 < body_threshold < 255):
+                    raise
+
+                self.params['crop_params'][self.current_crop]['body_threshold'] = body_threshold
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid body threshold value.")
+
+    def update_eyes_threshold(self, eyes_threshold):
+        if self.current_frame != None:
+            try:
+                eyes_threshold = int(float(eyes_threshold))
+                if not (0 < eyes_threshold < 255):
+                    raise
+
+                self.crop_params[self.current_crop]['eyes_threshold'] = eyes_threshold
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid eyes threshold value.")
+
+    def update_tail_threshold(self, tail_threshold):
+        if self.current_frame != None:
+            try:
+                tail_threshold = int(float(tail_threshold))
+                if not (0 < tail_threshold < 255):
+                    raise
+
+                self.crop_params[self.current_crop]['tail_threshold'] = tail_threshold
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid tail threshold value.")
 
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
         Controller.update_crop_from_selection(self, start_crop_coord, end_crop_coord)
@@ -1114,7 +1265,7 @@ class HeadfixedController(Controller):
                 self.params['crop_params'][c]['crop']   = np.array([crop_y, crop_x])
                 self.params['crop_params'][c]['offset'] = np.array([offset_y, offset_x])
             else:
-                self.param_window.show_invalid_params_text()
+                self.param_window.set_invalid_params_text("Invalid crop parameters.")
 
                 self.params['crop_params'] = old_crop_params
 
@@ -1142,15 +1293,14 @@ class HeadfixedController(Controller):
 
     def update_params_from_gui(self):
         if self.current_frame != None:
-
             # get params from gui
             try:
                 scale_factor   = float(self.param_window.param_controls['scale_factor' + '_textbox'].text())
-                tail_direction  = str(self.param_window.param_controls['tail_direction'].currentText())
+                heading_direction  = str(self.param_window.param_controls['heading_direction'].currentText())
                 saved_video_fps = int(self.param_window.param_controls['saved_video_fps'].text())
                 n_tail_points   = int(self.param_window.param_controls['n_tail_points'].text())
             except ValueError:
-                self.param_window.show_invalid_params_text()
+                self.param_window.set_invalid_params_text("Invalid parameters.")
                 return
 
             valid_params = (0 < scale_factor <= 1
@@ -1159,13 +1309,13 @@ class HeadfixedController(Controller):
 
             if valid_params:
                 self.params['scale_factor']   = scale_factor
-                self.params['tail_direction']  = tail_direction
+                self.params['heading_direction']  = heading_direction
                 self.params['saved_video_fps'] = saved_video_fps
                 self.params['n_tail_points']   = n_tail_points
 
-                self.param_window.hide_invalid_params_text()
+                self.param_window.set_invalid_params_text("")
             else:
-                self.param_window.show_invalid_params_text()
+                self.param_window.set_invalid_params_text("Invalid parameters.")
                 return
 
             # reshape current frame
@@ -1174,15 +1324,19 @@ class HeadfixedController(Controller):
             # update the image preview
             self.update_preview(image=None, new_load=False, new_frame=True)
 
-    def update_tail_angle(self, tail_angle):
+    def update_heading_angle(self, heading_angle):
         if self.current_frame != None:
-            if 0 <= tail_angle <= 360:
-                self.params['tail_angle'] = tail_angle
+            try:
+                heading_angle = float(heading_angle)
+                if not (0 <= heading_angle <= 360):
+                    raise
 
-                self.param_window.hide_invalid_params_text()
+                self.params['heading_angle'] = heading_angle
+
+                self.param_window.set_invalid_params_text("")
 
                 self.switch_frame(self.n)
-            else:
+            except:
                 self.param_window.set_invalid_params_text("Invalid tail angle value.")
 
 class GetBackgroundThread(QThread):

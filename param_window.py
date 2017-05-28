@@ -11,15 +11,15 @@ import pdb
 # import the Qt library
 try:
     from PyQt4.QtCore import Qt, QThread
-    from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView
+    from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView, QFrame
 except:
     from PyQt5.QtCore import Qt, QThread
     from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
-    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView
+    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView, QFrame
 
 # options for dropdown selectors for interpolation
 interpolation_options     = ["Nearest Neighbor", "Linear", "Bicubic", "Lanczos"]
-tail_direction_options    = ["Left", "Right", "Up", "Down"]
+heading_direction_options = ["Down", "Right", "Up", "Left"]
 
 class ParamWindow(QMainWindow):
     def __init__(self, controller):
@@ -40,6 +40,7 @@ class ParamWindow(QMainWindow):
         # create main widget & layout
         self.main_widget = QWidget(self)
         self.main_widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        self.main_widget.setStyleSheet("font-size: 12px;")
 
         self.main_layout = QGridLayout(self.main_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -51,7 +52,11 @@ class ParamWindow(QMainWindow):
 
         self.left_layout = QVBoxLayout(self.left_widget)
         self.left_layout.setAlignment(Qt.AlignTop)
-        self.left_layout.setSpacing(0)
+        self.left_layout.setSpacing(5)
+
+        video_list_label = QLabel("Loaded Videos")
+        video_list_label.setStyleSheet("font-weight: bold;")
+        self.left_layout.addWidget(video_list_label)
 
         self.videos_list = QListWidget(self)
         self.videos_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -61,7 +66,7 @@ class ParamWindow(QMainWindow):
         self.videos_list_items = []
 
         self.videos_list_buttons = QHBoxLayout()
-        self.videos_list_buttons.setSpacing(10)
+        self.videos_list_buttons.setSpacing(5)
         self.left_layout.addLayout(self.videos_list_buttons)
 
         self.add_videos_button = QPushButton('+')
@@ -84,9 +89,6 @@ class ParamWindow(QMainWindow):
         self.next_video_button.clicked.connect(self.controller.next_video)
         self.next_video_button.setToolTip("Switch to next loaded video.")
         self.videos_list_buttons.addWidget(self.next_video_button)
-
-        # create main buttons
-        self.create_main_buttons()
 
         # create freeswimming params widget & layout
         self.right_widget = QWidget(self)
@@ -111,6 +113,15 @@ class ParamWindow(QMainWindow):
         # create crops widget
         self.create_crops_widget()
 
+        # create main buttons
+        self.create_main_buttons()
+
+        self.videos_loaded_text       = "No videos loaded."
+        self.background_progress_text = ""
+        self.tracking_progress_text   = ""
+
+        self.create_status_layout()
+
         # set window titlebar buttons
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowFullscreenButtonHint)
 
@@ -120,7 +131,28 @@ class ParamWindow(QMainWindow):
         
         self.show()
 
+    def create_status_layout(self):
+        status_layout = QHBoxLayout()
+        self.main_layout.addLayout(status_layout, 2, 0, 1, 2)
+        status_layout.setContentsMargins(5, 5, 5, 5)
+
+        # Create status label
+        self.status_label = QLabel()
+        self.update_status_text()
+        self.status_label.setStyleSheet("font-size: 11px;")
+        status_layout.addWidget(self.status_label)
+
+        status_layout.addStretch(1)
+
+        self.invalid_params_label = QLabel("")
+        self.invalid_params_label.setStyleSheet("font-weight: bold; color: red; font-size: 11px;")
+        status_layout.addWidget(self.invalid_params_label)
+
     def create_crops_widget(self):
+        crops_label = QLabel("Crop Parameters")
+        crops_label.setStyleSheet("font-weight: bold;")
+        self.left_layout.addWidget(crops_label)
+
         # initialize list of dicts used for accessing all crop parameter controls
         self.crop_param_controls = []
 
@@ -169,7 +201,7 @@ class ParamWindow(QMainWindow):
         self.create_crop_button.setDisabled(True)
         crop_button_layout.addWidget(self.create_crop_button)
 
-        self.main_layout.addWidget(self.crops_widget, 1, 0, 1, 2)
+        self.left_layout.addWidget(self.crops_widget)
 
     def create_crop_tab(self, crop_params):
         # create crop tab widget & layout
@@ -239,15 +271,15 @@ class ParamWindow(QMainWindow):
     def create_crop_param_controls(self, crop_params):
         if self.controller.current_frame is not None:
             # add sliders - (key, description, start, end, initial value, parent layout)
-            self.add_crop_param_slider('crop_y', 'Crop y:', 1, self.controller.current_frame.shape[0], crop_params['crop'][0], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=50, int_values=True)
-            self.add_crop_param_slider('crop_x', 'Crop x:', 1, self.controller.current_frame.shape[1], crop_params['crop'][1], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=50, int_values=True)
-            self.add_crop_param_slider('offset_y', 'Offset y:', 0, self.controller.current_frame.shape[0]-1, crop_params['offset'][0], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=50, int_values=True)
-            self.add_crop_param_slider('offset_x', 'Offset x:', 0, self.controller.current_frame.shape[1]-1, crop_params['offset'][1], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=50, int_values=True)
+            self.add_crop_param_slider('crop_y', 'Crop height:', 1, self.controller.current_frame.shape[0], crop_params['crop'][0], self.controller.update_crop_height, self.crop_param_form_layout, tick_interval=50, int_values=True)
+            self.add_crop_param_slider('crop_x', 'Crop width:', 1, self.controller.current_frame.shape[1], crop_params['crop'][1], self.controller.update_crop_width, self.crop_param_form_layout, tick_interval=50, int_values=True)
+            self.add_crop_param_slider('offset_y', 'Offset y:', 0, self.controller.current_frame.shape[0]-1, crop_params['offset'][0], self.controller.update_y_offset, self.crop_param_form_layout, tick_interval=50, int_values=True)
+            self.add_crop_param_slider('offset_x', 'Offset x:', 0, self.controller.current_frame.shape[1]-1, crop_params['offset'][1], self.controller.update_x_offset, self.crop_param_form_layout, tick_interval=50, int_values=True)
         else:
-            self.add_crop_param_slider('crop_y', 'Crop y:', 1, 2, 1, self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=50, int_values=True)
-            self.add_crop_param_slider('crop_x', 'Crop x:', 1, 2, 1, self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=50, int_values=True)
-            self.add_crop_param_slider('offset_y', 'Offset y:', 0, 1, 0, self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=50, int_values=True)
-            self.add_crop_param_slider('offset_x', 'Offset x:', 0, 1, 0, self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=50, int_values=True)
+            self.add_crop_param_slider('crop_y', 'Crop height:', 1, 2, 1, self.controller.update_crop_height, self.crop_param_form_layout, tick_interval=50, int_values=True)
+            self.add_crop_param_slider('crop_x', 'Crop width:', 1, 2, 1, self.controller.update_crop_width, self.crop_param_form_layout, tick_interval=50, int_values=True)
+            self.add_crop_param_slider('offset_y', 'Offset y:', 0, 1, 0, self.controller.update_y_offset, self.crop_param_form_layout, tick_interval=50, int_values=True)
+            self.add_crop_param_slider('offset_x', 'Offset x:', 0, 1, 0, self.controller.update_x_offset, self.crop_param_form_layout, tick_interval=50, int_values=True)
     
     def update_gui_from_crop_params(self, crop_params):
         if len(crop_params) == len(self.crop_param_controls):
@@ -339,21 +371,10 @@ class ParamWindow(QMainWindow):
         # initialize parameter controls variable
         self.param_controls = None
 
-        top_layout = QHBoxLayout()
-        self.right_layout.addLayout(top_layout)
-
-        # create loaded videos label
-        self.loaded_videos_label = QLabel("No videos loaded.")
-        top_layout.addWidget(self.loaded_videos_label)
-
-        # create tracking progress label
-        self.tracking_progress_label = QLabel("---")
-        self.right_layout.addWidget(self.tracking_progress_label)
-
-        # create invalid parameters label
-        self.invalid_params_label = QLabel("")
-        self.invalid_params_label.setStyleSheet("font-weight: bold; color: red;")
-        self.right_layout.addWidget(self.invalid_params_label)
+        # create heading label
+        param_label = QLabel("Tracking Parameters")
+        param_label.setStyleSheet("font-weight: bold;")
+        self.right_layout.addWidget(param_label)
 
         # create form layout for param controls with textboxes
         self.form_layout = QFormLayout()
@@ -369,16 +390,16 @@ class ParamWindow(QMainWindow):
     def create_main_buttons(self):
         # add button layouts
         button_layout_1 = QHBoxLayout()
-        button_layout_1.setSpacing(10)
-        self.left_layout.addLayout(button_layout_1)
+        button_layout_1.setSpacing(5)
+        self.right_layout.addLayout(button_layout_1)
 
         button_layout_2 = QHBoxLayout()
-        button_layout_2.setSpacing(10)
-        self.left_layout.addLayout(button_layout_2)
+        button_layout_2.setSpacing(5)
+        self.right_layout.addLayout(button_layout_2)
 
         button_layout_3 = QHBoxLayout()
-        button_layout_3.setSpacing(10)
-        self.left_layout.addLayout(button_layout_3)
+        button_layout_3.setSpacing(5)
+        self.right_layout.addLayout(button_layout_3)
 
         # add buttons
         self.save_button = QPushButton(u'\u2713 Save', self)
@@ -418,18 +439,6 @@ class ParamWindow(QMainWindow):
         self.save_params_button.setToolTip("Save the current set of parameters.")
         button_layout_2.addWidget(self.save_params_button)
 
-        self.load_background_button = QPushButton(u'Load Background', self)
-        # self.load_background_button.setMaximumWidth(180)
-        self.load_background_button.clicked.connect(self.controller.load_background)
-        self.load_background_button.setToolTip("Load a saved background image for background subtraction.")
-        button_layout_3.addWidget(self.load_background_button)
-
-        self.save_background_button = QPushButton(u'Save Background', self)
-        # self.save_background_button.setMaximumWidth(180)
-        self.save_background_button.clicked.connect(self.controller.save_background)
-        self.save_background_button.setToolTip("Save the calculated background subtraction image.")
-        button_layout_3.addWidget(self.save_background_button)
-
     def set_gui_disabled(self, disabled_bool):
         for param_control in self.param_controls.values():
             # don't enable "Subtract background" checkbox when enabling the gui
@@ -447,21 +456,6 @@ class ParamWindow(QMainWindow):
         self.remove_crop_button.setDisabled(disabled_bool)
         self.create_crop_button.setDisabled(disabled_bool)
 
-    def add_crop_param_textbox(self, label, description, default_value, parent):
-        # make textbox & add row to form layout
-        param_box = QLineEdit()
-        param_box.setObjectName(label)
-        param_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        param_box.returnPressed.connect(self.controller.update_crop_params_from_gui)
-        parent.addRow(description, param_box)
-
-        # set default text
-        if default_value != None:
-            param_box.setText(str(default_value))
-
-        # add to list of crop or global controls
-        self.crop_param_controls[-1][label] = param_box
-
     def add_crop_param_slider(self, label, description, minimum, maximum, value, slider_moved_func, parent, tick_interval=1, single_step=1, slider_scale_factor=1, int_values=False):
         # make layout to hold slider and textbox
         control_layout = QHBoxLayout()
@@ -473,7 +467,7 @@ class ParamWindow(QMainWindow):
         slider = QSlider(Qt.Horizontal)
         slider.setObjectName(label)
         slider.setFocusPolicy(Qt.StrongFocus)
-        slider.setTickPosition(QSlider.TicksBothSides)
+        slider.setTickPosition(QSlider.NoTicks)
         slider.setTickInterval(tick_interval)
         slider.setSingleStep(single_step)
         slider.setMinimum(minimum)
@@ -483,22 +477,22 @@ class ParamWindow(QMainWindow):
 
         # make textbox & add to layout
         textbox = QLineEdit()
+        textbox.setAlignment(Qt.AlignHCenter)
         textbox.setObjectName(label)
         textbox.setFixedWidth(40)
         textbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        textbox.returnPressed.connect(self.controller.update_crop_params_from_gui)
         self.update_textbox_from_slider(slider, textbox, slider_scale_factor, int_values)
         control_layout.addWidget(textbox)
 
         # connect slider to set textbox text & update params
         slider.sliderMoved.connect(lambda:self.update_textbox_from_slider(slider, textbox, slider_scale_factor, int_values))
         slider.sliderMoved.connect(slider_moved_func)
-        slider.sliderPressed.connect(lambda:self.slider_pressed(slider))
+        slider.sliderMoved.connect(lambda:self.slider_moved(slider))
         slider.sliderReleased.connect(lambda:self.slider_released(slider))
 
         # connect textbox to 
         textbox.editingFinished.connect(lambda:self.update_slider_from_textbox(slider, textbox, slider_scale_factor))
-        textbox.editingFinished.connect(slider_moved_func)
+        textbox.editingFinished.connect(lambda:slider_moved_func(textbox.text()))
 
         # add row to form layout
         parent.addRow(description, control_layout)
@@ -519,7 +513,7 @@ class ParamWindow(QMainWindow):
         else:
             return None
 
-    def slider_pressed(self, slider):
+    def slider_moved(self, slider):
         label = slider.objectName()
 
         if "threshold" in label:
@@ -529,6 +523,24 @@ class ParamWindow(QMainWindow):
             checkbox = self.param_controls["show_{}".format(label)]
             checkbox.setChecked(True)
             self.controller.toggle_threshold_image(checkbox)
+        elif label == "heading_angle_slider":
+            textbox = self.param_controls["heading_angle_textbox"]
+            angle = float(textbox.text())
+            self.controller.add_angle_overlay(angle)
+
+            if angle == 0 or angle == 360:
+                index = 0
+            elif angle == 90:
+                index = 1
+            elif angle == 180:
+                index = 2
+            elif angle == 270:
+                index = 3
+            else:
+                index = None
+
+            if index != None:
+                self.param_controls["heading_direction"].setCurrentIndex(index)
 
     def slider_released(self, slider):
         label = slider.objectName()
@@ -539,6 +551,8 @@ class ParamWindow(QMainWindow):
             if self.prev_checked_threshold_checkbox != None:
                 self.prev_checked_threshold_checkbox.setChecked(True)
             self.controller.toggle_threshold_image(self.prev_checked_threshold_checkbox)
+        elif label == "heading_angle_slider":
+            self.controller.remove_angle_overlay()
 
     def set_crop_param_slider_value(self, label, value, crop_index, slider_scale_factor=1.0, int_values=False):
         # change slider value without sending signals
@@ -561,11 +575,12 @@ class ParamWindow(QMainWindow):
         textbox = self.crop_param_controls[crop_index][textbox_label]
         self.update_textbox_from_slider(slider, textbox, slider_scale_factor=slider_scale_factor, int_values=int_values)
 
-    def add_textbox(self, label, description, default_value, parent):
+    def add_textbox(self, label, description, return_func, default_value, parent):
         # make textbox & add row to form layout
         param_box = QLineEdit()
         param_box.setObjectName(label)
         param_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        param_box.editingFinished.connect(lambda:return_func(float(param_box.text())))
         parent.addRow(description, param_box)
 
         # set default text
@@ -586,7 +601,7 @@ class ParamWindow(QMainWindow):
         slider = QSlider(Qt.Horizontal)
         slider.setObjectName(slider_label)
         slider.setFocusPolicy(Qt.StrongFocus)
-        slider.setTickPosition(QSlider.TicksBothSides)
+        slider.setTickPosition(QSlider.NoTicks)
         slider.setTickInterval(tick_interval)
         slider.setSingleStep(single_step)
         slider.setMinimum(minimum)
@@ -603,8 +618,10 @@ class ParamWindow(QMainWindow):
         control_layout.addWidget(textbox)
 
         # connect slider to set textbox text & update params
-        slider.valueChanged.connect(lambda:self.update_textbox_from_slider(slider, textbox, slider_scale_factor, int_values))
-        slider.valueChanged.connect(lambda:slider_moved_func(int(float(textbox.text()))))
+        slider.sliderMoved.connect(lambda:self.update_textbox_from_slider(slider, textbox, slider_scale_factor, int_values))
+        slider.sliderMoved.connect(lambda:slider_moved_func(int(float(textbox.text()))))
+        slider.sliderMoved.connect(lambda:self.slider_moved(slider))
+        slider.sliderReleased.connect(lambda:self.slider_released(slider))
 
         # connect textbox to 
         textbox.editingFinished.connect(lambda:self.update_slider_from_textbox(slider, textbox, slider_scale_factor))
@@ -624,7 +641,11 @@ class ParamWindow(QMainWindow):
             textbox.setText(str(slider.sliderPosition()/slider_scale_factor))
 
     def update_slider_from_textbox(self, slider, textbox, slider_scale_factor=1.0):
-        slider.setValue(float(textbox.text())*slider_scale_factor)
+        try:
+            value = float(textbox.text())
+            slider.setValue(float(textbox.text())*slider_scale_factor)
+        except:
+            pass
 
     def set_slider_value(self, label, value, slider_scale_factor=1.0, int_values=False):
         # change slider value without sending signals
@@ -687,15 +708,70 @@ class ParamWindow(QMainWindow):
         combobox.setObjectName(label)
         combobox.addItems([ str(o) for o in options])
         combobox.setCurrentIndex(options.index(value))
+        combobox.currentIndexChanged.connect(lambda:self.combobox_index_changed(combobox))
         parent.addRow(description, combobox)
 
         self.param_controls[label] = combobox
 
-    def show_invalid_params_text(self):
-        self.invalid_params_label.setText("Invalid parameters.")
+    def combobox_index_changed(self, combobox):
+        label = combobox.objectName()
 
-    def hide_invalid_params_text(self):
-        self.invalid_params_label.setText("")
+        if label == "heading_direction":
+            index = combobox.currentIndex()
+
+            if index == 0:
+                angle = 0
+            elif index == 1:
+                angle = 90
+            elif index == 2:
+                angle = 180
+            elif index == 3:
+                angle = 270
+
+            self.param_controls["heading_angle_slider"].setValue(angle)
+            self.param_controls["heading_angle_textbox"].setText(str(angle))
+
+    def update_videos_loaded_text(self, n_videos, curr_video_num):
+        if n_videos > 0:
+            self.videos_loaded_text = "Loaded <b>{}</b> video{}, showing <b>#{}</b>.".format(n_videos, "s"*(n_videos > 1), curr_video_num+1)
+        else:
+            self.videos_loaded_text       = "No videos loaded."
+            self.background_progress_text = ""
+            self.tracking_progress_text   = ""
+
+        self.update_status_text()
+
+    def set_videos_loaded_text(self, text):
+        self.videos_loaded_text = text
+
+        self.update_status_text()
+
+    def update_background_progress_text(self, n_backgrounds, percent):
+        if percent < 100:
+            self.background_progress_text = "Calculating <b>{}</b> background{}... {:.1f}%.".format(n_backgrounds, "s"*(n_backgrounds > 1), percent)
+        else:
+            self.background_progress_text = ""
+
+        self.update_status_text()
+
+    def set_background_progress_text(self, text):
+        self.background_progress_text = text
+
+        self.update_status_text()
+
+    def update_tracking_progress_text(self, n_videos, curr_video_num, percent, total_tracking_time=None):
+        if percent < 100:
+            self.tracking_progress_text = "Tracking <b>video {}/{}</b>... {:.1f}%.".format(curr_video_num+1, n_videos, percent)
+        else:
+            if total_tracking_time != None:
+                self.tracking_progress_text = "Tracking completed in <b>{:.3f}s</b>.".format(total_tracking_time)
+            else:
+                self.tracking_progress_text = ""
+
+        self.update_status_text()
+
+    def update_status_text(self):
+        self.status_label.setText("{} {} {}".format(self.videos_loaded_text, self.background_progress_text, self.tracking_progress_text))
 
     def set_invalid_params_text(self, text):
         self.invalid_params_label.setText(text)
@@ -722,16 +798,16 @@ class HeadfixedParamWindow(ParamWindow):
         self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 2, 1)
 
         # add sliders - (key, description, start, end, initial value, parent layout)
-        self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.form_layout, slider_scale_factor=10.0)
+        self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.form_layout, tick_interval=10, slider_scale_factor=10.0)
         self.add_slider('bg_sub_threshold', 'Background subtraction threshold:', 1, 100, self.controller.update_bg_sub_threshold, round(params['bg_sub_threshold']), self.form_layout, tick_interval=10, int_values=True)
-        self.add_slider('tail_angle', 'Tail angle:', 0, 360, self.controller.update_tail_angle, params['tail_angle'], self.form_layout, tick_interval=10)
+        self.add_slider('heading_angle', 'Heading angle:', 0, 360, self.controller.update_heading_angle, params['heading_angle'], self.form_layout, tick_interval=50)
+        self.add_combobox('heading_direction', 'Heading direction:', heading_direction_options, params['heading_direction'], self.form_layout)
 
         # add textboxes - (key, decription, initial value, parent layout)
-        self.add_textbox('saved_video_fps', 'Saved video FPS:', params['saved_video_fps'], self.form_layout)
-        self.add_textbox('n_tail_points', '# tail points:', params['n_tail_points'], self.form_layout)
+        self.add_textbox('saved_video_fps', 'Saved video FPS:', self.controller.update_saved_video_fps, params['saved_video_fps'], self.form_layout)
+        self.add_textbox('n_tail_points', '# tail points:', self.controller.update_n_tail_points, params['n_tail_points'], self.form_layout)
 
         # add comboboxes
-        self.add_combobox('tail_direction', 'Tail direction:', tail_direction_options, params['tail_direction'], self.form_layout)
         self.add_combobox('interpolation', 'Interpolation:', interpolation_options, params['interpolation'], self.form_layout)
 
     def update_gui_from_params(self, params):
@@ -748,7 +824,7 @@ class HeadfixedParamWindow(ParamWindow):
             self.param_controls['saved_video_fps'].setText(str(params['saved_video_fps']))
             self.param_controls['n_tail_points'].setText(str(params['n_tail_points']))
 
-            self.param_controls['tail_direction'].setCurrentIndex(tail_direction_options.index(params['tail_direction']))
+            self.param_controls['heading_direction'].setCurrentIndex(heading_direction_options.index(params['heading_direction']))
             self.param_controls['interpolation'].setCurrentIndex(interpolation_options.index(params['interpolation']))
 
 class FreeswimmingParamWindow(ParamWindow):
@@ -773,9 +849,9 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.checkbox_layout, 0, 1)
         self.add_checkbox('adjust_thresholds', 'Adjust thresholds', self.controller.toggle_adjust_thresholds, params['adjust_thresholds'], self.checkbox_layout, 1, 1)
         self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 2, 1)
-        self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 4, 1)
-        self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 5, 1)
-        self.add_checkbox('zoom_body_crop', 'Zoom around body crop', self.controller.toggle_zoom_body_crop, params['gui_params']['zoom_body_crop'], self.checkbox_layout, 6, 1)
+        self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 3, 1)
+        self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 4, 1)
+        self.add_checkbox('zoom_body_crop', 'Zoom around body crop', self.controller.toggle_zoom_body_crop, params['gui_params']['zoom_body_crop'], self.checkbox_layout, 5, 1)
 
         # add sliders - (key, description, start, end, callback function, initial value, parent layout)
         self.add_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.form_layout, slider_scale_factor=10.0)
@@ -784,10 +860,10 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_slider('bg_sub_threshold', 'Background subtraction threshold:', 1, 100, self.controller.update_bg_sub_threshold, round(params['bg_sub_threshold']), self.form_layout, tick_interval=10, int_values=True)
 
         # add textboxes - (key, decription, initial value, parent layout)
-        self.add_textbox('min_tail_body_dist', 'Body/tail min. dist.:', params['min_tail_body_dist'], self.form_layout)
-        self.add_textbox('max_tail_body_dist', 'Body/tail max. dist.:', params['max_tail_body_dist'], self.form_layout)
-        self.add_textbox('saved_video_fps', 'Saved video FPS:', params['saved_video_fps'], self.form_layout)
-        self.add_textbox('n_tail_points', '# tail points:', params['n_tail_points'], self.form_layout)
+        self.add_textbox('min_tail_body_dist', 'Body/tail min. dist.:', self.controller.update_min_tail_body_dist, params['min_tail_body_dist'], self.form_layout)
+        self.add_textbox('max_tail_body_dist', 'Body/tail max. dist.:', self.controller.update_max_tail_body_dist, params['max_tail_body_dist'], self.form_layout)
+        self.add_textbox('saved_video_fps', 'Saved video FPS:', self.controller.update_saved_video_fps, params['saved_video_fps'], self.form_layout)
+        self.add_textbox('n_tail_points', '# tail points:', self.controller.update_n_tail_points, params['n_tail_points'], self.form_layout)
 
         # add comboboxes
         self.add_combobox('interpolation', 'Interpolation:', interpolation_options, params['interpolation'], self.form_layout)
@@ -824,10 +900,10 @@ class FreeswimmingParamWindow(ParamWindow):
     def create_crop_param_controls(self, crop_params):
         ParamWindow.create_crop_param_controls(self, crop_params)
 
-        # add textboxes - (key, decription, initial value, parent layout)
-        self.add_crop_param_slider('body_threshold', 'Body threshold:', 0, 255, crop_params['body_threshold'], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=1, int_values=True)
-        self.add_crop_param_slider('eyes_threshold', 'Eyes threshold:', 0, 255, crop_params['eyes_threshold'], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=1, int_values=True)
-        self.add_crop_param_slider('tail_threshold', 'Tail threshold:', 0, 255, crop_params['tail_threshold'], self.controller.update_crop_params_from_gui, self.crop_param_form_layout, tick_interval=1, int_values=True)
+        # add sliders & textboxes - (key, decription, initial value, parent layout)
+        self.add_crop_param_slider('body_threshold', 'Body threshold:', 0, 255, crop_params['body_threshold'], self.controller.update_body_threshold, self.crop_param_form_layout, tick_interval=10, int_values=True)
+        self.add_crop_param_slider('eyes_threshold', 'Eyes threshold:', 0, 255, crop_params['eyes_threshold'], self.controller.update_eyes_threshold, self.crop_param_form_layout, tick_interval=10, int_values=True)
+        self.add_crop_param_slider('tail_threshold', 'Tail threshold:', 0, 255, crop_params['tail_threshold'], self.controller.update_tail_threshold, self.crop_param_form_layout, tick_interval=10, int_values=True)
 
     def update_gui_from_crop_params(self, crop_params):
         ParamWindow.update_gui_from_crop_params(self, crop_params)
@@ -837,3 +913,15 @@ class FreeswimmingParamWindow(ParamWindow):
                 self.set_crop_param_slider_value('body_threshold', crop_params[c]['body_threshold'], c, int_values=True)
                 self.set_crop_param_slider_value('eyes_threshold', crop_params[c]['eyes_threshold'], c, int_values=True)
                 self.set_crop_param_slider_value('tail_threshold', crop_params[c]['tail_threshold'], c, int_values=True)
+
+class QHLine(QFrame):
+    def __init__(self):
+        super(QHLine, self).__init__()
+        self.setFrameShape(QFrame.HLine)
+        self.setFrameShadow(QFrame.Sunken)
+
+class QVLine(QFrame):
+    def __init__(self):
+        super(QVLine, self).__init__()
+        self.setFrameShape(QFrame.VLine)
+        self.setFrameShadow(QFrame.Sunken)

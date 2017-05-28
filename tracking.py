@@ -903,9 +903,11 @@ def find_unique_coords(coords, found_coords):
 
 def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # todo: make smoothing factor user settable
     tail_start_coords = get_relative_coords(params['tail_start_coords'], crop_params['offset'], params['scale_factor'])
-    direction         = params['tail_direction']
+    heading_direction = params['heading_direction']
     n_tail_points     = params['n_tail_points']
-    angle             = params['tail_angle']
+    heading_angle     = params['heading_angle']
+
+    print(tail_start_coords, frame.shape)
 
     global fitted_tail, tail_funcs, tail_brightness, background_brightness, tail_length
     
@@ -913,7 +915,7 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
     first_frame = tail_funcs == None
 
     # convert tail direction to a vector
-    directions={ "Up": [0,-1], "Down": [0,1], "Left": [-1,0], "Right": [1,0] }
+    tail_directions = { "Down": [0,-1], "Up": [0,1], "Right": [-1,0], "Left": [1,0] }
 
     # set maximum tail points to avoid crazy things happening
     max_tail_points = 200
@@ -924,14 +926,13 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
     # initialize lists of variables
     widths, convolution_results = [],[]
     test, slices                = [], []
-
-    rad_angle =  angle*np.pi/180.0
     
     # pick an initial guess for the direction vector
-    if angle != None:
-        guess_vector = np.array([np.cos(rad_angle), -np.sin(rad_angle)])
+    if heading_angle != None:
+        rad_heading_angle = heading_angle*np.pi/180.0
+        guess_vector = np.array([-np.sin(rad_heading_angle), -np.cos(rad_heading_angle)])
     else:
-        guess_vector = np.array(directions[direction])
+        guess_vector = np.array(tail_directions[heading_direction])
     
     # set an approximate width of the tail (px)
     guess_tail_width = 50
@@ -1097,7 +1098,11 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
         swidths = scipy.ndimage.filters.percentile_filter(widths, 50, 8)
 
         # pad tail width array
-        swidths = np.lib.pad(swidths, [0, 5], mode='edge')
+
+        if len(swidths) > 0:
+            swidths = np.lib.pad(swidths, [0, 5], mode='edge')
+        else:
+            return [None]*2
 
         # compute functions that profile the tail
         tail_funcs = [ calculate_tail_func(np.arange(-guess_tail_width, guess_tail_width), 0, swidth, 1, 0) for swidth in swidths]
