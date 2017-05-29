@@ -67,6 +67,7 @@ class PreviewQLabel(QLabel):
                 self.preview_window.crop_selection(self.start_crop_coord, self.end_crop_coord)
             else:
                 # draw tail start coordinate
+                self.preview_window.remove_tail_start()
                 self.preview_window.draw_tail_start(np.array(self.end_crop_coord))
 
 
@@ -80,7 +81,7 @@ class PreviewQLabel(QLabel):
             self.scale_factor = scale_factor
 
             # scale pixmap
-            pix = self.pix.scaled(self.pix.width()*scale_factor, self.pix.height()*scale_factor, Qt.IgnoreAspectRatio, Qt.FastTransformation)
+            pix = self.pix.scaled(self.pix.width()*scale_factor, self.pix.height()*scale_factor, Qt.KeepAspectRatio, Qt.FastTransformation)
 
             # update pixmap & size
             self.setPixmap(pix)
@@ -238,6 +239,7 @@ class PreviewWindow(QMainWindow):
         else:
             if new_load:
                 self.image_label.show()
+                self.remove_tail_start()
                 if show_slider:
                     if not self.image_slider.isVisible():
                         self.image_slider.setValue(0)
@@ -251,7 +253,8 @@ class PreviewWindow(QMainWindow):
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
             # update image
-            self.image = tracking.scale_frame(image, 1.0/params['scale_factor'], utilities.translate_interpolation('Nearest Neighbor'))
+            self.image = tracking.scale_frame(image, 1.0/params['scale_factor'], utilities.translate_interpolation(self.controller.params['interpolation']))
+            image = self.image.copy()
 
             try:
                 body_crop = params['body_crop']
@@ -262,7 +265,7 @@ class PreviewWindow(QMainWindow):
                 tail_start_coords = params['tail_start_coords']
 
                 # add tail start point to image
-                cv2.circle(self.image, (int(round(tail_start_coords[1])), int(round(tail_start_coords[0]))), 1, (180, 50, 180), -1)
+                cv2.circle(image, (int(round(tail_start_coords[1] - crop_params['offset'][1])), int(round(tail_start_coords[0] - crop_params['offset'][0]))), 1, (180, 180, 50), -1)
             except (KeyError, TypeError) as error:
                 # print(error)
                 tail_start_coords = None
@@ -272,24 +275,24 @@ class PreviewWindow(QMainWindow):
                 heading_angle = tracking_results['heading_angle']
 
                 # add tracking to image
-                self.image = tracking.add_tracking_to_frame(self.image, tracking_results, cropped=True)
+                image = tracking.add_tracking_to_frame(image, tracking_results, cropped=True)
 
                 if body_crop != None and body_position != None:
                     if not crop_around_body:
                         # copy image
-                        overlay = self.image.copy()
+                        overlay = image.copy()
 
                         # draw tail crop overlay
                         cv2.rectangle(overlay, (int(body_position[1]-body_crop[1]), int(body_position[0]-body_crop[0])),
                                                 (int(body_position[1]+body_crop[1]), int(body_position[0]+body_crop[0])), (242, 242, 65), -1)
 
                         # overlay with the original image
-                        cv2.addWeighted(overlay, 0.2, self.image, 0.8, 0, self.image)
+                        cv2.addWeighted(overlay, 0.2, image, 0.8, 0, image)
                     else:
-                        _, self.image = tracking.crop_frame_around_body(self.image, body_position, params['body_crop'], params['scale_factor'])
+                        _, image = tracking.crop_frame_around_body(image, body_position, params['body_crop'], params['scale_factor'])
 
             # update image label
-            self.update_image_label(self.image)
+            self.update_image_label(image)
 
     def draw_crop_selection(self, start_crop_coords, end_crop_coords):
         if self.selecting_crop and self.image != None:
@@ -320,12 +323,15 @@ class PreviewWindow(QMainWindow):
             self.instructions_label.setText("")
 
         if self.image != None:
-            image = self.image
+            image = self.image.copy()
 
-            cv2.circle(image, (int(round(rel_tail_start_coords[1])), int(round(rel_tail_start_coords[0]))), 2, (50, 50, 180), -1)
+            cv2.circle(image, (int(round(rel_tail_start_coords[1])), int(round(rel_tail_start_coords[0]))), 1, (180, 180, 50), -1)
 
             # update image label
             self.update_image_label(image)
+
+    def remove_tail_start(self):
+        self.update_image_label(self.image)
 
     def add_angle_overlay(self, angle):
         image = self.image.copy()

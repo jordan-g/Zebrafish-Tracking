@@ -727,6 +727,8 @@ class ParamWindow(QMainWindow):
             self.param_controls["heading_angle_slider"].setValue(angle)
             self.param_controls["heading_angle_textbox"].setText(str(angle))
 
+            self.controller.update_heading_direction(heading_direction_options[index])
+
     def update_videos_loaded_text(self, n_videos, curr_video_num):
         if n_videos > 0:
             self.videos_loaded_text = "Loaded <b>{}</b> video{}, showing <b>#{}</b>.".format(n_videos, "s"*(n_videos > 1), curr_video_num+1)
@@ -907,6 +909,8 @@ class HeadfixedParamWindow(ParamWindow):
             self.param_controls['auto_track'].setChecked(params['gui_params']['auto_track'])
 
             self.set_slider_value('scale_factor', params['scale_factor'], slider_scale_factor=10)
+            self.set_slider_value('bg_sub_threshold', params['bg_sub_threshold'], int_values=True)
+            self.set_slider_value('heading_angle', params['heading_angle'], int_values=True)
 
             self.param_controls['tracking_video_fps'].setText(str(params['tracking_video_fps']))
             self.param_controls['n_tail_points'].setText(str(params['n_tail_points']))

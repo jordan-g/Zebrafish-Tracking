@@ -114,6 +114,12 @@ class Controller():
             # convert paths to str
             video_paths = [ str(video_path) for video_path in video_paths ]
 
+        # remove videos that are already loaded
+        for i in range(len(video_paths)):
+            video_path = video_paths[i]
+            if video_path in self.params['video_paths']:
+                del video_paths[i]
+
         if len(video_paths) > 0 and video_paths[0] != '':
             if self.first_load:
                 # clear all crops
@@ -181,8 +187,8 @@ class Controller():
 
             if self.params['type'] == "headfixed":
                 # estimate tail direction
-                total_luminosities = [np.sum(self.current_frame[-1:-10, :]), np.sum(self.current_frame[:, 0:10]),
-                                      np.sum(self.current_frame[0:10, :]), np.sum(self.current_frame[:, -1:-10])]
+                total_luminosities = [np.sum(self.current_frame[0:10, :]), np.sum(self.current_frame[:, 0:10]),
+                                      np.sum(self.current_frame[-1:-11, :]), np.sum(self.current_frame[:, -1:-11])]
 
                 self.params['heading_direction'] = heading_direction_options[np.argmin(total_luminosities)]
 
@@ -324,8 +330,8 @@ class Controller():
                 # open the next video from the batch
                 self.open_video(self.params['video_paths'][self.curr_video_num])
 
-                # switch to first frame
-                self.switch_frame(0, new_load=True)
+            # switch to first frame
+            self.switch_frame(0, new_load=True)
         else:
             self.current_frame = None
             self.preview_window.plot_image(None, None, None, None)
@@ -352,7 +358,7 @@ class Controller():
         self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, true_progress)
 
     def background_calculated(self, background, video_path):
-        if self.current_frame.shape == background.shape and video_path in self.background_calc_paths:
+        if video_path in self.background_calc_paths:
             print("Background for {} calculated.".format(video_path))
 
             video_num = self.params['video_paths'].index(video_path)
@@ -366,11 +372,11 @@ class Controller():
             
             self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, percent)
 
-            if self.frames[video_num] != None and self.bg_sub_frames[video_num] == None:
-                # generate background subtracted frames
-                self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
-
             if self.curr_video_num == video_num:
+                if self.frames[video_num] != None and self.bg_sub_frames[video_num] == None:
+                    # generate background subtracted frames
+                    self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
+
                 # Enable "Subtract background" checkbox in param window
                 self.param_window.param_controls["subtract_background"].setEnabled(True)
 
@@ -547,8 +553,7 @@ class Controller():
 
         self.bg_sub_frames[self.curr_video_num] = None
 
-        # invert the frame
-        # self.invert_frame()
+        # invert the frames
         self.invert_frames()
 
         self.switch_frame(self.n)
@@ -572,15 +577,6 @@ class Controller():
 
             # start thread
             self.get_background_thread.start()
-
-        # self.switch_frame(self.n)
-
-        # if self.params['type'] == "freeswimming":
-        #     # generate thresholded frames
-        #     self.generate_thresholded_frames()
-
-        # # update the image preview
-        # self.update_preview()
 
     def generate_thresholded_frames(self):
         # get params of currently selected crop
@@ -947,7 +943,7 @@ class FreeswimmingController(Controller):
     def __init__(self):
         # initialize variables
         self.body_threshold_frame = None
-        self.eyes_threshold_frame  = None
+        self.eyes_threshold_frame = None
         self.tail_threshold_frame = None
         self.tail_skeleton_frame  = None
 
@@ -1352,7 +1348,7 @@ class HeadfixedController(Controller):
     def update_heading_angle(self, heading_angle):
         if self.current_frame != None:
             try:
-                heading_angle = float(heading_angle)
+                heading_angle = int(float(heading_angle))
                 if not (0 <= heading_angle <= 360):
                     raise
 
@@ -1362,7 +1358,18 @@ class HeadfixedController(Controller):
 
                 self.switch_frame(self.n)
             except:
-                self.param_window.set_invalid_params_text("Invalid tail angle value.")
+                self.param_window.set_invalid_params_text("Invalid heading angle value.")
+
+    def update_heading_direction(self, heading_direction):
+        if self.current_frame != None:
+            try:
+                self.params['heading_direction'] = heading_direction
+
+                self.param_window.set_invalid_params_text("")
+
+                self.switch_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("Invalid heading direction value.")
 
 class GetBackgroundThread(QThread):
     finished = pyqtSignal(np.ndarray, str)
