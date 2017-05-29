@@ -1197,7 +1197,7 @@ class FreeswimmingController(Controller):
     def update_body_threshold(self, body_threshold):
         if self.current_frame != None:
             try:
-                body_threshold_frame = int(float(body_threshold))
+                body_threshold = int(float(body_threshold))
                 if not(0 < body_threshold < 255):
                     raise
 
