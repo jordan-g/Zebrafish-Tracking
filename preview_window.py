@@ -10,11 +10,11 @@ import cv2
 # import the Qt library
 try:
     from PyQt4.QtCore import Qt, QThread, QSize
-    from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
+    from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QGraphicsDropShadowEffect, QColor
 except:
     from PyQt5.QtCore import Qt, QThread, QSize
-    from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
-    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
+    from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon, QColor
+    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QGraphicsDropShadowEffect
 
 import tracking
 import utilities
@@ -104,19 +104,6 @@ class PreviewQLabel(QLabel):
             # generate pixmap
             self.pix = QPixmap(qimage)
 
-            if self.pix_size == None:
-                self.pix_size = self.preview_window.get_available_pix_size()
-
-            # update label vs. image scale factor
-            self.set_scale_factor(float(self.pix_size)/max(self.pix.width(), self.pix.height()))
-
-            # scale pixmap
-            pixmap = self.pix.scaled(self.pix_size, self.pix_size, Qt.KeepAspectRatio)
-
-            # set image label's pixmap & update label's size
-            self.setPixmap(pixmap)
-            self.setFixedSize(pixmap.size())
-
 class PreviewWindow(QMainWindow):
     """
     QMainWindow subclass used to show frames & tracking.
@@ -155,26 +142,42 @@ class PreviewWindow(QMainWindow):
 
         # create main widget
         self.main_widget = QWidget(self)
-        self.main_widget.setStyleSheet("background-color: #666;")
+        self.main_widget.setStyleSheet("background-color: #b3b9bc;")
         self.main_widget.setMinimumSize(QSize(500, 500))
 
         # create main layout
-        self.main_layout = QVBoxLayout(self.main_widget)
-        self.main_layout.setContentsMargins(8, 8, 8, 8)
+        self.main_layout = QGridLayout(self.main_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
         # create label that shows frames
-        self.image_layout = QHBoxLayout()
+        self.image_widget = QWidget(self)
+        self.image_layout = QHBoxLayout(self.image_widget)
+        self.image_layout.setContentsMargins(16, 16, 16, 16)
         self.image_label = PreviewQLabel(self)
         self.image_label.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
         self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.hide()
         self.image_layout.addWidget(self.image_label)
-        self.main_layout.addLayout(self.image_layout)
+        self.main_layout.addWidget(self.image_widget, 0, 0)
+
+        self.image_label.setStyleSheet("border: 1px solid rgba(122, 127, 130, 0.5)")
+        image_label_shadow = QGraphicsDropShadowEffect()
+        image_label_shadow.setBlurRadius(16)
+        image_label_shadow.setColor(QColor(122, 127, 130, 100))
+        image_label_shadow.setOffset(0)
+        self.image_label.setGraphicsEffect(image_label_shadow)
+
+        self.bottom_widget = QWidget(self)
+        self.bottom_layout = QVBoxLayout(self.bottom_widget)
+        self.bottom_layout.setContentsMargins(8, 0, 8, 8)
+        self.main_layout.addWidget(self.bottom_widget, 1, 0)
 
         # create label that shows crop instructions
         self.instructions_label = QLabel("")
+        self.instructions_label.setStyleSheet("font-size: 11px;")
         self.instructions_label.setAlignment(Qt.AlignCenter)
-        self.main_layout.addWidget(self.instructions_label)
+        self.bottom_layout.addWidget(self.instructions_label)
 
         # create image slider
         self.image_slider = QSlider(Qt.Horizontal)
@@ -185,7 +188,7 @@ class PreviewWindow(QMainWindow):
         self.image_slider.setValue(0)
         self.image_slider.valueChanged.connect(self.controller.switch_frame)
         self.image_slider.hide()
-        self.main_layout.addWidget(self.image_slider)
+        self.bottom_layout.addWidget(self.image_slider)
 
         # initialize variables
         self.image                  = None  # image to show
@@ -212,8 +215,8 @@ class PreviewWindow(QMainWindow):
         self.image_label.update_size()
 
     def get_available_pix_size(self):
-        available_width  = self.width()
-        available_height = self.height() - self.image_slider.height()
+        available_width  = self.width() - 16
+        available_height = self.height() - self.bottom_widget.height() - 30
 
         if available_height < available_width:
             return available_height
@@ -231,8 +234,10 @@ class PreviewWindow(QMainWindow):
         if image == None:
             self.update_image_label(None)
             self.image_slider.hide()
+            self.image_label.hide()
         else:
             if new_load:
+                self.image_label.show()
                 if show_slider:
                     if not self.image_slider.isVisible():
                         self.image_slider.setValue(0)
@@ -241,9 +246,9 @@ class PreviewWindow(QMainWindow):
                 else:
                     self.image_slider.hide()
 
-            # convert to BGR
+            # convert to RGB
             if len(image.shape) == 2:
-                image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
             # update image
             self.image = tracking.scale_frame(image, 1.0/params['scale_factor'], utilities.translate_interpolation('Nearest Neighbor'))
@@ -317,7 +322,7 @@ class PreviewWindow(QMainWindow):
         if self.image != None:
             image = self.image
 
-            cv2.circle(image, (int(round(rel_tail_start_coords[1])), int(round(rel_tail_start_coords[0]))), 1, (180, 50, 180), -1)
+            cv2.circle(image, (int(round(rel_tail_start_coords[1])), int(round(rel_tail_start_coords[0]))), 2, (50, 50, 180), -1)
 
             # update image label
             self.update_image_label(image)
@@ -339,8 +344,6 @@ class PreviewWindow(QMainWindow):
         self.update_image_label(self.image)
 
     def update_image_label(self, image):
-        # cv2.cvtColor(image, cv2.COLOR_BGR2RGB, image)
-
         self.image_label.update_pixmap(image)
 
         # update label's pixmap size
