@@ -390,7 +390,7 @@ class ParamWindow(QMainWindow):
 
         # create status bar layout
         status_bar_widget = QWidget(self)
-        status_bar_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.1); border-top: 1px solid rgba(0, 0, 0, 0.1);")
+        status_bar_widget.setStyleSheet("background-color: rgba(255, 255, 255, 0.5); border-top: 1px solid rgba(0, 0, 0, 0.1);")
         status_bar_layout = QHBoxLayout(status_bar_widget)
         status_bar_layout.setContentsMargins(5, 5, 5, 5)
         self.main_layout.addWidget(status_bar_widget, 2, 0, 1, 2)
@@ -406,7 +406,7 @@ class ParamWindow(QMainWindow):
 
         # create invalid parameters label
         self.invalid_params_label = QLabel("")
-        self.invalid_params_label.setStyleSheet("font-weight: bold; color: red; font-size: 11px; background-color: none; border: none;")
+        self.invalid_params_label.setStyleSheet("font-weight: bold; color: rgba(255, 34, 17, 1); font-size: 10px; background-color: none; border: none;")
         status_bar_layout.addWidget(self.invalid_params_label)
 
     def update_gui_from_crop_params(self, crop_params):

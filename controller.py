@@ -399,36 +399,42 @@ class Controller():
             params_path = self.last_params_path
 
         if params_path not in ("", None):
-            try:
-                # load params from saved file
-                params_file = np.load(params_path)
-                saved_params = params_file['params'][()]
+            # load params from saved file
+            params_file = np.load(params_path)
+            saved_params = params_file['params'][()]
 
-                # set params to saved params
-                self.params = saved_params
+            # set params to saved params
+            incomplete_load = False
+            self.params = self.default_params.copy()
+            for key in saved_params:
+                if key in self.params:
+                    self.params[key] = saved_params[key]
+                else:
+                    incomplete_load = True
 
-                self.current_crop = -1
+            self.current_crop = -1
 
-                # re-open the video paths specified in the loaded params
-                self.open_video_batch(self.params['video_paths'])
+            # re-open the video paths specified in the loaded params
+            self.open_video_batch(self.params['video_paths'])
 
-                self.first_load = False
+            self.first_load = False
 
-                # create tabs for all saved crops
-                for j in range(len(self.params['crop_params'])):
-                    self.current_crop += 1
-                    self.param_window.create_crop_tab(self.params['crop_params'][j])
+            # create tabs for all saved crops
+            for j in range(len(self.params['crop_params'])):
+                self.current_crop += 1
+                self.param_window.create_crop_tab(self.params['crop_params'][j])
 
-                # update gui controls
-                self.param_window.update_gui_from_params(self.params)
-                self.param_window.update_gui_from_crop_params(self.params['crop_params'])
+            # update gui controls
+            self.param_window.update_gui_from_params(self.params)
+            self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
-                # switch to first frame
-                self.switch_frame(0, new_load=True)
+            # switch to first frame
+            self.switch_frame(0, new_load=True)
 
+            if incomplete_load:
+                self.param_window.set_invalid_params_text("Some parameters couldn't be loaded and were set to their default values.")
+            else:
                 self.param_window.set_invalid_params_text("")
-            except:
-                self.param_window.set_invalid_params_text("Could not load parameters.")
         else:
             pass
 
