@@ -196,6 +196,7 @@ class PreviewWindow(QMainWindow):
         self.tracking_data          = None  # list of tracking data
         self.selecting_crop         = False # whether user is selecting a crop
         self.changing_heading_angle = False # whether the user is changing the heading angle
+        self.body_crop              = None
 
         # set main widget
         self.setCentralWidget(self.main_widget)
@@ -288,8 +289,13 @@ class PreviewWindow(QMainWindow):
 
                         # overlay with the original image
                         cv2.addWeighted(overlay, 0.2, image, 0.8, 0, image)
+
+                        self.body_crop = None
                     else:
-                        _, image = tracking.crop_frame_around_body(image, body_position, params['body_crop'], params['scale_factor'])
+                        self.body_crop = body_crop
+            
+            if crop_around_body:
+                _, image = tracking.crop_frame_around_body(image, body_position, params['body_crop'], params['scale_factor'])
 
             # update image label
             self.update_image_label(image)

@@ -1216,7 +1216,7 @@ class FreeswimmingController(Controller):
                 if not (0 < eyes_threshold < 255):
                     raise
 
-                self.crop_params[self.current_crop]['eyes_threshold'] = eyes_threshold
+                self.params['crop_params'][self.current_crop]['eyes_threshold'] = eyes_threshold
 
                 self.param_window.set_invalid_params_text("")
 
@@ -1231,7 +1231,7 @@ class FreeswimmingController(Controller):
                 if not (0 < tail_threshold < 255):
                     raise
 
-                self.crop_params[self.current_crop]['tail_threshold'] = tail_threshold
+                self.params['crop_params'][self.current_crop]['tail_threshold'] = tail_threshold
 
                 self.param_window.set_invalid_params_text("")
 

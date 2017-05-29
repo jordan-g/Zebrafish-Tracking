@@ -506,6 +506,7 @@ class ParamWindow(QMainWindow):
         # connect slider to set textbox text & update params
         slider.sliderMoved.connect(lambda:self.update_textbox_from_slider(slider, textbox, slider_scale_factor, int_values))
         slider.sliderMoved.connect(lambda:slider_moved_func(textbox.text()))
+        slider.sliderPressed.connect(lambda:self.slider_pressed(slider))
         slider.sliderMoved.connect(lambda:self.slider_moved(slider))
         slider.sliderReleased.connect(lambda:self.slider_released(slider))
 
@@ -533,17 +534,21 @@ class ParamWindow(QMainWindow):
         self.crop_param_controls[-1][slider_label]  = slider
         self.crop_param_controls[-1][textbox_label] = textbox
 
-    def slider_moved(self, slider):
+    def slider_pressed(self, slider):
         label = slider.objectName()
 
         if label in ("body_threshold_slider", "eyes_threshold_slider", "tail_threshold_slider"):
             # store previously-checked threshold checkbox
             self.prev_checked_threshold_checkbox = self.get_checked_threshold_checkbox()
 
-            checkbox = self.param_controls["show_{}".format(label)]
+            checkbox = self.param_controls["show_{}".format(label.replace("_slider", ""))]
             checkbox.setChecked(True)
             self.controller.toggle_threshold_image(checkbox)
-        elif label == "heading_angle_slider":
+
+    def slider_moved(self, slider):
+        label = slider.objectName()
+
+        if label == "heading_angle_slider":
             textbox = self.param_controls["heading_angle_textbox"]
             angle = int(float(textbox.text()))
             self.controller.add_angle_overlay(angle)
@@ -569,7 +574,7 @@ class ParamWindow(QMainWindow):
     def slider_released(self, slider):
         label = slider.objectName()
         if label in ("body_threshold_slider", "eyes_threshold_slider", "tail_threshold_slider"):
-            checkbox = self.param_controls["show_{}".format(label)]
+            checkbox = self.param_controls["show_{}".format(label.replace("_slider", ""))]
             checkbox.setChecked(False)
 
             if self.prev_checked_threshold_checkbox != None:
