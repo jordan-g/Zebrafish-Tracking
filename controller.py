@@ -37,7 +37,7 @@ default_headfixed_params = {'scale_factor': 1.0,                   # factor by w
                             'invert': False,                       # whether to invert the video
                             'type': "headfixed",                   # "headfixed" / "freeswimming"
                             'save_video': True,                    # whether to make a video with tracking overlaid
-                            'saved_video_fps': 0,                  # fps for the generated video
+                            'tracking_video_fps': 0,                  # fps for the generated video
                             'n_tail_points': 30,                   # number of tail points to use
                             'subtract_background': False,          # whether to perform background subtraction
                             'heading_direction': "Down",           # "right" / "left" / "up" / "down"
@@ -55,7 +55,7 @@ default_freeswimming_params = {'scale_factor': 1.0,                          # f
                                'invert': False,                              # whether to invert the video
                                'type': "freeswimming",                       # "headfixed" / "freeswimming"
                                'save_video': True,                           # whether to make a video with tracking overlaid
-                               'saved_video_fps': 30,                        # fps for the generated video
+                               'tracking_video_fps': 30,                        # fps for the generated video
                                'n_tail_points': 30,                          # number of tail points to use
                                'adjust_thresholds': False,                   # whether to adjust thresholds while tracking if necessary
                                'subtract_background': False,                 # whether to perform background subtraction
@@ -75,7 +75,7 @@ default_freeswimming_params = {'scale_factor': 1.0,                          # f
                                                'auto_track': False,          # automatically track a frame when you switch to it
                                                'zoom_body_crop': False }}    # automatically zoom to fit body crop
 
-max_n_frames = 1000 # maximum # of frames to load for previewing
+max_n_frames = 100 # maximum # of frames to load for previewing
 
 class Controller():
     def __init__(self, default_params, default_crop_params):
@@ -104,9 +104,6 @@ class Controller():
         self.first_load            = True # False if we are reloading parameters or videos have already been loaded; True otherwise
         self.background_calc_paths = []
         self.tracking              = False
-
-        # create preview window
-        self.preview_window  = PreviewWindow(self)
 
     def select_and_open_videos(self):
         if pyqt_version == 4:
@@ -258,6 +255,8 @@ class Controller():
 
         self.param_window.change_selected_video_row(self.curr_video_num)
 
+        self.param_window.set_invalid_params_text("")
+
     def prev_video(self):
         if self.curr_video_num != 0:
             # update current video number
@@ -392,58 +391,64 @@ class Controller():
         n_videos = len(self.params['video_paths'])
         self.param_window.update_tracking_progress_text(n_videos, video_number, percent)
 
-    def load_params(self, params_path=None):
-        print(params_path)
-        if params_path == None:
+    def load_params(self, select_path=True):
+        if select_path:
             # ask the user to select a path
             params_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open saved parameters', '')[0])
+        else:
+            params_path = self.last_params_path
 
         if params_path not in ("", None):
-            # load params from saved file
-            params_file = np.load(params_path)
-            saved_params = params_file['params'][()]
+            try:
+                # load params from saved file
+                params_file = np.load(params_path)
+                saved_params = params_file['params'][()]
 
-            # set params to saved params
-            self.params = saved_params
+                # set params to saved params
+                self.params = saved_params
 
-            self.current_crop = -1
+                self.current_crop = -1
 
-            # re-open the video paths specified in the loaded params
-            self.open_video_batch(self.params['video_paths'])
+                # re-open the video paths specified in the loaded params
+                self.open_video_batch(self.params['video_paths'])
 
-            self.first_load = False
+                self.first_load = False
 
-            # create tabs for all saved crops
-            for j in range(len(self.params['crop_params'])):
-                self.current_crop += 1
-                self.param_window.create_crop_tab(self.params['crop_params'][j])
+                # create tabs for all saved crops
+                for j in range(len(self.params['crop_params'])):
+                    self.current_crop += 1
+                    self.param_window.create_crop_tab(self.params['crop_params'][j])
 
-            # update gui controls
-            self.param_window.update_gui_from_params(self.params)
-            self.param_window.update_gui_from_crop_params(self.params['crop_params'])
+                # update gui controls
+                self.param_window.update_gui_from_params(self.params)
+                self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
-            # switch to first frame
-            self.switch_frame(0, new_load=True)
+                # switch to first frame
+                self.switch_frame(0, new_load=True)
+
+                self.param_window.set_invalid_params_text("")
+            except:
+                self.param_window.set_invalid_params_text("Could not load parameters.")
         else:
             pass
 
-    def load_last_params(self):
-        self.load_params(self.last_params_path)
-
-    def save_params(self, params_path=None):
+    def save_params(self, select_path=True):
         # get params from gui
-        self.update_params_from_gui()
-        self.update_crop_params_from_gui()
+        # self.update_params_from_gui()
+        # self.update_crop_params_from_gui()
 
-        if params_path == None:
+        if select_path:
             # ask user to select a path
-            params_path = str(QFileDialog.getSaveFileName(self, 'Choose directory to save in', ''))
+            params_path = str(QFileDialog.getSaveFileName(self.param_window, 'Choose directory to save in', '')[0])
         else:
             # set params path to last used params path
             params_path = self.last_params_path
- 
-        # save params to file
-        np.savez(params_path, params=self.params)
+
+        if params_path not in ("", None):
+            # save params to file
+            np.savez(params_path, params=self.params)
+        else:
+            pass
 
     def switch_frame(self, n, new_load=False):
         if n != self.n:
@@ -800,18 +805,26 @@ class Controller():
 
     def update_scale_factor(self, scale_factor):
         if self.current_frame != None:
-            if 0 < scale_factor <= 4:
+            try:
+                scale_factor = float(scale_factor)
+                if not (0 < scale_factor <= 4):
+                    raise
+
                 self.params['scale_factor'] = scale_factor
 
                 self.param_window.set_invalid_params_text("")
 
                 self.switch_frame(self.n)
-            else:
+            except:
                 self.param_window.set_invalid_params_text("Invalid scale factor value.")
 
     def update_bg_sub_threshold(self, bg_sub_threshold):
         if self.current_frame != None:
-            if 0 <= bg_sub_threshold <= 255:
+            try:
+                bg_sub_threshold = int(float(bg_sub_threshold))
+                if not (0 <= bg_sub_threshold <= 255):
+                    raise
+
                 self.params['bg_sub_threshold'] = bg_sub_threshold
 
                 if self.params['backgrounds'][self.curr_video_num] != None:
@@ -820,7 +833,7 @@ class Controller():
                 self.param_window.set_invalid_params_text("")
 
                 self.switch_frame(self.n)
-            else:
+            except:
                 self.param_window.set_invalid_params_text("Invalid background subtraction threshold value.")
 
     def update_crop_height(self, crop_height):
@@ -883,14 +896,14 @@ class Controller():
             except:
                 self.param_window.set_invalid_params_text("Invalid x offset value.")
 
-    def update_saved_video_fps(self, saved_video_fps):
+    def update_tracking_video_fps(self, tracking_video_fps):
         if self.current_frame != None:
             try:
-                saved_video_fps = float(saved_video_fps)
-                if not(saved_video_fps > 1):
+                tracking_video_fps = float(tracking_video_fps)
+                if not(tracking_video_fps >= 0):
                     raise
 
-                self.params['saved_video_fps'] = saved_video_fps
+                self.params['tracking_video_fps'] = tracking_video_fps
 
                 self.param_window.set_invalid_params_text("")
 
@@ -939,6 +952,9 @@ class FreeswimmingController(Controller):
 
         # create parameters window
         self.param_window = FreeswimmingParamWindow(self)
+
+        # create preview window
+        self.preview_window  = PreviewWindow(self)
 
         self.param_window.set_gui_disabled(True)
 
@@ -1065,7 +1081,7 @@ class FreeswimmingController(Controller):
             # get params from gui
             try:
                 scale_factor      = float(self.param_window.param_controls['scale_factor' + '_textbox'].text())
-                saved_video_fps    = int(float(self.param_window.param_controls['saved_video_fps'].text()))
+                tracking_video_fps    = int(float(self.param_window.param_controls['tracking_video_fps'].text()))
                 n_tail_points      = int(float(self.param_window.param_controls['n_tail_points'].text()))
                 body_crop_height   = int(float(self.param_window.param_controls['body_crop_height' + '_textbox'].text()))
                 body_crop_width    = int(float(self.param_window.param_controls['body_crop_width' + '_textbox'].text()))
@@ -1078,7 +1094,7 @@ class FreeswimmingController(Controller):
                 return
 
             valid_params = (scale_factor > 0
-                        and saved_video_fps >= 0
+                        and tracking_video_fps >= 0
                         and n_tail_points > 0
                         and body_crop_height > 0
                         and body_crop_width > 0
@@ -1090,7 +1106,7 @@ class FreeswimmingController(Controller):
                     self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
                 
                 self.params['scale_factor']       = scale_factor
-                self.params['saved_video_fps']    = saved_video_fps
+                self.params['tracking_video_fps']    = tracking_video_fps
                 self.params['n_tail_points']      = n_tail_points
                 self.params['body_crop']          = np.array([body_crop_height, body_crop_width])
                 self.params['min_tail_body_dist'] = min_tail_body_dist
@@ -1237,6 +1253,9 @@ class HeadfixedController(Controller):
         # create parameters window
         self.param_window = HeadfixedParamWindow(self)
 
+        # create preview window
+        self.preview_window  = PreviewWindow(self)
+
         self.param_window.set_gui_disabled(True)
 
     def track_frame(self):
@@ -1297,20 +1316,20 @@ class HeadfixedController(Controller):
             try:
                 scale_factor   = float(self.param_window.param_controls['scale_factor' + '_textbox'].text())
                 heading_direction  = str(self.param_window.param_controls['heading_direction'].currentText())
-                saved_video_fps = int(self.param_window.param_controls['saved_video_fps'].text())
+                tracking_video_fps = int(self.param_window.param_controls['tracking_video_fps'].text())
                 n_tail_points   = int(self.param_window.param_controls['n_tail_points'].text())
             except ValueError:
                 self.param_window.set_invalid_params_text("Invalid parameters.")
                 return
 
             valid_params = (0 < scale_factor <= 1
-                        and saved_video_fps >= 0
+                        and tracking_video_fps >= 0
                         and n_tail_points > 0)
 
             if valid_params:
                 self.params['scale_factor']   = scale_factor
                 self.params['heading_direction']  = heading_direction
-                self.params['saved_video_fps'] = saved_video_fps
+                self.params['tracking_video_fps'] = tracking_video_fps
                 self.params['n_tail_points']   = n_tail_points
 
                 self.param_window.set_invalid_params_text("")

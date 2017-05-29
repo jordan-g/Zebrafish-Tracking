@@ -145,17 +145,22 @@ class PreviewWindow(QMainWindow):
         # set title
         self.setWindowTitle("Preview")
 
+        # get parameter window position & size
+        param_window_x      = self.controller.param_window.x()
+        param_window_y      = self.controller.param_window.y()
+        param_window_width  = self.controller.param_window.width()
+
         # set position & size
-        self.setGeometry(851, 100, 10, 10)
+        self.setGeometry(param_window_x + param_window_width, param_window_y, 10, 10)
 
         # create main widget
         self.main_widget = QWidget(self)
         self.main_widget.setStyleSheet("background-color: #666;")
-        self.main_widget.setMinimumSize(QSize(400, 400))
+        self.main_widget.setMinimumSize(QSize(500, 500))
 
         # create main layout
         self.main_layout = QVBoxLayout(self.main_widget)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setContentsMargins(8, 8, 8, 8)
         self.main_layout.setSpacing(0)
 
         # create label that shows frames
@@ -174,7 +179,7 @@ class PreviewWindow(QMainWindow):
         # create image slider
         self.image_slider = QSlider(Qt.Horizontal)
         self.image_slider.setFocusPolicy(Qt.StrongFocus)
-        self.image_slider.setTickPosition(QSlider.TicksBothSides)
+        self.image_slider.setTickPosition(QSlider.NoTicks)
         self.image_slider.setTickInterval(1)
         self.image_slider.setSingleStep(1)
         self.image_slider.setValue(0)

@@ -101,7 +101,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     crop_params         = params['crop_params']
     n_tail_points       = params['n_tail_points']
     save_video          = params['save_video']
-    saved_video_fps     = params['saved_video_fps']
+    tracking_video_fps  = params['tracking_video_fps']
     use_multiprocessing = params['use_multiprocessing']
     n_crops             = len(params['crop_params'])
     bg_sub_threshold    = params['bg_sub_threshold']
@@ -122,9 +122,9 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # Get video info
     fps, n_frames_total = get_video_info(video_path)
 
-    if saved_video_fps == 0:
+    if tracking_video_fps == 0:
         # Set tracking video fps to be the same as the original video
-        saved_video_fps = fps
+        tracking_video_fps = fps
 
     if subtract_background and background == None:
         # Calculate the background
@@ -174,7 +174,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
             # Create the video writer, for saving a video with tracking overlaid
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
             new_video_path = "{}_tracked_video.avi".format(os.path.splitext(os.path.basename(video_path))[0])
-            writer = cv2.VideoWriter(new_video_path, fourcc, saved_video_fps,
+            writer = cv2.VideoWriter(new_video_path, fourcc, tracking_video_fps,
                 (frames[0].shape[1], frames[0].shape[0]), True)
 
         print("Tracking frames...")
