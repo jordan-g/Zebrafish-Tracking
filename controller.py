@@ -55,7 +55,7 @@ default_freeswimming_params = {'scale_factor': 1.0,                          # f
                                'invert': False,                              # whether to invert the video
                                'type': "freeswimming",                       # "headfixed" / "freeswimming"
                                'save_video': True,                           # whether to make a video with tracking overlaid
-                               'tracking_video_fps': 30,                        # fps for the generated video
+                               'tracking_video_fps': 0,                      # fps for the generated video
                                'n_tail_points': 30,                          # number of tail points to use
                                'adjust_thresholds': False,                   # whether to adjust thresholds while tracking if necessary
                                'subtract_background': False,                 # whether to perform background subtraction
@@ -68,6 +68,8 @@ default_freeswimming_params = {'scale_factor': 1.0,                          # f
                                'video_paths': [],                            # paths to videos that will be tracked
                                'backgrounds': [],                            # backgrounds calculated for background subtraction
                                'use_multiprocessing': True,                  # whether to use multiprocessing
+                               'track_multiple_fish': False,                 # whether to track multiple fish
+                               'precise_tail_tracking': False,               # whether to use more precise (but slower) tail tracking
                                'gui_params': { 'show_body_threshold': False, # show body threshold in preview window
                                                'show_eyes_threshold': False, # show eye threshold in preview window
                                                'show_tail_threshold': False, # show tail threshold in preview window
@@ -618,12 +620,14 @@ class Controller():
 
         self.update_preview()
 
+    def toggle_precise_tail_tracking(self, checkbox):
+        self.params['precise_tail_tracking'] = checkbox.isChecked()
+
+    def toggle_track_multiple_fish(self, checkbox):
+        self.params['track_multiple_fish'] = checkbox.isChecked()
+
     def track_frame(self):
         if self.current_frame != None:
-            # print(self.current_frame, self.scaled_frame)
-            # get params from gui
-            # self.update_params_from_gui()
-
             # track current frame
             self.tracking_results = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
 

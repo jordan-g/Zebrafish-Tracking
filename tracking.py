@@ -48,6 +48,9 @@ tail_length           = None
 
 cv2.setNumThreads(0) # Avoids crashes when using multiprocessing with OpenCV
 
+# set the maximum number of fish to track at the same time
+max_n_fish = 30
+
 # --- Background subtraction --- #
 
 def subtract_background_from_frames(frames, background, bg_sub_threshold, in_place=False):
@@ -131,11 +134,11 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         background = open_video(video_path, return_frames=False, calc_background=True, capture=capture)
 
     # Initialize tracking data arrays
-    tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
-    spline_coords_array  = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
-    heading_angle_array  = np.zeros((n_crops, n_frames_total, 1)) + np.nan
-    body_position_array  = np.zeros((n_crops, n_frames_total, 2)) + np.nan
-    eye_coords_array     = np.zeros((n_crops, n_frames_total, 2, 2)) + np.nan
+    tail_coords_array    = np.zeros((n_crops, n_frames_total, max_n_fish, 2, n_tail_points)) + np.nan
+    spline_coords_array  = np.zeros((n_crops, n_frames_total, max_n_fish, 2, n_tail_points)) + np.nan
+    heading_angle_array  = np.zeros((n_crops, n_frames_total, max_n_fish, 1)) + np.nan
+    body_position_array  = np.zeros((n_crops, n_frames_total, max_n_fish, 2)) + np.nan
+    eye_coords_array     = np.zeros((n_crops, n_frames_total, max_n_fish, 2, 2)) + np.nan
 
     # Calculate the amount of frames to keep in memory at a time -- enough to fill 1/2 of the available memory
     mem = psutil.virtual_memory()
@@ -201,11 +204,11 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
             n_chunks = len(result_list)
 
             # Add tracking results to tracking data arrays
-            tail_coords_array[:, frame_nums, :, :]   = np.concatenate([result_list[i][0] for i in range(n_chunks)], axis=1)
-            spline_coords_array[:, frame_nums, :, :] = np.concatenate([result_list[i][1] for i in range(n_chunks)], axis=1)
-            heading_angle_array[:, frame_nums, :]    = np.concatenate([result_list[i][2] for i in range(n_chunks)], axis=1)
-            body_position_array[:, frame_nums, :]    = np.concatenate([result_list[i][3] for i in range(n_chunks)], axis=1)
-            eye_coords_array[:, frame_nums, :, :]    = np.concatenate([result_list[i][4] for i in range(n_chunks)], axis=1)
+            tail_coords_array[:, frame_nums, :, :, :]   = np.concatenate([result_list[i][0] for i in range(n_chunks)], axis=1)
+            spline_coords_array[:, frame_nums, :, :, :] = np.concatenate([result_list[i][1] for i in range(n_chunks)], axis=1)
+            heading_angle_array[:, frame_nums, :, :]    = np.concatenate([result_list[i][2] for i in range(n_chunks)], axis=1)
+            body_position_array[:, frame_nums, :, :]    = np.concatenate([result_list[i][3] for i in range(n_chunks)], axis=1)
+            eye_coords_array[:, frame_nums, :, :, :]    = np.concatenate([result_list[i][4] for i in range(n_chunks)], axis=1)
         else:
             # Track the big chunk of frames and add results to tracking data arrays
             (tail_coords_small_array, spline_coords_small_array,
@@ -220,11 +223,11 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
                 progress_signal.emit(video_number, percent_complete)
 
             # Add tracking results to tracking data arrays
-            tail_coords_array[:, frame_nums, :, :]   = tail_coords_small_array
-            spline_coords_array[:, frame_nums, :, :] = spline_coords_small_array
-            heading_angle_array[:, frame_nums, :]    = heading_angle_small_array
-            body_position_array[:, frame_nums, :]    = body_position_small_array
-            eye_coords_array[:, frame_nums, :, :]    = eye_coords_small_array
+            tail_coords_array[:, frame_nums, :, :, :]   = tail_coords_small_array
+            spline_coords_array[:, frame_nums, :, :, :] = spline_coords_small_array
+            heading_angle_array[:, frame_nums, :, :]    = heading_angle_small_array
+            body_position_array[:, frame_nums, :, :]    = body_position_small_array
+            eye_coords_array[:, frame_nums, :, :, :]    = eye_coords_small_array
 
         # Convert tracking coordinates from cropped frame space to original frame space
         for k in range(n_crops):
@@ -242,11 +245,11 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
                 frame_num = frame_nums[k]
 
                 # Create a dictionary with the tracking results for this frame
-                results = {'tail_coords'  : tail_coords_array[:, frame_num, :, :],
-                           'spline_coords': spline_coords_array[:, frame_num, :, :],
-                           'eye_coords'   : eye_coords_array[:, frame_num, :, :],
-                           'heading_angle': heading_angle_array[:, frame_num, :],
-                           'body_position': body_position_array[:, frame_num, :]}
+                results = {'tail_coords'  : tail_coords_array[:, frame_num, :, :, :],
+                           'spline_coords': spline_coords_array[:, frame_num, :, :, :],
+                           'eye_coords'   : eye_coords_array[:, frame_num, :, :, :],
+                           'heading_angle': heading_angle_array[:, frame_num, :, :],
+                           'body_position': body_position_array[:, frame_num, :, :]}
 
                 # Overlay the tracking data onto the frame
                 tracked_frame = add_tracking_to_frame(frame, results, n_crops=n_crops)
@@ -311,11 +314,11 @@ def track_frames(params, background, frames):
     n_crops  = len(crop_params)
 
     # Initialize tracking data arrays
-    tail_coords_array    = np.zeros((n_crops, n_frames, 2, n_tail_points)) + np.nan
-    spline_coords_array  = np.zeros((n_crops, n_frames, 2, n_tail_points)) + np.nan
-    heading_angle_array  = np.zeros((n_crops, n_frames, 1)) + np.nan
-    body_position_array  = np.zeros((n_crops, n_frames, 2)) + np.nan
-    eye_coords_array     = np.zeros((n_crops, n_frames, 2, 2)) + np.nan
+    tail_coords_array    = np.zeros((n_crops, n_frames, max_n_fish, 2, n_tail_points)) + np.nan
+    spline_coords_array  = np.zeros((n_crops, n_frames, max_n_fish, 2, n_tail_points)) + np.nan
+    heading_angle_array  = np.zeros((n_crops, n_frames, max_n_fish, 1)) + np.nan
+    body_position_array  = np.zeros((n_crops, n_frames, max_n_fish, 2)) + np.nan
+    eye_coords_array     = np.zeros((n_crops, n_frames, max_n_fish, 2, 2)) + np.nan
 
     # Set booleans for head & tail tracking
     track_head = tracking_type == "freeswimming"
@@ -357,60 +360,98 @@ def track_frames(params, background, frames):
 
             # Add coordinates to tracking data arrays
             if results['tail_coords'] != None:
-                tail_coords_array[k, frame_number, :, :results['tail_coords'].shape[1]]     = results['tail_coords']
-                spline_coords_array[k, frame_number, :, :results['spline_coords'].shape[1]] = results['spline_coords']
-            heading_angle_array[k, frame_number, :] = results['heading_angle']
-            body_position_array[k, frame_number, :] = results['body_position']
-            eye_coords_array[k, frame_number, :, :] = results['eye_coords']
+                tail_coords_array[k, frame_number, max_n_fish, :, :results['tail_coords'].shape[1]]     = results['tail_coords']
+                spline_coords_array[k, frame_number, max_n_fish, :, :results['spline_coords'].shape[1]] = results['spline_coords']
+            heading_angle_array[k, frame_number, max_n_fish, :] = results['heading_angle']
+            body_position_array[k, frame_number, max_n_fish, :] = results['body_position']
+            eye_coords_array[k, frame_number, max_n_fish, :, :] = results['eye_coords']
 
     return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array
 
-def track_cropped_frame(frame, params, crop_params):
+def track_cropped_frame(frame, params, crop_params, prev_body_positions=None, prev_eye_coords=None):
     tracking_type  = params['type']
     scale_factor   = params['scale_factor']
     interpolation  = utilities.translate_interpolation(params['interpolation'])
 
     if tracking_type == "freeswimming":
-        body_crop       = params['body_crop']
-        track_tail_bool = params['track_tail']
-        track_eyes_bool = params['track_eyes']
+        body_crop           = params['body_crop']
+        track_tail_bool     = params['track_tail']
+        track_eyes_bool     = params['track_eyes']
+        track_multiple_fish = params['track_multiple_fish']
 
-        body_crop_frame = None
-        body_crop_coords = None
+        if track_multiple_fish:
+            body_crop_frames = None
+            body_crop_coords = None
 
-        crop_around_body = (track_eyes_bool or track_tail_bool) and body_crop != None
+            crop_around_bodies = (track_eyes_bool or track_tail_bool) and body_crop != None
 
-        # track body
-        if crop_around_body:
-            heading_angle, body_position, rel_body_position, body_crop_coords, body_crop_frame = track_body(frame, params, crop_params, crop_around_body=True)
-        else:
-            heading_angle, body_position = track_body(frame, params, crop_params, crop_around_body=False)
-
-        # track eyes
-        if track_eyes_bool:
-            if crop_around_body and body_crop_coords != None and body_crop_frame != None:
-                eye_coords = track_eyes(body_crop_frame, params, crop_params)
-
-                if eye_coords != None:
-                    heading_angle = get_heading_from_eye_coords(eye_coords, heading_angle)
-
-                    # convert eye coords to be relative to initial frame
-                    eye_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
+            # track bodies
+            if crop_around_bodies:
+                heading_angles, body_positions, rel_body_positions, body_crop_coords, body_crop_frames = track_multiple_bodies(frame, params, crop_params, prev_body_positions=prev_body_positions, crop_around_bodies=True)
             else:
-                eye_coords = track_eyes(frame, params, crop_params)
+                heading_angles, body_positions = track_multiple_bodies(frame, params, crop_params, crop_around_bodies=False)
 
-        if track_tail_bool and body_position != None:
-            # track tail
-            if crop_around_body and body_crop_coords != None and body_crop_frame != None:
-                tail_coords, spline_coords = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position)
-                if tail_coords != None:
-                    # convert eye coords to be relative to initial frame
-                    tail_coords   += body_crop_coords[:, 0][:, np.newaxis].astype(int)
-                    spline_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
+            # track eyes
+            if track_eyes_bool:
+                eye_coords = np.zeros((max_n_fish, 2, 2))
+                if crop_around_bodies:
+                    for f in range(max_n_fish):
+                        if body_crop_coords[f] != None and body_crop_frames[f] != None:
+                            eye_coords[f] = track_eyes(body_crop_frames[f], params, crop_params, body_position=body_positions[f])
+                else:
+                    eye_coords_result = track_multiple_eyes(frame, params, crop_params)
+
+                    eye_coords[:eye_coords_result.shape[0]] = eye_coords_result
+
+            if track_tail_bool and body_positions != None:
+                # track tail
+                if crop_around_body and body_crop_coords != None and body_crop_frame != None:
+                    tail_coords, spline_coords = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position)
+                    if tail_coords != None:
+                        # convert eye coords to be relative to initial frame
+                        tail_coords   += body_crop_coords[:, 0][:, np.newaxis].astype(int)
+                        spline_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
+                else:
+                    tail_coords, spline_coords = track_freeswimming_tail(frame, params, crop_params, body_position)
             else:
-                tail_coords, spline_coords = track_freeswimming_tail(frame, params, crop_params, body_position)
+                tail_coords, spline_coords = [None]*2
         else:
-            tail_coords, spline_coords = [None]*2
+            body_crop_frame  = None
+            body_crop_coords = None
+
+            crop_around_body = (track_eyes_bool or track_tail_bool) and body_crop != None
+
+            # track body
+            if crop_around_body:
+                heading_angle, body_position, rel_body_position, body_crop_coords, body_crop_frame = track_body(frame, params, crop_params, crop_around_body=True)
+            else:
+                heading_angle, body_position = track_body(frame, params, crop_params, crop_around_body=False)
+
+            # track eyes
+            if track_eyes_bool:
+                if crop_around_body and body_crop_coords != None and body_crop_frame != None:
+                    eye_coords = track_eyes(body_crop_frame, params, crop_params)
+
+                    if eye_coords != None:
+                        heading_angle = get_heading_from_eye_coords(eye_coords, heading_angle)
+
+                        # convert eye coords to be relative to initial frame
+                        eye_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
+                else:
+                    eye_coords = track_eyes(frame, params, crop_params)
+
+            if track_tail_bool and body_position != None:
+                # track tail
+                if crop_around_body and body_crop_coords != None and body_crop_frame != None:
+                    tail_coords, spline_coords = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position)
+                    if tail_coords != None:
+                        # convert eye coords to be relative to initial frame
+                        tail_coords   += body_crop_coords[:, 0][:, np.newaxis].astype(int)
+                        spline_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
+                else:
+                    tail_coords, spline_coords = track_freeswimming_tail(frame, params, crop_params, body_position)
+            else:
+                tail_coords, spline_coords = [None]*2
     elif tracking_type == "headfixed":
         # set head coords to None since we aren't interested in them
         heading_angle, body_position, eye_coords = [None]*3

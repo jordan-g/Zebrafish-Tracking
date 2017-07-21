@@ -787,6 +787,13 @@ class FreeswimmingParamWindow(ParamWindow):
         ParamWindow.__init__(self, controller)
 
     def create_param_controls(self, params):
+        '''
+        Create all freeswimming tracking parameter controls.
+
+        Arguments:
+            params (dict) : Dictionary containing the parameters with which to initialize the values of the controls.
+        '''
+
         # create layout for checkboxes
         self.checkbox_layout = QGridLayout()
         self.checkbox_layout.setColumnStretch(0, 1)
@@ -803,12 +810,14 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_checkbox('show_tail_skeleton', "Show tail skeleton", self.controller.toggle_threshold_image, params['gui_params']['show_tail_skeleton'], self.checkbox_layout, 4, 0)
         self.add_checkbox('track_tail', "Track tail", self.controller.toggle_tail_tracking, params['track_tail'], self.checkbox_layout, 5, 0)
         self.add_checkbox('track_eyes', "Track eyes", self.controller.toggle_eye_tracking, params['track_eyes'], self.checkbox_layout, 6, 0)
+        self.add_checkbox('adjust_thresholds', 'Adjust thresholds', self.controller.toggle_adjust_thresholds, params['adjust_thresholds'], self.checkbox_layout, 7, 0)
         self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.checkbox_layout, 0, 1)
-        self.add_checkbox('adjust_thresholds', 'Adjust thresholds', self.controller.toggle_adjust_thresholds, params['adjust_thresholds'], self.checkbox_layout, 1, 1)
-        self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 2, 1)
-        self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 3, 1)
-        self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 4, 1)
-        self.add_checkbox('zoom_body_crop', 'Zoom around body crop', self.controller.toggle_zoom_body_crop, params['gui_params']['zoom_body_crop'], self.checkbox_layout, 5, 1)
+        self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 1, 1)
+        self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 2, 1)
+        self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 3, 1)
+        self.add_checkbox('zoom_body_crop', 'Zoom around body crop', self.controller.toggle_zoom_body_crop, params['gui_params']['zoom_body_crop'], self.checkbox_layout, 4, 1)
+        self.add_checkbox('precise_tail_tracking', 'More precise tail tracking', self.controller.toggle_precise_tail_tracking, params['precise_tail_tracking'], self.checkbox_layout, 5, 1)
+        self.add_checkbox('track_multiple_fish', 'Track multiple fish', self.controller.toggle_track_multiple_fish, params['track_multiple_fish'], self.checkbox_layout, 6, 1)
 
         # add sliders - (key, description, start, end, callback function, initial value, parent layout)
         self.add_param_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.params_layout, slider_scale_factor=10.0)
@@ -876,6 +885,13 @@ class HeadfixedParamWindow(ParamWindow):
         ParamWindow.__init__(self, controller)
 
     def create_param_controls(self, params):
+        '''
+        Create all headfixed tracking parameter controls.
+
+        Arguments:
+            params (dict) : Dictionary containing the parameters with which to initialize the values of the controls.
+        '''
+
         # create layout for checkboxes
         self.checkbox_layout = QGridLayout()
         self.checkbox_layout.setColumnStretch(0, 1)
@@ -905,7 +921,13 @@ class HeadfixedParamWindow(ParamWindow):
         self.add_param_combobox('interpolation', 'Interpolation:', interpolation_options, params['interpolation'], self.params_layout)
 
     def update_gui_from_params(self, params):
-        # update param controls with current parameters
+        '''
+        Update all parameter controls to reflect the provided parameters.
+
+        Arguments:
+            params (dict) : Dictionary of tracking parameters.
+        '''
+        
         if self.param_controls != None:
             self.param_controls['invert'].setChecked(params['invert'])
             self.param_controls['save_video'].setChecked(params['save_video'])
