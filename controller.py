@@ -414,7 +414,10 @@ class Controller():
 
         if params_path not in ("", None):
             # load params from saved file
-            params_file = np.load(params_path)
+            try:
+                params_file = np.load(params_path)
+            except:
+                return
             saved_params = params_file['params'][()]
 
             # set params to saved params
