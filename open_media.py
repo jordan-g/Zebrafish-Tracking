@@ -20,7 +20,7 @@ def open_image(image_path):
     return frame
 
 def open_folder(folder_path, frame_nums=None, frame_filenames=None, return_frames=True, calc_background=False, progress_signal=None):
-    if frame_filenames == None:
+    if frame_filenames is None:
         # get filenames of all frame images in the folder
         frame_filenames = get_frame_filenames_from_folder(folder_path)
 
@@ -29,7 +29,7 @@ def open_folder(folder_path, frame_nums=None, frame_filenames=None, return_frame
             return None
 
     # no frame numbers given; use all frames
-    if frame_nums == None:
+    if frame_nums is None:
         frame_nums = range(len(frame_filenames))
 
     n_frames = len(frame_nums) # number of frames to use for the background
@@ -41,7 +41,7 @@ def open_folder(folder_path, frame_nums=None, frame_filenames=None, return_frame
         frame = open_image(os.path.join(folder_path, frame_filenames[frame_num]))
 
         # stop if the frame couldn't be opened
-        if frame == None:
+        if frame is None:
             return None
 
         if i == 0:
@@ -79,7 +79,7 @@ def open_folder(folder_path, frame_nums=None, frame_filenames=None, return_frame
         return results
 
 def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False, greyscale=True):
-    if capture == None:
+    if capture is None:
         new_capture = True
 
         # open the video
@@ -95,7 +95,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     fps, n_frames_total = get_video_info(video_path)
 
     # no frame numbers given; use all frames
-    if frame_nums == None:
+    if frame_nums is None:
         frame_nums = range(n_frames_total)
 
     n_frames = len(frame_nums) # number of frames to use for the background
@@ -127,8 +127,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             else:
                 _, frame = capture.read()
 
-            if frame != None:
-
+            if frame is not None:
                 if invert:
                     frame = 255 - frame
 
@@ -172,7 +171,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     # if calc_background and return_frames:
     #     background = np.median(frames, axis=0)
 
-    if return_frames and frames == None:
+    if return_frames and frames is None:
         print("Error: Could not get any frames from the video.")
         return None
 
