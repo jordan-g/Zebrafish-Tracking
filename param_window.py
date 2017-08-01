@@ -564,7 +564,7 @@ class ParamWindow(QMainWindow):
             else:
                 index = None
 
-            if index != None:
+            if index is not None:
                 combobox = self.param_controls["heading_direction"]
 
                 combobox.blockSignals(True)
@@ -577,7 +577,7 @@ class ParamWindow(QMainWindow):
             checkbox = self.param_controls["show_{}".format(label.replace("_slider", ""))]
             checkbox.setChecked(False)
 
-            if self.prev_checked_threshold_checkbox != None:
+            if self.prev_checked_threshold_checkbox is not None:
                 self.prev_checked_threshold_checkbox.setChecked(True)
             self.controller.toggle_threshold_image(self.prev_checked_threshold_checkbox)
         elif label == "heading_angle_slider":
@@ -591,7 +591,7 @@ class ParamWindow(QMainWindow):
 
         slider = self.crop_param_controls[crop_index][slider_label]
 
-        if value == None:
+        if value is None:
             value = slider.minimum()
 
         slider.blockSignals(True)
@@ -613,7 +613,7 @@ class ParamWindow(QMainWindow):
         parent.addRow(description, param_box)
 
         # set default text
-        if default_value != None:
+        if default_value is not None:
             param_box.setText(str(int(default_value)))
 
         # add to list of crop or global controls
@@ -644,7 +644,7 @@ class ParamWindow(QMainWindow):
 
         slider = self.param_controls[slider_label]
 
-        if value == None:
+        if value is None:
             value = slider.minimum()
 
         slider.blockSignals(True)
@@ -665,7 +665,7 @@ class ParamWindow(QMainWindow):
 
         slider = self.crop_param_controls[crop_index][slider_label]
 
-        if value == None:
+        if value is None:
             value = slider.minimum()
 
         slider.blockSignals(True)
@@ -766,7 +766,7 @@ class ParamWindow(QMainWindow):
         if percent < 100:
             self.tracking_progress_text = "Tracking <b>video {}/{}</b>... {:.1f}%.".format(curr_video_num+1, n_videos, percent)
         else:
-            if total_tracking_time != None:
+            if total_tracking_time is not None:
                 self.tracking_progress_text = "Tracking completed in <b>{:.3f}s</b>.".format(total_tracking_time)
             else:
                 self.tracking_progress_text = ""
@@ -827,7 +827,7 @@ class FreeswimmingParamWindow(ParamWindow):
 
     def update_gui_from_params(self, params):
         # update param controls with current parameters
-        if self.param_controls != None:
+        if self.param_controls is not None:
             self.param_controls['invert'].setChecked(params['invert'])
             self.param_controls['show_body_threshold'].setChecked(params['gui_params']['show_body_threshold'])
             self.param_controls['show_eyes_threshold'].setChecked(params['gui_params']['show_eyes_threshold'])
@@ -906,7 +906,7 @@ class HeadfixedParamWindow(ParamWindow):
 
     def update_gui_from_params(self, params):
         # update param controls with current parameters
-        if self.param_controls != None:
+        if self.param_controls is not None:
             self.param_controls['invert'].setChecked(params['invert'])
             self.param_controls['save_video'].setChecked(params['save_video'])
             self.param_controls['subtract_background'].setChecked(params['subtract_background'])

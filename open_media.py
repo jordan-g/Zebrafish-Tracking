@@ -22,7 +22,7 @@ def open_image(image_path):
 
 def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False, greyscale=True):
     # create a capture object if it's not provided
-    if capture == None:
+    if capture is None:
         new_capture = True
 
         try:
@@ -37,7 +37,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     fps, n_frames_total = get_video_info(video_path)
 
     # no frame numbers given; read all frames
-    if frame_nums == None:
+    if frame_nums is None:
         frame_nums = range(n_frames_total)
 
     n_frames = len(frame_nums)
@@ -71,7 +71,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             else:
                 _, frame = capture.read()
 
-            if frame != None:
+            if frame is not None:
                 # optionally invert the frame
                 if invert:
                     frame = 255 - frame
@@ -113,7 +113,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
 
     print("{} frame{} opened.".format(n_frames, "s"*(n_frames > 1)))
 
-    if return_frames and frames == None:
+    if return_frames and frames is None:
         print("Error: Could not get any frames from the video.")
         return None
 

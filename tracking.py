@@ -126,7 +126,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         # Set tracking video fps to be the same as the original video
         tracking_video_fps = fps
 
-    if subtract_background and background == None:
+    if subtract_background and background is None:
         # Calculate the background
         background = open_video(video_path, return_frames=False, calc_background=True, capture=capture)
 
@@ -346,17 +346,17 @@ def track_frames(params, background, frames):
             results = track_cropped_frame(scaled_cropped_frame, params, crop_params[k])
 
             # Re-scale coordinates
-            if results['tail_coords'] != None:
+            if results['tail_coords'] is not None:
                 results['tail_coords'] /= scale_factor
-            if results['spline_coords'] != None:
+            if results['spline_coords'] is not None:
                 results['spline_coords'] /= scale_factor
-            if results['body_position'] != None:
+            if results['body_position'] is not None:
                 results['body_position'] /= scale_factor
-            if results['eye_coords'] != None:
+            if results['eye_coords'] is not None:
                 results['eye_coords'] /= scale_factor
 
             # Add coordinates to tracking data arrays
-            if results['tail_coords'] != None:
+            if results['tail_coords'] is not None:
                 tail_coords_array[k, frame_number, :, :results['tail_coords'].shape[1]]     = results['tail_coords']
                 spline_coords_array[k, frame_number, :, :results['spline_coords'].shape[1]] = results['spline_coords']
             heading_angle_array[k, frame_number, :] = results['heading_angle']
@@ -378,7 +378,7 @@ def track_cropped_frame(frame, params, crop_params):
         body_crop_frame = None
         body_crop_coords = None
 
-        crop_around_body = (track_eyes_bool or track_tail_bool) and body_crop != None
+        crop_around_body = (track_eyes_bool or track_tail_bool) and body_crop is not None
 
         # track body
         if crop_around_body:
@@ -388,10 +388,10 @@ def track_cropped_frame(frame, params, crop_params):
 
         # track eyes
         if track_eyes_bool:
-            if crop_around_body and body_crop_coords != None and body_crop_frame != None:
+            if crop_around_body and body_crop_coords is not None and body_crop_frame is not None:
                 eye_coords = track_eyes(body_crop_frame, params, crop_params)
 
-                if eye_coords != None:
+                if eye_coords is not None:
                     heading_angle = get_heading_from_eye_coords(eye_coords, heading_angle)
 
                     # convert eye coords to be relative to initial frame
@@ -399,11 +399,11 @@ def track_cropped_frame(frame, params, crop_params):
             else:
                 eye_coords = track_eyes(frame, params, crop_params)
 
-        if track_tail_bool and body_position != None:
+        if track_tail_bool and body_position is not None:
             # track tail
-            if crop_around_body and body_crop_coords != None and body_crop_frame != None:
+            if crop_around_body and body_crop_coords is not None and body_crop_frame is not None:
                 tail_coords, spline_coords = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position)
-                if tail_coords != None:
+                if tail_coords is not None:
                     # convert eye coords to be relative to initial frame
                     tail_coords   += body_crop_coords[:, 0][:, np.newaxis].astype(int)
                     spline_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
@@ -448,7 +448,7 @@ def track_body(frame, params, crop_params, crop_around_body=True):
         # crop the frame around the body
         body_crop_coords, body_crop_frame = crop_frame_around_body(frame, body_position, body_crop)
 
-        if body_position == None:
+        if body_position is None:
             rel_body_position = None
         else:
             # get body center position relative to the body crop
@@ -462,7 +462,7 @@ def get_heading_from_eye_coords(eye_coords, body_heading_angle):
     # get heading angle based on eye coordinates
     angle = 180.0 + np.arctan((eye_coords[0, 1] - eye_coords[0, 0])/(eye_coords[1, 1] - eye_coords[1, 0]))*180.0/np.pi
 
-    if body_heading_angle != None:
+    if body_heading_angle is not None:
         # make it aligned with the body threshold heading angle
         if np.abs(angle - body_heading_angle) > 90:
             angle -= 180
@@ -486,14 +486,14 @@ def track_eyes(frame, params, crop_params):
     # get eye coordinates
     eye_coords = get_eye_coords(eyes_threshold_frame)
 
-    if eye_coords == None and adjust_thresholds: # eyes not found; adjust the threshold & try again
+    if eye_coords is None and adjust_thresholds: # eyes not found; adjust the threshold & try again
         # initialize counter
         i = 0
         
         # create a list of head thresholds to go through
         eyes_thresholds = list(range(eyes_threshold-1, eyes_threshold-5, -1)) + list(range(eyes_threshold+1, eyes_threshold+5))
         
-        while eye_coords == None and i < 8:
+        while eye_coords is None and i < 8:
             # create a thresholded frame using new threshold
             eyes_threshold_frame = get_threshold_frame(frame, eyes_thresholds[i])
 
@@ -509,7 +509,7 @@ def get_eye_coords(eyes_threshold_image, min_intereye_dist=3, max_intereye_dist=
     # get eye centroids
     centroid_coords = get_centroids(eyes_threshold_image)
 
-    if centroid_coords == None:
+    if centroid_coords is None:
         # no centroids found; end here.
         return None
 
@@ -624,14 +624,14 @@ def track_freeswimming_tail(frame, params, crop_params, body_position):
                                                               min_tail_body_dist, max_tail_body_dist,
                                                               n_tail_points)
 
-    if adjust_thresholds and tail_coords == None:
+    if adjust_thresholds and tail_coords is None:
         # initialize counter
         i = 0
         
         # create a list of tail thresholds to go through
         tail_thresholds = list(range(tail_threshold-1, tail_threshold-5, -1)) + list(range(tail_threshold+1, tail_threshold+5))
         
-        while tail_coords == None and i < 8:
+        while tail_coords is None and i < 8:
             #  create a thresholded frame using new threshold
             tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i])
 
@@ -702,7 +702,7 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
     else:
         tail_coords = None
 
-    if tail_coords == None:
+    if tail_coords is None:
         # couldn't get tail coordinates; end here.
         return [None]*2
 
@@ -713,7 +713,7 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
     y_size = tail_threshold_frame.shape[0]
     x_size = tail_threshold_frame.shape[1]
 
-    if tail_coords != None:
+    if tail_coords is not None:
         # convert tail coordinates to floats
         tail_coords = tail_coords.astype(float)
 
@@ -797,7 +797,7 @@ def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body
 
         # look for an endpoint near the body
         if body_distance < max_tail_body_dist:
-            if (closest_body_distance == None) or (closest_body_distance != None and body_distance < closest_body_distance):
+            if (closest_body_distance is None) or (closest_body_distance is not None and body_distance < closest_body_distance):
                 # either no point has been found yet or this is a closer point than the previous best
 
                 # get nonzero elements in 3x3 neigbourhood around the point
@@ -810,7 +810,7 @@ def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body
                     tail_start_coords = np.array([r, c])
                     closest_body_distance = body_distance
 
-    if tail_start_coords == None:
+    if tail_start_coords is None:
         # still could not find start of the tail; end here.
         return None
 
@@ -844,7 +844,7 @@ def walk_along_tail(tail_start_coords, max_r, skeleton_matrix):
         # find coordinates of the next point
         next_coords = find_next_tail_coords_in_neighborhood(found_coords, r, skeleton_matrix)
 
-        if next_coords != None:
+        if next_coords is not None:
             # add coords to found coords list
             found_coords.append(tuple(next_coords))
         else:
@@ -880,7 +880,7 @@ def find_next_tail_coords_in_neighborhood(found_coords, r, skeleton_matrix):
     # find the next point(s) we can traverse
     unique_coords = find_unique_coords(nonzeros, found_coords)
 
-    if unique_coords == None or len(unique_coords) == 0:
+    if unique_coords is None or len(unique_coords) == 0:
         # all of the nonzero points have been traversed already; end here
         return None
 
@@ -912,7 +912,7 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
     global fitted_tail, tail_funcs, tail_brightness, background_brightness, tail_length
     
     # check whether we are processing the first frame
-    first_frame = tail_funcs == None
+    first_frame = tail_funcs is None
 
     # convert tail direction to a vector
     tail_directions = { "Down": [0,-1], "Up": [0,1], "Right": [-1,0], "Left": [1,0] }
@@ -928,7 +928,7 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
     test, slices                = [], []
     
     # pick an initial guess for the direction vector
-    if heading_angle != None:
+    if heading_angle is not None:
         rad_heading_angle = heading_angle*np.pi/180.0
         guess_vector = np.array([-np.sin(rad_heading_angle), -np.cos(rad_heading_angle)])
     else:
@@ -1171,7 +1171,7 @@ def clear_headfixed_tracking():
 # --- Helper functions --- #
 
 def crop_frame_around_body(frame, body_position, body_crop, scale_factor=1):
-    if body_crop == None or body_position == None:
+    if body_crop is None or body_position is None:
         body_crop_coords = np.array([[0, frame.shape[0]], [0, frame.shape[1]]])
     else:
         body_crop_coords = np.array([[np.maximum(0, int((body_position[0]-body_crop[0])/scale_factor)), np.minimum(frame.shape[0], int((body_position[0]+body_crop[0])/scale_factor))],
@@ -1207,34 +1207,34 @@ def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
 
     if cropped == True:
         # add extra dimension for # of crops
-        if tail_coords != None:
+        if tail_coords is not None:
             tail_coords   = tail_coords[np.newaxis, :, :]
-        if spline_coords != None:
+        if spline_coords is not None:
             spline_coords = spline_coords[np.newaxis, :, :]
-        if heading_angle != None:
+        if heading_angle is not None:
             heading_angle = np.array([[heading_angle]])
-        if body_position != None:
+        if body_position is not None:
             body_position = body_position[np.newaxis, :]
-        if eye_coords != None:
+        if eye_coords is not None:
             eye_coords    = eye_coords[np.newaxis, :, :]
 
     for k in range(n_crops):
-        if heading_angle != None and not np.isnan(heading_angle[k, 0]):
-                if body_position != None and not np.isnan(body_position[k, 0]) and not np.isnan(body_position[k, 1]):
+        if heading_angle is not None and not np.isnan(heading_angle[k, 0]):
+                if body_position is not None and not np.isnan(body_position[k, 0]) and not np.isnan(body_position[k, 1]):
                     cv2.line(tracked_frame, (int(round(body_position[k, 1] - 20*np.sin(heading_angle[k, 0]*np.pi/180.0))), int(round(body_position[k, 0] + 20*np.cos(heading_angle[k, 0]*np.pi/180.0)))),
                                             (int(round(body_position[k, 1] + 20*np.sin(heading_angle[k, 0]*np.pi/180.0))), int(round(body_position[k, 0] - 20*np.cos(heading_angle[k, 0]*np.pi/180.0)))), (49, 191, 114), 1)
 
         # add body center point
-        if body_position != None and not np.isnan(body_position[k, 0]) and not np.isnan(body_position[k, 1]):
+        if body_position is not None and not np.isnan(body_position[k, 0]) and not np.isnan(body_position[k, 1]):
                 cv2.circle(tracked_frame, (int(round(body_position[k, 1])), int(round(body_position[k, 0]))), 1, (255, 128, 50), -1)
 
         # add eye points
-        if eye_coords != None and eye_coords.shape[-1] == 2:
+        if eye_coords is not None and eye_coords.shape[-1] == 2:
             for i in range(2):
                 if not np.isnan(eye_coords[k, 0, i]) and not np.isnan(eye_coords[k, 1, i]):
                     cv2.circle(tracked_frame, (int(round(eye_coords[k, 1, i])), int(round(eye_coords[k, 0, i]))), 1, (255, 0, 0), -1)
 
-        if spline_coords != None and spline_coords[k, 0, 0] != np.nan:
+        if spline_coords is not None and spline_coords[k, 0, 0] != np.nan:
             # add spline
             spline_length = spline_coords.shape[2]
             for i in range(spline_length-1):
@@ -1243,7 +1243,7 @@ def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
                     cv2.line(tracked_frame, (int(round(spline_coords[k, 1, i])), int(round(spline_coords[k, 0, i]))),
                                             (int(round(spline_coords[k, 1, i+1])), int(round(spline_coords[k, 0, i+1]))), (0, 0, 255), 1)
 
-        if tail_coords != None and tail_coords[k, 0, 0] != np.nan:
+        if tail_coords is not None and tail_coords[k, 0, 0] != np.nan:
             # add tail points
             tail_length = tail_coords.shape[2]
             for i in range(tail_length):
@@ -1254,7 +1254,7 @@ def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
     return tracked_frame
 
 def crop_frame(frame, offset, crop):
-    if offset != None and crop != None:
+    if offset is not None and crop is not None:
         return frame[offset[0]:offset[0] + crop[0], offset[1]:offset[1] + crop[1]]
     else:
         return frame

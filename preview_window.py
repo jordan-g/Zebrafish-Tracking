@@ -88,7 +88,7 @@ class PreviewQLabel(QLabel):
             self.setFixedSize(pix.size())
 
     def update_pixmap(self, image):
-        if image == None:
+        if image is None:
             self.scale_factor   = None
             self.pix            = None  # image label's pixmap
             self.pix_size       = None  # size of image label's pixmap
@@ -233,7 +233,7 @@ class PreviewWindow(QMainWindow):
         self.instructions_label.setText("Click & drag to select crop area.")
 
     def plot_image(self, image, params, crop_params, tracking_results, new_load=False, new_frame=False, show_slider=True, crop_around_body=False):
-        if image == None:
+        if image is None:
             self.update_image_label(None)
             self.image_slider.hide()
             self.image_label.hide()
@@ -271,14 +271,14 @@ class PreviewWindow(QMainWindow):
                 # print(error)
                 tail_start_coords = None
 
-            if tracking_results != None:
+            if tracking_results is not None:
                 body_position = tracking_results['body_position']
                 heading_angle = tracking_results['heading_angle']
 
                 # add tracking to image
                 image = tracking.add_tracking_to_frame(image, tracking_results, cropped=True)
 
-                if body_crop != None and body_position != None:
+                if body_crop is not None and body_position is not None:
                     if not crop_around_body:
                         # copy image
                         overlay = image.copy()
@@ -301,7 +301,7 @@ class PreviewWindow(QMainWindow):
             self.update_image_label(image)
 
     def draw_crop_selection(self, start_crop_coords, end_crop_coords):
-        if self.selecting_crop and self.image != None:
+        if self.selecting_crop and self.image is not None:
             # convert image to rgb
             if len(self.image.shape) < 3:
                 image = np.repeat(self.image[:, :, np.newaxis], 3, axis=2)
@@ -328,7 +328,7 @@ class PreviewWindow(QMainWindow):
             # clear instructions text
             self.instructions_label.setText("")
 
-        if self.image != None:
+        if self.image is not None:
             image = self.image.copy()
 
             cv2.circle(image, (int(round(rel_tail_start_coords[1])), int(round(rel_tail_start_coords[0]))), 1, (180, 180, 50), -1)
