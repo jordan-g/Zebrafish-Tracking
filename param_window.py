@@ -809,6 +809,7 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 3, 1)
         self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 4, 1)
         self.add_checkbox('zoom_body_crop', 'Zoom around body crop', self.controller.toggle_zoom_body_crop, params['gui_params']['zoom_body_crop'], self.checkbox_layout, 5, 1)
+        self.add_checkbox('alt_tail_tracking', 'Alternate tail tracking', self.controller.toggle_alt_tail_tracking, params['alt_tail_tracking'], self.checkbox_layout, 6, 1)
 
         # add sliders - (key, description, start, end, callback function, initial value, parent layout)
         self.add_param_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.params_layout, slider_scale_factor=10.0)
@@ -841,6 +842,7 @@ class FreeswimmingParamWindow(ParamWindow):
             self.param_controls['use_multiprocessing'].setChecked(params['use_multiprocessing'])
             self.param_controls['auto_track'].setChecked(params['gui_params']['auto_track'])
             self.param_controls['zoom_body_crop'].setChecked(params['gui_params']['zoom_body_crop'])
+            self.param_controls['alt_tail_tracking'].setChecked(params['alt_tail_tracking'])
 
             self.set_slider_value('scale_factor', params['scale_factor'], slider_scale_factor=10)
             self.set_slider_value('body_crop_height', params['body_crop'][0], int_values=True)

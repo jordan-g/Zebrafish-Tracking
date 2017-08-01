@@ -68,6 +68,7 @@ default_freeswimming_params = {'scale_factor': 1.0,                          # f
                                'video_paths': [],                            # paths to videos that will be tracked
                                'backgrounds': [],                            # backgrounds calculated for background subtraction
                                'use_multiprocessing': True,                  # whether to use multiprocessing
+                               'alt_tail_tracking': False,                   # whether to use alternate slower, but more accurate tail tracking
                                'gui_params': { 'show_body_threshold': False, # show body threshold in preview window
                                                'show_eyes_threshold': False, # show eye threshold in preview window
                                                'show_tail_threshold': False, # show tail threshold in preview window
@@ -628,6 +629,9 @@ class Controller():
         self.params['gui_params']['zoom_body_crop'] = checkbox.isChecked()
 
         self.update_preview()
+
+    def toggle_alt_tail_tracking(self, checkbox):
+        self.params['alt_tail_tracking'] = checkbox.isChecked()
 
     def track_frame(self):
         if self.current_frame is not None:
