@@ -458,6 +458,36 @@ def track_body(frame, params, crop_params, crop_around_body=True):
 
     return heading_angle, body_position
 
+def get_heading_angle_and_position(body_threshold_frame):
+    # find contours in the thresholded frame
+    try:
+        image, contours, _ = cv2.findContours(body_threshold_frame, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    except ValueError:
+        contours, _ = cv2.findContours(body_threshold_frame, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+
+    try:
+        if len(contours) > 0:
+            # choose the contour with the largest area as the body
+            body_contour = max(contours, key=cv2.contourArea)
+            M = cv2.moments(body_contour)
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+
+            # fit an ellipse
+            (x, y), (MA, ma), angle = cv2.fitEllipse(body_contour)
+
+            # get center position
+            position = np.array([y, x])
+
+            if position[0] < 0 or position[1] < 0:
+                return [None]*2
+        else:
+            return [None]*2
+
+        return angle, position
+    except:
+        return [None]*2
+
 def get_heading_from_eye_coords(eye_coords, body_heading_angle):
     # get heading angle based on eye coordinates
     angle = 180.0 + np.arctan((eye_coords[0, 1] - eye_coords[0, 0])/(eye_coords[1, 1] - eye_coords[1, 0]))*180.0/np.pi
@@ -470,9 +500,9 @@ def get_heading_from_eye_coords(eye_coords, body_heading_angle):
         # if it's still not within 90º, just set it to the body threshold heading angle
         if np.abs(angle - body_heading_angle) > 90:
             angle = heading_angle
-
-        # set the angle to the average of this angle & the body threshold heading angle
-        angle = (body_heading_angle + angle)/2.0
+        else:
+            # set the angle to the average of this angle & the body threshold heading angle
+            angle = (body_heading_angle + angle)/2.0
 
     return angle
 
@@ -532,39 +562,6 @@ def get_eye_coords(eyes_threshold_image, min_intereye_dist=3, max_intereye_dist=
             break
 
     return eye_coords
-
-def get_heading_angle_and_position(body_threshold_frame):
-    # find contours
-    try:
-        image, contours, _ = cv2.findContours(body_threshold_frame, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-    except ValueError:
-        contours, _ = cv2.findContours(body_threshold_frame, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-
-    try:
-        if len(contours) > 0:
-            areas = [ cv2.contourArea(c) for c in contours ]
-            # sort data by areas
-            sorted_data = sorted(zip(areas, contours), key=lambda x: x[0], reverse=True)
-
-            contour = sorted_data[0][1]
-            M = cv2.moments(contour)
-            cx = int(M['m10']/M['m00'])
-            cy = int(M['m01']/M['m00'])
-
-            # fit an ellipse
-            (x, y), (MA, ma), angle = cv2.fitEllipse(contour)
-
-            # get center position
-            position = np.array([y, x])
-
-            if position[0] < 0 or position[1] < 0:
-                return [None]*2
-        else:
-            return [None]*2
-
-        return angle, position
-    except:
-        return [None]*2
 
 def get_centroids(eyes_threshold_image, prev_eye_coords=None): # todo: rewrite
     # find contours
