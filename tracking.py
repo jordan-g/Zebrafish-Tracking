@@ -31,7 +31,7 @@ except imageio.core.fetching.NeedDownloadError:
 from skimage.morphology import skeletonize
 from collections import deque
 
-from open_media import open_image, open_folder, open_video
+from open_media import open_image, open_video
 import utilities
 
 try:
