@@ -667,6 +667,16 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
         # convert tail coordinates to floats
         tail_coords = tail_coords.astype(float)
 
+    if n_tail_coords > n_tail_points:
+        r = lambda m, n: [i*n//m + n//(2*m) for i in range(m)] # generates a list of m evenly spaced numbers from 0 to n
+
+        # get evenly spaced tail indices
+        tail_nums = [0] + r(n_tail_points-2, tail_coords.shape[1]) + [tail_coords.shape[1]-1]
+
+        tail_coords = tail_coords[:, tail_nums]
+
+    n_tail_coords = tail_coords.shape[1]
+
     try:
         # make ascending spiral in 3D space
         t = np.zeros(n_tail_coords)
@@ -684,23 +694,6 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
     except:
         print("Error: Could not calculate tail spline.")
         return [None]*2
-
-    # get number of spline coordinates
-    n_spline_coords = spline_coords.shape[1]
-
-    r = lambda m, n: [i*n//m + n//(2*m) for i in range(m)] # generates a list of m evenly spaced numbers from 0 to n
-
-    if n_tail_coords > n_tail_points:
-        # get evenly spaced tail indices
-        tail_nums = [0] + r(n_tail_points-2, tail_coords.shape[1]) + [tail_coords.shape[1]-1]
-
-        tail_coords = tail_coords[:, tail_nums]
-
-    if n_spline_coords > n_tail_points:
-        # get evenly spaced spline indices
-        spline_nums = [0] + r(n_tail_points-2, spline_coords.shape[1]) + [spline_coords.shape[1]-1]
-
-        spline_coords = spline_coords[:, spline_nums]
 
     return tail_coords, spline_coords
 
