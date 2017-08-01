@@ -570,13 +570,13 @@ def get_eye_positions(eyes_threshold_image, prev_eye_coords=None): # todo: rewri
 
 def track_freeswimming_tail(frame, params, crop_params, body_position):
     adjust_thresholds  = params['adjust_thresholds']
-    scale_factor      = params['scale_factor']
+    scale_factor       = params['scale_factor']
     min_tail_body_dist = params['min_tail_body_dist']*scale_factor
     max_tail_body_dist = params['max_tail_body_dist']*scale_factor
     n_tail_points      = params['n_tail_points']
     tail_threshold     = crop_params['tail_threshold']
 
-    # create a thresholded frame
+    # threshold the frame to extract the tail
     tail_threshold_frame = get_threshold_frame(frame, tail_threshold)
 
     # get tail coordinates
@@ -609,56 +609,46 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
     # get tail skeleton matrix
     skeleton_matrix = get_tail_skeleton_frame(tail_threshold_frame)
 
-    # get coordinates of nonzero points of thresholded image
-    nonzeros = np.nonzero(skeleton_matrix)
-
     # zero out pixels that are close to body
     skeleton_matrix = cv2.circle(skeleton_matrix, (int(round(body_position[1])), int(round(body_position[0]))), int(min_tail_body_dist), (0, 0, 0), -1)
 
+    # find contours
     try:
         image, contours, _ = cv2.findContours(skeleton_matrix, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     except ValueError:
         contours, _ = cv2.findContours(skeleton_matrix, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-    
+
     if len(contours) > 0:
-        max_length_index = np.argmax([ len(contour) for contour in contours ])
+        # choose the contour with the most points as the tail contour
+        tail_contour = max(contours, key=len)
 
-        tail_coords = contours[max_length_index]
+        # create initial array of tail coordinates
+        tail_coords = np.array([ (i[0][1], i[0][0]) for i in tail_contour ]).T
 
-        tail_coords = [ (i[0][1], i[0][0]) for i in tail_coords ]
+        # pick point closest to the body as the starting point
+        startpoint_index = np.argmin((np.sum((tail_coords - body_position[:, np.newaxis])**2, axis=0)))
 
-        min_body_distance = np.sqrt((tail_coords[0][0] - body_position[0])**2 + (tail_coords[0][1] - body_position[1])**2)
-        startpoint_index = 0
-
-        for i in range(1, len(tail_coords)-1):
-            if tail_coords[i-1] == tail_coords[i+1]:
-                r = tail_coords[i][0]
-                c = tail_coords[i][1]
-                body_distance = np.sqrt((r - body_position[0])**2 + (c - body_position[1])**2)
-                if body_distance < min_body_distance:
-                    min_body_distance = body_distance
-                    startpoint_index = i
-
+        # make the starting point be at index 0
         if startpoint_index != 0:
-            items = deque(tail_coords)
-            items.rotate(-startpoint_index)
-            tail_coords = list(items)
+            tail_coords = np.roll(tail_coords, -startpoint_index, axis=1)
 
+        # find endpoint farthest away from the starting point
         min_diff = 10000
         endpoint_index = None
 
-        for i in range(1, len(tail_coords)-1):
-            if tail_coords[i-1] == tail_coords[i+1]:
+        for i in range(1, tail_coords.shape[1]-1):
+            # only consider endpoints -- the point before an endpoint
+            # is the same as the point after it
+            if tail_coords[:, i-1] is tail_coords[:, i+1]:
                 dist_1 = i
-                dist_2 = len(tail_coords)-i
+                dist_2 = tail_coords.shape[1]-i
                 diff = abs(dist_2 - dist_1)
                 if diff < min_diff:
                     min_diff = diff
                     endpoint_index = i
 
-        tail_coords = tail_coords[:endpoint_index]
-
-        tail_coords = np.array(tail_coords).T
+        # only keep tail points up to the farthest endpoint
+        tail_coords = tail_coords[:, :endpoint_index]
     else:
         tail_coords = None
 
@@ -676,28 +666,6 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
     if tail_coords is not None:
         # convert tail coordinates to floats
         tail_coords = tail_coords.astype(float)
-
-    # modify tail skeleton coordinates (Huang et al., 2013)
-    for i in range(n_tail_coords):
-        y = tail_coords[0, i]
-        x = tail_coords[1, i]
-
-        pixel_sum = 0
-        y_sum     = 0
-        x_sum     = 0
-
-        for k in range(-1, 2):
-            for l in range(-1, 2):
-                pixel_sum += tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, int(y+k))), np.minimum(x_size-1, np.maximum(0, int(x+l)))]
-                y_sum     += k*tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, int(y+k))), np.minimum(x_size-1, np.maximum(0, int(x+l)))]
-                x_sum     += l*tail_threshold_frame[np.minimum(y_size-1, np.maximum(0, int(y+k))), np.minimum(x_size-1, np.maximum(0, int(x+l)))]
-
-        if pixel_sum != 0:
-            y_sum /= float(pixel_sum)
-            x_sum /= float(pixel_sum)
-
-            tail_coords[0, i] = y + y_sum
-            tail_coords[1, i] = x + x_sum
 
     try:
         # make ascending spiral in 3D space
