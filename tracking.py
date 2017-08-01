@@ -392,7 +392,7 @@ def track_cropped_frame(frame, params, crop_params):
                 eye_coords = track_eyes(body_crop_frame, params, crop_params)
 
                 if eye_coords is not None:
-                    heading_angle = get_heading_from_eye_coords(eye_coords, heading_angle)
+                    heading_angle = get_heading_angle_from_eye_coords(eye_coords, heading_angle)
 
                     # convert eye coords to be relative to initial frame
                     eye_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
@@ -438,7 +438,7 @@ def track_body(frame, params, crop_params, crop_around_body=True):
     body_threshold_frame = get_threshold_frame(frame, body_threshold)
 
     # get heading angle & body position
-    heading_angle, body_position = get_heading_angle_and_position(body_threshold_frame)
+    heading_angle, body_position = get_heading_angle_and_body_position(body_threshold_frame)
 
     if crop_around_body:
         # create array of body crop coordinates:
@@ -458,7 +458,7 @@ def track_body(frame, params, crop_params, crop_around_body=True):
 
     return heading_angle, body_position
 
-def get_heading_angle_and_position(body_threshold_frame):
+def get_heading_angle_and_body_position(body_threshold_frame):
     # find contours in the thresholded frame
     try:
         image, contours, _ = cv2.findContours(body_threshold_frame, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
@@ -473,10 +473,10 @@ def get_heading_angle_and_position(body_threshold_frame):
             cx = int(M['m10']/M['m00'])
             cy = int(M['m01']/M['m00'])
 
-            # fit an ellipse
+            # fit an ellipse and get the angle and center position
             (x, y), (MA, ma), angle = cv2.fitEllipse(body_contour)
 
-            # get center position
+            # create an array for the center position
             position = np.array([y, x])
 
             if position[0] < 0 or position[1] < 0:
@@ -488,7 +488,7 @@ def get_heading_angle_and_position(body_threshold_frame):
     except:
         return [None]*2
 
-def get_heading_from_eye_coords(eye_coords, body_heading_angle):
+def get_heading_angle_from_eye_coords(eye_coords, body_heading_angle):
     # get heading angle based on eye coordinates
     angle = 180.0 + np.arctan((eye_coords[0, 1] - eye_coords[0, 0])/(eye_coords[1, 1] - eye_coords[1, 0]))*180.0/np.pi
 
@@ -510,98 +510,61 @@ def track_eyes(frame, params, crop_params):
     adjust_thresholds = params['adjust_thresholds']
     eyes_threshold    = crop_params['eyes_threshold']
 
-    # create eye threshold frame
+    # threshold the frame to extract the eyes
     eyes_threshold_frame  = get_threshold_frame(frame, eyes_threshold)
 
-    # get eye coordinates
-    eye_coords = get_eye_coords(eyes_threshold_frame)
+    # get eye positions
+    eye_positions = get_eye_positions(eyes_threshold_frame)
 
-    if eye_coords is None and adjust_thresholds: # eyes not found; adjust the threshold & try again
+    if eye_positions is None and adjust_thresholds: # eyes not found; adjust the threshold & try again
         # initialize counter
         i = 0
         
         # create a list of head thresholds to go through
         eyes_thresholds = list(range(eyes_threshold-1, eyes_threshold-5, -1)) + list(range(eyes_threshold+1, eyes_threshold+5))
         
-        while eye_coords is None and i < 8:
+        while eye_positions is None and i < 8:
             # create a thresholded frame using new threshold
             eyes_threshold_frame = get_threshold_frame(frame, eyes_thresholds[i])
 
-            # get eye coordinates
-            eye_coords = get_eye_coords(eyes_threshold_frame)
+            # get eye positions
+            eye_positions = get_eye_positions(eyes_threshold_frame)
 
             # increase counter
             i += 1
 
-    return eye_coords
+    return eye_positions
 
-def get_eye_coords(eyes_threshold_image, min_intereye_dist=3, max_intereye_dist=6): # todo: make intereye dist variables user settable
-    # get eye centroids
-    centroid_coords = get_centroids(eyes_threshold_image)
-
-    if centroid_coords is None:
-        # no centroids found; end here.
-        return None
-
-    # get the number of found eye centroids
-    n_centroids = centroid_coords.shape[1]
-
-    # get all permutations of pairs of centroid indices
-    perms = itertools.permutations(np.arange(n_centroids), r=2)
-
-    for p in list(perms):
-        # set eye coordinates
-        eye_coords = np.array([[centroid_coords[0, p[0]], centroid_coords[0, p[1]]],
-                               [centroid_coords[1, p[0]], centroid_coords[1, p[1]]]])
-
-        # find distance between eyes
-        intereye_dist = np.sqrt((eye_coords[0, 1] - eye_coords[0, 0])**2 + (eye_coords[1, 1] - eye_coords[1, 0])**2)
-
-        if not (intereye_dist < min_intereye_dist or intereye_dist > max_intereye_dist):
-            # eye coords fit the criteria of min & max distance; stop looking.
-            break
-
-    return eye_coords
-
-def get_centroids(eyes_threshold_image, prev_eye_coords=None): # todo: rewrite
+def get_eye_positions(eyes_threshold_image, prev_eye_coords=None): # todo: rewrite
     # find contours
     try:
         image, contours, _ = cv2.findContours(eyes_threshold_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     except ValueError:
         contours, _ = cv2.findContours(eyes_threshold_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
-    contour_areas = [ cv2.contourArea(contour) for contour in contours]
-
-    if len(contour_areas) < 2:
+    if len(contours) < 2:
+        # too few contours found -- we need at least 2 (one for each eye)
         return None
-    
-    max_areas = np.argpartition(contour_areas, -2)[-2:]
 
-    contours = [contours[i] for i in max_areas]
+    # choose the two contours with the largest areas as the eyes
+    eye_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
 
     # get moments
-    moments = [cv2.moments(contour) for contour in contours]
+    moments = [cv2.moments(contour) for contour in eye_contours]
 
-    # initialize x & y coord lists
-    centroid_x_coords = []
-    centroid_y_coords = []
+    # initialize array to hold eye positions
+    positions = np.zeros((2, 2))
 
     # get coordinates
-    for m in moments:
-        if m['m00'] != 0.0:
-            centroid_y_coords.append(m['m01']/m['m00'])
-            centroid_x_coords.append(m['m10']/m['m00'])
+    for i in range(2):
+        M = moments[i]
+        cx = int(M['m10']/M['m00'])
+        cy = int(M['m01']/M['m00'])
 
-    # put x & y coord lists into an array
-    centroid_coords = np.array([centroid_y_coords, centroid_x_coords])
+        positions[0, i] = cy
+        positions[1, i] = cx
 
-    n_centroids = centroid_coords.shape[1]
-
-    if n_centroids < 2:
-        # too few centroids found -- we need at least 2 (one for each eye)
-        return None
-
-    return centroid_coords
+    return positions
 
 # --- Freeswimming tail tracking --- #
 
