@@ -580,7 +580,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position):
     tail_threshold_frame = get_threshold_frame(frame, tail_threshold)
 
     # get tail coordinates
-    tail_coords, spline_coords = get_freeswimming_tail_coords(tail_threshold_frame, body_position,
+    tail_coords, spline_coords = get_freeswimming_tail_coords_alt(tail_threshold_frame, body_position,
                                                               min_tail_body_dist, max_tail_body_dist,
                                                               n_tail_points)
 
@@ -605,7 +605,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position):
 
     return tail_coords, spline_coords
 
-def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=4, smoothing_factor=3,): # todo: make max radius & smoothing factor user settable
+def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=4, smoothing_factor=3): # todo: make max radius & smoothing factor user settable
     # get tail skeleton matrix
     skeleton_matrix = get_tail_skeleton_frame(tail_threshold_frame)
 
@@ -697,7 +697,62 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, min_tail_b
 
     return tail_coords, spline_coords
 
-def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body_dist, max_tail_body_dist, min_n_tail_points):
+def get_freeswimming_tail_coords_alt(tail_threshold_frame, body_position, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=4, smoothing_factor=3):
+    # get tail skeleton matrix
+    skeleton_matrix = get_tail_skeleton_frame(tail_threshold_frame)
+
+    # zero out pixels that are close to body and eyes
+    skeleton_matrix = cv2.circle(skeleton_matrix, (int(round(body_position[1])), int(round(body_position[0]))), int(min_tail_body_dist), (0, 0, 0), -1)
+
+    # get an ordered list of coordinates of the tail, from one end to the other
+    tail_coords = get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body_dist, max_tail_body_dist)
+
+    if tail_coords is None:
+        # couldn't get tail coordinates; end here.
+        return [None]*2
+
+    # get number of tail coordinates
+    n_tail_coords = tail_coords.shape[1]
+
+    # get size of thresholded image
+    y_size = tail_threshold_frame.shape[0]
+    x_size = tail_threshold_frame.shape[1]
+
+    if tail_coords is not None:
+        # convert tail coordinates to floats
+        tail_coords = tail_coords.astype(float)
+
+    if n_tail_coords > n_tail_points:
+        r = lambda m, n: [i*n//m + n//(2*m) for i in range(m)] # generates a list of m evenly spaced numbers from 0 to n
+
+        # get evenly spaced tail indices
+        tail_nums = [0] + r(n_tail_points-2, tail_coords.shape[1]) + [tail_coords.shape[1]-1]
+
+        tail_coords = tail_coords[:, tail_nums]
+
+    n_tail_coords = tail_coords.shape[1]
+
+    try:
+        # make ascending spiral in 3D space
+        t = np.zeros(n_tail_coords)
+        t[1:] = np.sqrt((tail_coords[1, 1:] - tail_coords[1, :-1])**2 + (tail_coords[0, 1:] - tail_coords[0, :-1])**2)
+        t = np.cumsum(t)
+        t /= t[-1]
+
+        nt = np.linspace(0, 1, 100)
+
+        # calculate cubic spline
+        spline_y_coords = interpolate.UnivariateSpline(t, tail_coords[0, :], k=3, s=smoothing_factor)(nt)
+        spline_x_coords = interpolate.UnivariateSpline(t, tail_coords[1, :], k=3, s=smoothing_factor)(nt)
+
+        spline_coords = np.array([spline_y_coords, spline_x_coords])
+    except:
+        print("Error: Could not calculate tail spline.")
+        return [None]*2
+
+    return tail_coords, spline_coords
+
+def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body_dist, max_tail_body_dist, min_n_tail_points=10):
     # get size of matrix
     y_size = skeleton_matrix.shape[0]
     x_size = skeleton_matrix.shape[1]
@@ -718,7 +773,7 @@ def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body
 
         # look for an endpoint near the body
         if body_distance < max_tail_body_dist:
-            if (closest_body_distance is None) or (closest_body_distance is not None and body_distance < closest_body_distance):
+            if (closest_body_distance == None) or (closest_body_distance != None and body_distance < closest_body_distance):
                 # either no point has been found yet or this is a closer point than the previous best
 
                 # get nonzero elements in 3x3 neigbourhood around the point
@@ -811,8 +866,13 @@ def find_next_tail_coords_in_neighborhood(found_coords, r, skeleton_matrix):
         closest_index = np.argmin(distances)
 
         next_coords = unique_coords[closest_index]
+    elif len(unique_coords) > 1:
+        # pick the point that is in a similar direction to the tail
+        angles = [ np.dot(np.array(found_coords[-1]) - np.array(found_coords[0]), np.array(unique_coords[i]) - np.array(found_coords[0])) for i in xrange(len(unique_coords)) ]
+        closest_index = np.argmin(angles)
+
+        next_coords = unique_coords[closest_index]
     else:
-        # just pick the first unique point that was found
         next_coords = unique_coords[0]
 
     return next_coords
