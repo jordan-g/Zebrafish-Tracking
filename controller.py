@@ -349,8 +349,6 @@ class Controller():
             self.param_window.set_gui_disabled(True)
             self.clear_crops()
 
-        print(self.params['video_paths'], self.curr_video_num)
-
         # update loaded video label
         self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
 
@@ -1186,7 +1184,7 @@ class FreeswimmingController(Controller):
                 if not(body_crop_height > 1):
                     raise
 
-                self.params['crop_params']['body_crop'][0] = body_crop_height
+                self.params['body_crop'][0] = body_crop_height
 
                 self.param_window.set_invalid_params_text("")
 
@@ -1201,7 +1199,7 @@ class FreeswimmingController(Controller):
                 if not(body_crop_width > 1):
                     raise
 
-                self.params['crop_params']['body_crop'][1] = body_crop_width
+                self.params['body_crop'][1] = body_crop_width
 
                 self.param_window.set_invalid_params_text("")
 
