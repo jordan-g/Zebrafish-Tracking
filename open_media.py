@@ -5,6 +5,10 @@ from moviepy.video.io.ffmpeg_reader import *
 from helper_functions import *
 import traceback
 import pdb
+import scipy.ndimage as ndi
+from skimage.restoration import (denoise_tv_chambolle, denoise_bilateral,
+                                 denoise_wavelet, estimate_sigma)
+import tracking
 
 def open_image(image_path):
     # read the frame
@@ -21,6 +25,27 @@ def open_image(image_path):
     return frame
 
 def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False, greyscale=True):
+    mask_points = np.array([(371, 6), (271, 79), (163, 206), (110, 315), (77, 513), (98, 665), (161, 803), (254, 917), (409, 1021), (886, 1021), (1057, 896), (1174, 709), (1213, 496), (1178, 311), (1090, 152), (917, 6)])
+    mask = np.zeros((1024, 1280)).astype(np.uint8)
+    cv2.fillConvexPoly(mask, mask_points, 1)
+    mask = mask.astype(bool)
+
+    def process_frame(frame, invert=False, greyscale=False, mask=None):
+        # optionally invert the frame
+        if invert:
+            frame = 255 - frame
+
+        # convert to greyscale
+        if len(frame.shape) >= 3 and greyscale:
+            frame = frame[..., 0]
+
+        # frame = denoise_tv_chambolle(frame, weight=0.01, multichannel=False)
+        # frame = ndi.median_filter(frame, 3) #Added
+
+        frame[mask == False] = 255
+
+        return frame
+
     # create a capture object if it's not provided
     if capture is None:
         new_capture = True
@@ -46,7 +71,6 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     # or not (ie. [20, 35, 401, ...])
     frame_nums_are_sequential = list(frame_nums) == list(range(frame_nums[0], frame_nums[-1]+1))
 
-    frame_count = 0
     frames      = None
     background  = None
 
@@ -58,42 +82,38 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
         except:
             capture.set(1, frame_nums[0]-1)
 
-    for i in range(frame_nums[0], frame_nums[-1]+1):
-        # if frames are not sequential,
-        # we grab but don't read the frame yet
-        if not frame_nums_are_sequential:
-            success = capture.grab()
+    # get the first frame
+    _, frame = capture.read()
 
-        if i in frame_nums:
-            # read the frame
-            if not frame_nums_are_sequential:
-                _, frame = capture.retrieve()
-            else:
-                _, frame = capture.read()
+    frame = process_frame(frame, invert=invert, greyscale=greyscale, mask=mask)
 
-            if frame is not None:
-                # optionally invert the frame
-                if invert:
-                    frame = 255 - frame
+    if calc_background:
+        # initialize background array
+        background = frame.copy().astype(np.uint8)
 
-                # convert to greyscale
-                if len(frame.shape) >= 3 and greyscale:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    if return_frames:
+        # initialize array to hold all frames
+        if greyscale:
+            frames = np.zeros((n_frames, frame.shape[0], frame.shape[1])).astype(np.uint8)
+        else:
+            frames = np.zeros((n_frames, frame.shape[0], frame.shape[1], frame.shape[2])).astype(np.uint8)
 
-                if frame_count == 0:
-                    if return_frames:
-                        # initialize array to hold all frames
-                        if len(frame.shape) >= 3:
-                            frames = np.zeros((n_frames, frame.shape[0], frame.shape[1], frame.shape[2])).astype(np.uint8)
-                        else:
-                            frames = np.zeros((n_frames, frame.shape[0], frame.shape[1])).astype(np.uint8)
+        frames[0] = frame
 
-                    if calc_background:
-                        # initialize background array
-                        background = frame.copy().astype(np.uint8)
+    frame_count = 1
+
+    if not frame_nums_are_sequential:
+        for i in range(frame_nums[0]+1, frame_nums[-1]+1):
+            _ = capture.grab()
+
+            if i in frame_nums:
+
+                # frame = process_frame(frame, invert=invert, greyscale=greyscale, mask=mask)
 
                 if return_frames:
-                    frames[frame_count] = frame
+                    frames[frame_count] = process_frame(capture.retrieve()[1][..., 0], invert=invert, greyscale=greyscale, mask=mask)
+                else:
+                    frame = process_frame(capture.retrieve()[1][..., 0], invert=invert, greyscale=greyscale, mask=mask)
 
                 if progress_signal:
                     # send an update signal to the GUI
@@ -106,6 +126,26 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
                     background[mask] = frame[mask]
 
                 frame_count += 1
+    else:
+        while frame_count < n_frames:
+            _, frame = capture.read()
+
+            frame = process_frame(frame, invert=invert, greyscale=greyscale, mask=mask)
+
+            if return_frames:
+                frames[frame_count] = frame
+
+            if progress_signal:
+                # send an update signal to the GUI
+                percent_complete = int(100.0*float(frame_count)/n_frames)
+                progress_signal.emit(percent_complete)
+
+            if calc_background:
+                # update background array
+                mask = np.less(background, frame)
+                background[mask] = frame[mask]
+
+            frame_count += 1
 
     if new_capture:
         # close the capture object
@@ -116,6 +156,8 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     if return_frames and frames is None:
         print("Error: Could not get any frames from the video.")
         return None
+    # if return_frames:
+    #     frames = tracking.remove_noise(frames)
 
     if return_frames and calc_background:
         return frames, background

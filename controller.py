@@ -155,6 +155,7 @@ class Controller():
 
     def open_video(self, video_path):
         ''' Open one video file. '''
+        print("Opening '{}'.".format(video_path))
 
         # reset tracking results
         self.tracking_results = []
@@ -164,10 +165,10 @@ class Controller():
             fps, n_frames_total = open_media.get_video_info(video_path)
 
             # load evenly spaced frames
-            frame_nums = utilities.split_evenly(n_frames_total, max_n_frames)
+            frame_nums = utilities.split_evenly(min(n_frames_total, 2500), max_n_frames)
 
             # load frames from the video
-            self.frames[self.curr_video_num] = open_media.open_video(video_path, frame_nums, True, invert=self.params['invert'])
+            self.frames[self.curr_video_num] = open_media.open_video(video_path, frame_nums, True, invert=self.params['invert'], greyscale=True, seek_to_starting_frame=False)
             
             if self.params['backgrounds'][self.curr_video_num] is not None:
                 # get background-subtracted frames
@@ -199,7 +200,7 @@ class Controller():
 
                 self.param_window.update_gui_from_params(self.params)
             
-            if self.params['backgrounds'][self.curr_video_num] is not None:
+            if self.params['backgrounds'][self.curr_video_num] is not None and self.bg_sub_frames[self.curr_video_num] is None:
                 # generate background subtracted frames
                 self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
 
@@ -397,12 +398,14 @@ class Controller():
                 self.param_window.save_background_action.setEnabled(True)
 
     def videos_tracked(self, tracking_time):
-        self.param_window.update_tracking_progress_text(1, 0, 100, tracking_time)
+        self.start_time = None
+        self.param_window.update_tracking_progress_text(1, 0, 100, total_tracking_time=tracking_time, elapsed_time=None)
         self.tracking = False
 
     def update_video_tracking_progress(self, video_number, percent):
         n_videos = len(self.params['video_paths'])
-        self.param_window.update_tracking_progress_text(n_videos, video_number, percent)
+        elapsed_time = time.clock() - self.tracking_start_time
+        self.param_window.update_tracking_progress_text(n_videos, video_number, percent, elapsed_time)
 
     def load_params(self, select_path=True):
         if select_path:
@@ -473,6 +476,7 @@ class Controller():
             pass
 
     def switch_frame(self, n, new_load=False):
+        print("Switching frame")
         if n != self.n:
             # reset tracking results
             self.tracking_results = None
@@ -636,9 +640,14 @@ class Controller():
             # print(self.current_frame, self.scaled_frame)
             # get params from gui
             # self.update_params_from_gui()
+            print(self.params)
 
             # track current frame
-            self.tracking_results = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
+            self.tracking_results, skeleton_matrix, body_crop_coords = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
+            if skeleton_matrix is not None:
+                self.tail_skeleton_frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1]] = skeleton_matrix*255
+            else:
+                print("No skeleton matrix.")
 
             # rescale coordinates
             if self.tracking_results['tail_coords'] is not None:
@@ -657,12 +666,13 @@ class Controller():
         self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
 
         if self.tracking_path != "":
-
             # track videos
             if self.track_videos_thread is not None:
                 # another thread is already tracking something; don't let it affect the GUI
                 self.track_videos_thread.progress.disconnect(self.update_video_tracking_progress)
                 self.track_videos_thread.finished.disconnect(self.videos_tracked)
+
+            self.tracking_start_time = time.clock()
 
             # create new thread to track the videos
             self.track_videos_thread = TrackVideosThread(self.param_window)
@@ -969,7 +979,7 @@ class FreeswimmingController(Controller):
         self.param_window = FreeswimmingParamWindow(self)
 
         # create preview window
-        self.preview_window  = PreviewWindow(self)
+        self.preview_window = PreviewWindow(self)
 
         self.param_window.set_gui_disabled(True)
 
@@ -1117,8 +1127,8 @@ class FreeswimmingController(Controller):
                         and max_tail_body_dist > min_tail_body_dist)
 
             if valid_params:
-                if self.params['bg_sub_threshold'] != bg_sub_threshold:
-                    self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
+                # if self.params['bg_sub_threshold'] != bg_sub_threshold:
+                #     self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
                 
                 self.params['scale_factor']       = scale_factor
                 self.params['tracking_video_fps']    = tracking_video_fps
@@ -1142,7 +1152,7 @@ class FreeswimmingController(Controller):
             #     self.generate_thresholded_frames()
 
             # # reshape the image
-            self.switch_frame(self.n)
+            # self.switch_frame(self.n)
 
             # update the image preview
             # self.update_preview(image=None, new_load=False, new_frame=True)

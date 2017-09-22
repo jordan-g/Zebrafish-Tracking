@@ -762,7 +762,7 @@ class ParamWindow(QMainWindow):
 
         self.update_status_text()
 
-    def update_tracking_progress_text(self, n_videos, curr_video_num, percent, total_tracking_time=None):
+    def update_tracking_progress_text(self, n_videos, curr_video_num, percent, total_tracking_time=None, elapsed_time=None):
         if percent < 100:
             self.tracking_progress_text = "Tracking <b>video {}/{}</b>... {:.1f}%.".format(curr_video_num+1, n_videos, percent)
         else:
