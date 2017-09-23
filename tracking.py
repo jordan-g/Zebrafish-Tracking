@@ -144,8 +144,9 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         tracking_video_fps = fps
 
     if subtract_background and background is None:
+        print("Calculating background...")
         # Calculate the background
-        background = open_video(video_path, return_frames=False, calc_background=True, capture=capture)
+        background = open_video(video_path, None, return_frames=False, calc_background=True, capture=capture)
 
     # Initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
@@ -206,12 +207,12 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
         if use_multiprocessing:
             # Split the frames into small chunks - we let multiple processes deal with a chunk at a time
-            small_chunk_size = 100
+            small_chunk_size = 1
             split_frames = utilities.yield_chunks_from_array(frames, small_chunk_size)
 
             # Get the pool of workers to track the chunks of frames
             result_list = []
-            for result in pool.imap(partial(track_frames, params, background), split_frames):
+            for result in pool.imap(partial(track_frames, params, background), split_frames, 20):
                 result_list.append(result)
 
                 # Increase the number of tracked frames counter
@@ -332,7 +333,7 @@ def track_frames(params, background, frames):
     invert              = params['invert']
 
     # Get number of frames & number of crops
-    n_frames = len(frames)
+    n_frames = frames.shape[0]
     n_crops  = len(crop_params)
 
     # Initialize tracking data arrays
@@ -350,7 +351,7 @@ def track_frames(params, background, frames):
         # Invert the frames if necessary
         frames = 255 - frames
 
-    if subtract_background:
+    if subtract_background and background is not None:
         # Subtract the background in-place
         subtract_background_from_frames(frames, background, bg_sub_threshold, in_place=True)
 
@@ -400,7 +401,7 @@ def track_cropped_frame(frame, params, crop_params):
         track_tail_bool = params['track_tail']
         track_eyes_bool = params['track_eyes']
 
-        body_crop_frame = None
+        body_crop_frame  = None
         body_crop_coords = None
 
         crop_around_body = (track_eyes_bool or track_tail_bool) and body_crop is not None
@@ -413,7 +414,7 @@ def track_cropped_frame(frame, params, crop_params):
 
         # track eyes
         if track_eyes_bool:
-            if crop_around_body and body_crop_coords is not None and body_crop_frame is not None:
+            if crop_around_body and body_crop_coords is not None and body_crop_frame is not None and np.sum(body_crop_frame) > 0:
                 eye_coords = track_eyes(body_crop_frame, params, crop_params)
 
                 if eye_coords is not None:
@@ -428,7 +429,7 @@ def track_cropped_frame(frame, params, crop_params):
 
         if track_tail_bool and body_position is not None:
             # track tail
-            if crop_around_body and body_crop_coords is not None and body_crop_frame is not None:
+            if crop_around_body and body_crop_coords is not None and body_crop_frame is not None and np.sum(body_crop_frame) > 0:
                 tail_coords, spline_coords, skeleton_matrix = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position, heading_angle)
                 if tail_coords is not None:
                     # convert eye coords to be relative to initial frame
@@ -496,9 +497,9 @@ def get_heading_angle_and_body_position(body_threshold_frame):
         if len(contours) > 0:
             # choose the contour with the largest area as the body
             body_contour = max(contours, key=cv2.contourArea)
-            M = cv2.moments(body_contour)
-            cx = int(M['m10']/M['m00'])
-            cy = int(M['m01']/M['m00'])
+            # M = cv2.moments(body_contour)
+            # cx = int(M['m10']/M['m00'])
+            # cy = int(M['m01']/M['m00'])
 
             # fit an ellipse and get the angle and center position
             (x, y), (MA, ma), angle = cv2.fitEllipse(body_contour)

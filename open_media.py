@@ -24,7 +24,7 @@ def open_image(image_path):
 
     return frame
 
-def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False, greyscale=True):
+def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False, greyscale=True, thread=None):
     mask_points = np.array([(371, 6), (271, 79), (163, 206), (110, 315), (77, 513), (98, 665), (161, 803), (254, 917), (409, 1021), (886, 1021), (1057, 896), (1174, 709), (1213, 496), (1178, 311), (1090, 152), (917, 6)])
     mask = np.zeros((1024, 1280)).astype(np.uint8)
     cv2.fillConvexPoly(mask, mask_points, 1)
@@ -107,7 +107,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             _ = capture.grab()
 
             if i in frame_nums:
-
+                _, frame = capture.retrieve()
                 # frame = process_frame(frame, invert=invert, greyscale=greyscale, mask=mask)
 
                 if return_frames:
@@ -118,14 +118,17 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
                 if progress_signal:
                     # send an update signal to the GUI
                     percent_complete = int(100.0*float(frame_count)/n_frames)
-                    progress_signal.emit(percent_complete)
+                    progress_signal.emit(percent_complete, video_path)
 
                 if calc_background:
                     # update background array
-                    mask = np.less(background, frame)
-                    background[mask] = frame[mask]
+                    mask_2 = np.less(background, frame)
+                    background[mask_2] = frame[mask_2]
 
                 frame_count += 1
+
+            if thread is not None and thread.running == False:
+                return None
     else:
         while frame_count < n_frames:
             _, frame = capture.read()
@@ -138,14 +141,17 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             if progress_signal:
                 # send an update signal to the GUI
                 percent_complete = int(100.0*float(frame_count)/n_frames)
-                progress_signal.emit(percent_complete)
+                progress_signal.emit(percent_complete, video_path)
 
             if calc_background:
                 # update background array
-                mask = np.less(background, frame)
-                background[mask] = frame[mask]
+                mask_2 = np.less(background, frame)
+                background[mask_2] = frame[mask_2]
 
             frame_count += 1
+
+            if thread is not None and thread.running == False:
+                return None
 
     if new_capture:
         # close the capture object

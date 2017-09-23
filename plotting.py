@@ -297,7 +297,7 @@ def process_video(folder, video_name, plot=False):
     return bout_results, stim_results, mean_bout_length
 
 if __name__ == "__main__":
-    folder = "Results"
+    folder = "Results 2"
     suffix = "_Image-Data_Video_tracking"
 
     # get video names using the .npz tracking data filename

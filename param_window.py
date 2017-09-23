@@ -25,6 +25,8 @@ class ParamWindow(QMainWindow):
     def __init__(self, controller):
         QMainWindow.__init__(self)
 
+        self.prev_checked_threshold_checkbox = None
+
         # set controller
         self.controller = controller
 
