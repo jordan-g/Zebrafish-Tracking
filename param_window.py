@@ -768,7 +768,7 @@ class ParamWindow(QMainWindow):
         if percent < 100:
             self.tracking_progress_text = "Tracking <b>video {}/{}</b>... {:.1f}%.".format(curr_video_num+1, n_videos, percent)
         else:
-            if total_tracking_time is not None:
+            if total_tracking_time is not None and curr_video_num == n_videos - 1:
                 self.tracking_progress_text = "Tracking completed in <b>{:.3f}s</b>.".format(total_tracking_time)
             else:
                 self.tracking_progress_text = ""

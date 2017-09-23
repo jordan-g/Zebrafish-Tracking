@@ -125,6 +125,11 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # Start a timer for seeing how long the tracking took
     start_time = time.time()
 
+    if progress_signal:
+        # Send a progress update signal to the controller
+        percent_complete = 0
+        progress_signal.emit(video_number, percent_complete)
+
     # Create a video capture object that we can re-use
     try:
         capture = cv2.VideoCapture(video_path)
@@ -135,7 +140,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # Get video info
     fps, n_frames_total = get_video_info(video_path)
 
-    # n_frames_total = 1000
+    n_frames_total = 1000
 
     print("Total number of frames to track: {}.".format(n_frames_total))
 
@@ -146,7 +151,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     if subtract_background and background is None:
         print("Calculating background...")
         # Calculate the background
-        background = open_video(video_path, None, return_frames=False, calc_background=True, capture=capture)
+        background = open_video(video_path, range(n_frames_total), return_frames=False, calc_background=True, capture=capture)
 
     # Initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan

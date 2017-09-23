@@ -374,9 +374,10 @@ class Controller():
         self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, true_progress)
 
     def background_calculated(self, background, video_path):
-        if background is np.zeros(1):
+        if np.sum(background) == 0:
             background = None
-            
+            self.param_window.background_progress_text = ""
+
         if video_path in self.background_calc_paths:
             self.background_progress = [0 for i in range(len(self.params['video_paths']))]
             print("Background for {} calculated.".format(video_path))
@@ -417,6 +418,7 @@ class Controller():
 
     def update_video_tracking_progress(self, video_number, percent):
         n_videos = len(self.params['video_paths'])
+
         self.param_window.update_tracking_progress_text(n_videos, video_number, percent)
 
     def load_params(self, select_path=True):
@@ -588,8 +590,6 @@ class Controller():
             # another thread is already tracking something; don't let it affect the GUI
             for get_background_thread in self.get_background_threads:
                 get_background_thread.running = False
-                get_background_thread.progress.disconnect(self.background_calculation_progress)
-                get_background_thread.finished.disconnect(self.background_calculated)
             self.get_background_threads = []
 
         for k in range(len(self.params['video_paths'])):
@@ -685,8 +685,6 @@ class Controller():
                 # another thread is already tracking something; don't let it affect the GUI
                 for get_background_thread in self.get_background_threads:
                     get_background_thread.running = False
-                    get_background_thread.progress.disconnect(self.background_calculation_progress)
-                    get_background_thread.finished.disconnect(self.background_calculated)
                 self.get_background_threads = []
 
             # track videos
@@ -1430,7 +1428,7 @@ class GetBackgroundThread(QThread):
         self.running = True
 
         background = open_media.open_video(self.video_path, None, False, True, progress_signal=self.progress, invert=self.invert, thread=self)
-        
+
         if background is not None:
             self.finished.emit(background, self.video_path)
         else:
