@@ -449,10 +449,10 @@ class ParamWindow(QMainWindow):
     def set_gui_disabled(self, disabled_bool):
         for param_control in self.param_controls.values():
             # don't enable the "Subtract background" checkbox when enabling the GUI
-            if param_control.objectName() == "subtract_background" and disabled_bool == False:
-                pass
-            else:
-                param_control.setDisabled(disabled_bool)
+            # if param_control.objectName() == "subtract_background" and disabled_bool == False:
+            #     pass
+            # else:
+            param_control.setDisabled(disabled_bool)
 
         # disable/enable main buttons
         self.remove_video_button.setDisabled(disabled_bool)
@@ -765,8 +765,17 @@ class ParamWindow(QMainWindow):
         self.update_status_text()
 
     def update_tracking_progress_text(self, n_videos, curr_video_num, percent, total_tracking_time=None, elapsed_time=None):
+        if percent == 0:
+            self.tracking_start_time = time.time()
+            eta = "--"
+        else:
+            elapsed_time = time.time() - self.tracking_start_time
+
+            time_per_percent = (elapsed_time/60)/percent
+            percent_remaining = 100 - percent
+            eta = int(percent_remaining*time_per_percent)
         if percent < 100:
-            self.tracking_progress_text = "Tracking <b>video {}/{}</b>... {:.1f}%.".format(curr_video_num+1, n_videos, percent)
+            self.tracking_progress_text = "Tracking <b>video {}/{}</b>... {:.1f}%. Estimated time remaining: {} min.".format(curr_video_num+1, n_videos, percent, eta)
         else:
             if total_tracking_time is not None and curr_video_num == n_videos - 1:
                 self.tracking_progress_text = "Tracking completed in <b>{:.3f}s</b>.".format(total_tracking_time)

@@ -87,18 +87,20 @@ def find_nearest(array, value, return_index=False):
 
 def process_video(folder, video_name, plot=False):
     # set data paths
-    tracking_path   = os.path.join(folder, "{}_Image-Data_Video_tracking.npz".format(video_name))
+    tracking_path   = os.path.join(folder, "{}_Image-Data_Video-Capture_tracking.npz".format(video_name))
     stim_data_path  = os.path.join(folder, "{}_Stimulus-Data.csv".format(video_name))
     frame_data_path = os.path.join(folder, "{}_Vimba-Data.csv".format(video_name))
 
     # load tracking data
     tail_coords_array, spline_coords_array, heading_angle, body_position, eye_coords_array, tracking_params = analysis.open_saved_data(tracking_path)
     heading_angle = analysis.fix_heading_angles(heading_angle)
+    body_position = analysis.fix_body_position(body_position)
     heading_angle = heading_angle[0, :, 0]
     body_position = body_position[0]
 
     # load frame timestamp data
     frame_data = np.loadtxt(frame_data_path, skiprows=1)
+
 
     # get total number of frames
     n_frames = frame_data.shape[0]
@@ -109,6 +111,12 @@ def process_video(folder, video_name, plot=False):
     for i in range(n_frames):
         frame_milliseconds[i] = 1000*(60*(60*frame_data[i, 0] + frame_data[i, 1]) + frame_data[i, 2]) + frame_data[i, 3]
     frame_nums = frame_data[:, -1]
+
+    frame_nums = frame_nums[:heading_angle.shape[0]]
+    frame_milliseconds = frame_milliseconds[:heading_angle.shape[0]]
+    n_frames = len(frame_nums)
+
+    frame_nums[frame_nums >= n_frames] = n_frames-1
 
     # load stimulus timestamp data
     stim_data = np.loadtxt(stim_data_path, skiprows=1)
@@ -125,9 +133,15 @@ def process_video(folder, video_name, plot=False):
         stim_switch_frame_nums[i] = frame_nums[find_nearest(frame_milliseconds, stim_switch_milliseconds[i], return_index=True)]
     stim_switch_frame_nums = stim_switch_frame_nums.astype(int)
 
+    # stim_switch_frame_nums = stim_switch_frame_nums[:heading_angle.shape[0]]
+    # stim_switch_milliseconds = stim_switch_milliseconds[:heading_angle.shape[0]]
+    # print(heading_angle.shape, body_position.shape)
+
     # extract stim ids
     stim_ids = stim_data[:, -1]
     stim_ids = stim_ids.astype(int)
+
+    print(stim_ids)
 
     # create array containing the stim id for each frame
     stim_id_frames = np.zeros(n_frames).astype(int)
@@ -136,6 +150,14 @@ def process_video(folder, video_name, plot=False):
             stim_id_frames[stim_switch_frame_nums[i]:stim_switch_frame_nums[i+1]] = stim_ids[i]
         else:
             stim_id_frames[stim_switch_frame_nums[i]:] = stim_ids[i]
+
+    # create array containing the stim # for each frame
+    stim_num_frames = np.zeros(n_frames).astype(int)
+    for i in range(n_stim_switches):
+        if i < n_stim_switches - 1:
+            stim_num_frames[stim_switch_frame_nums[i]:stim_switch_frame_nums[i+1]] = i
+        else:
+            stim_num_frames[stim_switch_frame_nums[i]:] = i
 
     # ---- capture bouts that correspond to turns ---- #
 
@@ -159,7 +181,7 @@ def process_video(folder, video_name, plot=False):
     heading_angle_difference_above_threshold[int(smoothing_window_width/2):-int(smoothing_window_width/2) + 1] = np.convolve(heading_angle_difference_above_threshold, normpdf/np.sum(normpdf), mode='valid')
     heading_angle_difference_above_threshold = heading_angle_difference_above_threshold.astype(int)
 
-    # ---- capture bouts that correspond to forward motions ---- #
+    # ---- capture bouts that correspond to forward motions by looking at the distance from the top-left corner ---- #
 
     # smooth the body position array using a Savitzky-Golay filter
     smoothed_body_position = np.zeros(body_position.shape)
@@ -167,48 +189,187 @@ def process_video(folder, video_name, plot=False):
     smoothed_body_position[:, 1] = savitzky_golay(body_position[:, 1], 51, 3)
 
     # get the distance from the x-y position
-    body_distance          = np.sqrt(body_position[:, 0]**2 + body_position[:, 1]**2)
-    smoothed_body_distance = np.sqrt((smoothed_body_position[:, 0])**2 + (smoothed_body_position[:, 1])**2)
+    body_distance_tl          = np.sqrt((body_position[:, 0])**2 + (body_position[:, 1])**2)
+    smoothed_body_distance_tl = np.sqrt((smoothed_body_position[:, 0])**2 + (smoothed_body_position[:, 1])**2)
 
     # scale so that it's in the same range as the heading angle array
-    body_distance -= np.nanmin(body_distance)
-    body_distance = (np.nanmax(heading_angle) - np.nanmin(heading_angle))*body_distance/np.nanmax(body_distance)
-    body_distance += np.nanmin(heading_angle)
+    body_distance_tl -= np.nanmin(body_distance_tl)
+    body_distance_tl = (np.nanmax(heading_angle) - np.nanmin(heading_angle))*body_distance_tl/np.nanmax(body_distance_tl)
+    body_distance_tl += np.nanmin(heading_angle)
 
-    smoothed_body_distance -= np.nanmin(smoothed_body_distance)
-    smoothed_body_distance = (np.nanmax(smoothed_heading_angle) - np.nanmin(smoothed_heading_angle))*smoothed_body_distance/np.nanmax(smoothed_body_distance)
-    smoothed_body_distance += np.nanmin(smoothed_heading_angle)
+    smoothed_body_distance_tl -= np.nanmin(smoothed_body_distance_tl)
+    smoothed_body_distance_tl = (np.nanmax(smoothed_heading_angle) - np.nanmin(smoothed_heading_angle))*smoothed_body_distance_tl/np.nanmax(smoothed_body_distance_tl)
+    smoothed_body_distance_tl += np.nanmin(smoothed_heading_angle)
 
     # calculate the difference betweeen the body distance at each frame and the heading angle 10 frames before
     n = 10
-    running_body_distance_difference = np.abs(smoothed_body_distance - np.roll(smoothed_body_distance, -n))
-    running_body_distance_difference[-n:] = 0
-    running_body_distance_difference = np.nan_to_num(running_body_distance_difference)
+    running_body_distance_tl_difference = np.abs(smoothed_body_distance_tl - np.roll(smoothed_body_distance_tl, -n))
+    running_body_distance_tl_difference[-n:] = 0
+    running_body_distance_tl_difference = np.nan_to_num(running_body_distance_tl_difference)
 
     # extract points where the difference is greater than the threshold
-    threshold = 0.1
-    body_distance_difference_above_threshold = (running_body_distance_difference >= threshold)
+    threshold = 0.2
+    body_distance_tl_difference_above_threshold = (running_body_distance_tl_difference >= threshold)
 
     # smooth this array
     smoothing_window_width = 20
     normpdf = scipy.stats.norm.pdf(range(-int(smoothing_window_width/2),int(smoothing_window_width/2)),0,3)
-    body_distance_difference_above_threshold[int(smoothing_window_width/2):-int(smoothing_window_width/2) + 1] = np.convolve(body_distance_difference_above_threshold, normpdf/np.sum(normpdf), mode='valid')
-    body_distance_difference_above_threshold = body_distance_difference_above_threshold.astype(int)
+    body_distance_tl_difference_above_threshold[int(smoothing_window_width/2):-int(smoothing_window_width/2) + 1] = np.convolve(body_distance_tl_difference_above_threshold, normpdf/np.sum(normpdf), mode='valid')
+    body_distance_tl_difference_above_threshold = body_distance_tl_difference_above_threshold.astype(int)
+
+    # ---- Do the same for the distance from the bottom-right corner ---- #
+
+    # get the distance from the x-y position
+    body_distance_br          = np.sqrt((body_position[:, 0] - 1024)**2 + (body_position[:, 1] - 1280)**2)
+    smoothed_body_distance_br = np.sqrt((smoothed_body_position[:, 0] - 1024)**2 + (smoothed_body_position[:, 1] - 1280)**2)
+    
+    # scale so that it's in the same range as the heading angle array
+    body_distance_br -= np.nanmin(body_distance_br)
+    body_distance_br = (np.nanmax(heading_angle) - np.nanmin(heading_angle))*body_distance_br/np.nanmax(body_distance_br)
+    body_distance_br += np.nanmin(heading_angle)
+
+    smoothed_body_distance_br -= np.nanmin(smoothed_body_distance_br)
+    smoothed_body_distance_br = (np.nanmax(smoothed_heading_angle) - np.nanmin(smoothed_heading_angle))*smoothed_body_distance_br/np.nanmax(smoothed_body_distance_br)
+    smoothed_body_distance_br += np.nanmin(smoothed_heading_angle)
+
+    # calculate the difference betweeen the body distance at each frame and the heading angle 10 frames before
+    n = 10
+    running_body_distance_br_difference = np.abs(smoothed_body_distance_br - np.roll(smoothed_body_distance_br, -n))
+    running_body_distance_br_difference[-n:] = 0
+    running_body_distance_br_difference = np.nan_to_num(running_body_distance_br_difference)
+
+    # extract points where the difference is greater than the threshold
+    threshold = 0.2
+    body_distance_br_difference_above_threshold = (running_body_distance_br_difference >= threshold)
+
+    # smooth this array
+    smoothing_window_width = 20
+    normpdf = scipy.stats.norm.pdf(range(-int(smoothing_window_width/2),int(smoothing_window_width/2)),0,3)
+    body_distance_br_difference_above_threshold[int(smoothing_window_width/2):-int(smoothing_window_width/2) + 1] = np.convolve(body_distance_br_difference_above_threshold, normpdf/np.sum(normpdf), mode='valid')
+    body_distance_br_difference_above_threshold = body_distance_br_difference_above_threshold.astype(int)
+
+    # ---- Do the same for the distance from the bottom-left corner ---- #
+
+    # get the distance from the x-y position
+    body_distance_bl          = np.sqrt((body_position[:, 0] - 1024)**2 + (body_position[:, 1])**2)
+    smoothed_body_distance_bl = np.sqrt((smoothed_body_position[:, 0] - 1024)**2 + (smoothed_body_position[:, 1])**2)
+    
+    # scale so that it's in the same range as the heading angle array
+    body_distance_bl -= np.nanmin(body_distance_bl)
+    body_distance_bl = (np.nanmax(heading_angle) - np.nanmin(heading_angle))*body_distance_bl/np.nanmax(body_distance_bl)
+    body_distance_bl += np.nanmin(heading_angle)
+
+    smoothed_body_distance_bl -= np.nanmin(smoothed_body_distance_bl)
+    smoothed_body_distance_bl = (np.nanmax(smoothed_heading_angle) - np.nanmin(smoothed_heading_angle))*smoothed_body_distance_bl/np.nanmax(smoothed_body_distance_bl)
+    smoothed_body_distance_bl += np.nanmin(smoothed_heading_angle)
+
+    # calculate the difference betweeen the body distance at each frame and the heading angle 10 frames before
+    n = 10
+    running_body_distance_bl_difference = np.abs(smoothed_body_distance_bl - np.roll(smoothed_body_distance_bl, -n))
+    running_body_distance_bl_difference[-n:] = 0
+    running_body_distance_bl_difference = np.nan_to_num(running_body_distance_bl_difference)
+
+    # extract points where the difference is greater than the threshold
+    threshold = 0.2
+    body_distance_bl_difference_above_threshold = (running_body_distance_bl_difference >= threshold)
+
+    # smooth this array
+    smoothing_window_width = 20
+    normpdf = scipy.stats.norm.pdf(range(-int(smoothing_window_width/2),int(smoothing_window_width/2)),0,3)
+    body_distance_bl_difference_above_threshold[int(smoothing_window_width/2):-int(smoothing_window_width/2) + 1] = np.convolve(body_distance_bl_difference_above_threshold, normpdf/np.sum(normpdf), mode='valid')
+    body_distance_bl_difference_above_threshold = body_distance_bl_difference_above_threshold.astype(int)
+
+    # ---- Do the same for the distance from the top-right corner ---- #
+
+    # get the distance from the x-y position
+    body_distance_tr          = np.sqrt((body_position[:, 0])**2 + (body_position[:, 1] - 1280)**2)
+    smoothed_body_distance_tr = np.sqrt((smoothed_body_position[:, 0])**2 + (smoothed_body_position[:, 1] - 1280)**2)
+    
+    # scale so that it's in the same range as the heading angle array
+    body_distance_tr -= np.nanmin(body_distance_tr)
+    body_distance_tr = (np.nanmax(heading_angle) - np.nanmin(heading_angle))*body_distance_tr/np.nanmax(body_distance_tr)
+    body_distance_tr += np.nanmin(heading_angle)
+
+    smoothed_body_distance_tr -= np.nanmin(smoothed_body_distance_tr)
+    smoothed_body_distance_tr = (np.nanmax(smoothed_heading_angle) - np.nanmin(smoothed_heading_angle))*smoothed_body_distance_tr/np.nanmax(smoothed_body_distance_tr)
+    smoothed_body_distance_tr += np.nanmin(smoothed_heading_angle)
+
+    # calculate the difference betweeen the body distance at each frame and the heading angle 10 frames before
+    n = 10
+    running_body_distance_tr_difference = np.abs(smoothed_body_distance_tr - np.roll(smoothed_body_distance_tr, -n))
+    running_body_distance_tr_difference[-n:] = 0
+    running_body_distance_tr_difference = np.nan_to_num(running_body_distance_tr_difference)
+
+    # extract points where the difference is greater than the threshold
+    threshold = 0.2
+    body_distance_tr_difference_above_threshold = (running_body_distance_tr_difference >= threshold)
+
+    # smooth this array
+    smoothing_window_width = 20
+    normpdf = scipy.stats.norm.pdf(range(-int(smoothing_window_width/2),int(smoothing_window_width/2)),0,3)
+    body_distance_tr_difference_above_threshold[int(smoothing_window_width/2):-int(smoothing_window_width/2) + 1] = np.convolve(body_distance_tr_difference_above_threshold, normpdf/np.sum(normpdf), mode='valid')
+    body_distance_tr_difference_above_threshold = body_distance_tr_difference_above_threshold.astype(int)
+
+    # ---- Do the same for the distance from the center of the video ---- #
+
+    # get the distance from the x-y position
+    body_distance_c          = np.sqrt((body_position[:, 0] - 512)**2 + (body_position[:, 1] - 640)**2)
+    smoothed_body_distance_c = np.sqrt((smoothed_body_position[:, 0] - 512)**2 + (smoothed_body_position[:, 1] - 640)**2)
+    
+    # scale so that it's in the same range as the heading angle array
+    body_distance_c -= np.nanmin(body_distance_c)
+    body_distance_c = (np.nanmax(heading_angle) - np.nanmin(heading_angle))*body_distance_c/np.nanmax(body_distance_c)
+    body_distance_c += np.nanmin(heading_angle)
+
+    smoothed_body_distance_c -= np.nanmin(smoothed_body_distance_c)
+    smoothed_body_distance_c = (np.nanmax(smoothed_heading_angle) - np.nanmin(smoothed_heading_angle))*smoothed_body_distance_c/np.nanmax(smoothed_body_distance_c)
+    smoothed_body_distance_c += np.nanmin(smoothed_heading_angle)
+
+    # calculate the difference betweeen the body distance at each frame and the heading angle 10 frames before
+    n = 10
+    running_body_distance_c_difference = np.abs(smoothed_body_distance_c - np.roll(smoothed_body_distance_c, -n))
+    running_body_distance_c_difference[-n:] = 0
+    running_body_distance_c_difference = np.nan_to_num(running_body_distance_c_difference)
+
+    # extract points where the difference is greater than the threshold
+    threshold = 0.2
+    body_distance_c_difference_above_threshold = (running_body_distance_c_difference >= threshold)
+
+    # smooth this array
+    smoothing_window_width = 20
+    normpdf = scipy.stats.norm.pdf(range(-int(smoothing_window_width/2),int(smoothing_window_width/2)),0,3)
+    body_distance_c_difference_above_threshold[int(smoothing_window_width/2):-int(smoothing_window_width/2) + 1] = np.convolve(body_distance_c_difference_above_threshold, normpdf/np.sum(normpdf), mode='valid')
+    body_distance_c_difference_above_threshold = body_distance_c_difference_above_threshold.astype(int)
 
     # -------------------------------------------------- #
 
     # combine bouts obtained by looking at the body position with those obtained by looking at the heading angle
-    combined_difference_above_threshold = np.logical_or(body_distance_difference_above_threshold, heading_angle_difference_above_threshold).astype(int)
+    combined_difference_above_threshold = np.logical_or(heading_angle_difference_above_threshold, body_distance_tl_difference_above_threshold).astype(int)
+    combined_difference_above_threshold = np.logical_or(combined_difference_above_threshold, body_distance_br_difference_above_threshold).astype(int)
+    combined_difference_above_threshold = np.logical_or(combined_difference_above_threshold, body_distance_bl_difference_above_threshold).astype(int)
+    combined_difference_above_threshold = np.logical_or(combined_difference_above_threshold, body_distance_tr_difference_above_threshold).astype(int)
+    combined_difference_above_threshold = np.logical_or(combined_difference_above_threshold, body_distance_c_difference_above_threshold).astype(int)
+
 
     # get the frame numbers of the start & end of all the bouts
-    above_threshold_difference = combined_difference_above_threshold - np.roll(combined_difference_above_threshold, -1)
+    combined_difference_above_threshold_greater_than_0 = (combined_difference_above_threshold > 0).astype(int)
+    above_threshold_difference = combined_difference_above_threshold_greater_than_0 - np.roll(combined_difference_above_threshold_greater_than_0, -1)
     above_threshold_difference[-1] = 0
+    # print(above_threshold_difference.shape)
     bout_start_frames = np.nonzero(above_threshold_difference == -1)[0] + 1
     bout_end_frames   = np.nonzero(above_threshold_difference == 1)[0] - 1
+# 
+    # print(bout_end_frames)
+
+    # if a bout starts at frame 0, add the start to bout_start_frames
+    if combined_difference_above_threshold[0] > 0:
+        bout_start_frames = np.concatenate([np.array([1]), bout_start_frames])
 
     # get total number of bouts
     n_bouts = len(bout_start_frames)
     print("Number of bouts: {}.".format(n_bouts))
+
+    # print(n_frames)
 
     # create array containing the bout number for each frame
     # we set it to -1 when a frame is not in a bout
@@ -219,6 +380,8 @@ def process_video(folder, video_name, plot=False):
     # initialize variable to calcualate the mean bout length in milliseconds
     mean_bout_length = 0
 
+    n_non_circular_grating_bouts = 0
+
     # determine, for each bout, the heading angle and position at the start and end
     # bout_results is a list of 9 lists, one for each type of stimulus
     bout_results = [[] for i in range(9)]
@@ -228,8 +391,10 @@ def process_video(folder, video_name, plot=False):
         start_frame = bout_start_frames[i]
         end_frame   = bout_end_frames[i]
 
-        # add to the mean bout length variable
-        mean_bout_length += frame_milliseconds[end_frame+1] - frame_milliseconds[start_frame]
+        if stim_id != 0:
+            # add to the mean bout length variable
+            mean_bout_length += frame_milliseconds[end_frame+1] - frame_milliseconds[start_frame]
+            n_non_circular_grating_bouts += 1
 
         # print("Bout {} starts at frame {} and ends at frame {}.".format(i, start_frame, end_frame))
 
@@ -243,9 +408,14 @@ def process_video(folder, video_name, plot=False):
         # add to the bout_results list
         bout_results[stim_id].append(results)
 
-    # get the mean bout length
-    mean_bout_length /= n_bouts
+    if n_non_circular_grating_bouts > 0:
+        # get the mean bout length
+        mean_bout_length /= n_non_circular_grating_bouts
+    else:
+        mean_bout_length = 0
     print("Mean bout length is {} ms.".format(mean_bout_length))
+
+    # print(n_frames)
 
     # determine, for each type of stimulus, the heading angle and position at the start and end
     # stim_results is a list of 9 lists, one for each type of stimulus
@@ -257,7 +427,9 @@ def process_video(folder, video_name, plot=False):
         if i < n_stim_switches - 1:
             end_frame   = stim_switch_frame_nums[i+1] - 1
         else:
-            end_frame = n_frames - 1
+            end_frame = n_frames - 2
+
+        # print(n_frames)
 
         # print("Stimulus {} starts at frame {} and ends at frame {}.".format(i, start_frame, end_frame))
 
@@ -273,32 +445,32 @@ def process_video(folder, video_name, plot=False):
 
     if plot:
         # plot results
+        print(frame_milliseconds.shape)
+        print(heading_angle.shape)
         fig, ax = plt.subplots()
-        ax.plot(heading_angle, 'black', lw=1)
-        ax.plot(body_distance, 'purple', lw=1)
-        # ax.plot(smoothed_body_distance_1, 'red', lw=1)
-        # ax.plot(running_body_distance_difference, 'green', lw=1)
-        # ax.plot(body_distance_difference_above_threshold, 'blue', lw=1)
-        # ax.fill_between(np.arange(len(running_heading_angle_difference)), np.amin(np.nan_to_num(smoothed_heading_angle)), np.amax(np.nan_to_num(smoothed_heading_angle)), where=heading_angle_difference_above_threshold.astype(bool), facecolor='black', alpha=0.2)
-        ax.fill_between(np.arange(len(running_body_distance_difference)), np.amin(np.nan_to_num(body_distance)), np.amax(np.nan_to_num(body_distance)), where=combined_difference_above_threshold.astype(bool), facecolor='black', alpha=0.2)
+        # ax.plot((frame_milliseconds[:heading_angle.shape[0]] - frame_milliseconds[0])/1000, heading_angle[:frame_milliseconds.shape[0]]*180/np.pi, 'black', lw=1)
+        
+        ax.plot(heading_angle[:-1], 'black', lw=1)
+        ax.plot(body_distance_c[:-1], 'purple', lw=1)
+        ax.fill_between(np.arange(len(body_distance_tl)), np.amin(np.nan_to_num(body_distance_tl)), np.amax(np.nan_to_num(body_distance_tl)), where=combined_difference_above_threshold.astype(bool), facecolor='black', alpha=0.2)
 
         colors = ['red', 'orange', 'yellow', 'green', 'blue', 'brown', 'black', 'cyan', 'magenta']
         stims = ['Circular Grating', 'Left Grating', 'Right Grating', 'Left Dot', 'Right Dot', 'Left Looming', 'Right Looming', 'White', 'Black']
         for i in range(n_stim_switches):
-            stim_active = stim_id_frames == stim_ids[i]
+            stim_active = stim_num_frames == i
             if i < n_stim_switches - 1:
                 stim_active[stim_switch_frame_nums[i+1]] = 1
             else:
                 stim_active[-1] = 1
-            ax.fill_between(np.arange(len(running_heading_angle_difference)), np.amin(np.nan_to_num(heading_angle)), np.amax(np.nan_to_num(heading_angle)), where=stim_active.astype(bool), facecolor=colors[stim_ids[i]], alpha=0.2)
+            ax.fill_between(np.arange(len(stim_id_frames)), np.amin(np.nan_to_num(heading_angle)), np.amax(np.nan_to_num(heading_angle)), where=stim_active.astype(bool), facecolor=colors[stim_ids[i]], alpha=0.2)
             ax.text(stim_switch_frame_nums[i] + 10, 0, stims[stim_ids[i]], fontsize=8, alpha=0.5)
         plt.show()
 
     return bout_results, stim_results, mean_bout_length
 
 if __name__ == "__main__":
-    folder = "Results 2"
-    suffix = "_Image-Data_Video_tracking"
+    folder = "Results Final"
+    suffix = "_Image-Data_Video-Capture_tracking"
 
     # get video names using the .npz tracking data filename
     video_names = [ os.path.basename(filename)[:-len(suffix)-4] for filename in os.listdir(folder) if filename.endswith('.npz') ]
@@ -320,18 +492,22 @@ if __name__ == "__main__":
     full_mean_bout_length = 0
 
     for i in range(n_videos):
-        video_name = video_names[i]
-        print("Video {}: {}.".format(i+1, video_name))
-        bout_results, stim_results, mean_bout_length = process_video(folder, video_name, plot=True)
+        if i == 5:
+            # try:
+            video_name = video_names[i]
+            print("Video {}: {}.".format(i+1, video_name))
+            bout_results, stim_results, mean_bout_length = process_video(folder, video_name, plot=True)
 
-        # add to the mean bout length variable
-        full_mean_bout_length += mean_bout_length
+            # add to the mean bout length variable
+            full_mean_bout_length += mean_bout_length
 
-        for i in range(9):
-            full_bout_results[i] += bout_results[i]
-            full_stim_results[i] += stim_results[i]
+            for i in range(9):
+                full_bout_results[i] += bout_results[i]
+                full_stim_results[i] += stim_results[i]
 
-        print("----------------------------------------------------------\n")
+            print("----------------------------------------------------------\n")
+            # except:
+            #     pass
 
     # get the total number of bouts
     n_bouts = sum([ len(l) for l in full_bout_results ])

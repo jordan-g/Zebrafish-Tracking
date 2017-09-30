@@ -37,7 +37,7 @@ default_headfixed_params = {'scale_factor': 1.0,                   # factor by w
                             'invert': False,                       # whether to invert the video
                             'type': "headfixed",                   # "headfixed" / "freeswimming"
                             'save_video': True,                    # whether to make a video with tracking overlaid
-                            'tracking_video_fps': 0,                  # fps for the generated video
+                            'tracking_video_fps': 0,               # fps for the generated video
                             'n_tail_points': 30,                   # number of tail points to use
                             'subtract_background': False,          # whether to perform background subtraction
                             'heading_direction': "Down",           # "right" / "left" / "up" / "down"
@@ -55,7 +55,7 @@ default_freeswimming_params = {'scale_factor': 1.0,                          # f
                                'invert': False,                              # whether to invert the video
                                'type': "freeswimming",                       # "headfixed" / "freeswimming"
                                'save_video': True,                           # whether to make a video with tracking overlaid
-                               'tracking_video_fps': 30,                        # fps for the generated video
+                               'tracking_video_fps': 30,                     # fps for the generated video
                                'n_tail_points': 30,                          # number of tail points to use
                                'adjust_thresholds': False,                   # whether to adjust thresholds while tracking if necessary
                                'subtract_background': False,                 # whether to perform background subtraction
@@ -99,33 +99,31 @@ class Controller():
         self.n_frames               = 0    # total number of frames to preview
         self.n                      = 0    # index of currently selected frame
         self.tracking_path          = None # path to where tracking data will be saved
-        self.get_background_threads = []
+        self.get_backgrounds_thread = None
         self.track_videos_thread    = None
         self.closing                = False
         self.first_load             = True # False if we are reloading parameters or videos have already been loaded; True otherwise
         self.background_calc_paths  = []
+        self.background_progress    = []
         self.tracking               = False
 
     def select_and_open_videos(self):
+        # ask the user to select one or more videos to open
         if pyqt_version == 4:
-            video_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select videos to track.', '', 'Videos (*.mov *.mp4 *.avi)')
+            new_video_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select videos to track.', '', 'Videos (*.mov *.mp4 *.avi)')
         elif pyqt_version == 5:
-            video_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select videos to track.', '', 'Videos (*.mov *.mp4 *.avi)')[0]
+            new_video_paths = QFileDialog.getOpenFileNames(self.param_window, 'Select videos to track.', '', 'Videos (*.mov *.mp4 *.avi)')[0]
 
             # convert paths to str
-            video_paths = [ str(video_path) for video_path in video_paths ]
+            new_video_paths = [ str(video_path) for video_path in new_video_paths ]
 
-        # remove videos that are already loaded
-        for i in range(len(video_paths)):
-            video_path = video_paths[i]
-            if video_path in self.params['video_paths']:
-                del video_paths[i]
+        # ignore videos that are already loaded
+        for i in range(len(new_video_paths)):
+            if new_video_paths[i] in self.params['video_paths']:
+                del new_video_paths[i]
 
-        if len(video_paths) > 0 and video_paths[0] != '':
+        if len(new_video_paths) > 0 and new_video_paths[0] != '':
             if self.first_load:
-                # clear all crops
-                self.clear_crops()
-
                 # set params to defaults
                 self.params = self.default_params.copy()
 
@@ -133,30 +131,78 @@ class Controller():
                 self.current_crop = -1
 
             # open the videos
-            self.open_video_batch(video_paths)
-
-            if self.frames[0] is None:
-                # no frames found; end here
-                return
+            self.open_video_batch(new_video_paths)
 
             if self.first_load:
+                if self.frames[0] is None:
+                    # no frames found; end here
+                    return
+
                 # create a crop
                 self.create_crop()
 
-                self.first_load = False
-
-            if self.first_load:
                 # update tail, body & eye thresholds with estimates
                 current_crop_params = self.params['crop_params'][self.current_crop]
                 current_crop_params['tail_threshold'], current_crop_params['body_threshold'], current_crop_params['eyes_threshold'] = utilities.estimate_thresholds(self.current_frame)
                 self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
-            # switch to first frame
-            self.switch_frame(0, new_load=True)
+                self.first_load = False
+
+            # show the first frame
+            self.show_frame(0, new_load=True)
+
+    def open_video_batch(self, video_paths):
+        if (not self.first_load) or len(self.params['video_paths']) == 0:
+            # update variables to account for the new videos
+            self.params['video_paths'] += video_paths
+            self.params['backgrounds'] += [None for i in range(len(video_paths))]
+
+        self.frames              += [None for i in range(len(video_paths))]
+        self.bg_sub_frames       += [None for i in range(len(video_paths))]
+        self.background_progress += [0 for i in range(len(video_paths))]
+
+        if self.first_load:
+            # update current video number
+            self.curr_video_num = 0
+
+        # update loaded videos label
+        self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
+
+        if self.first_load:
+            # open the first video from the batch
+            self.open_video(self.params["video_paths"][self.curr_video_num])
+
+            if self.frames[self.curr_video_num] is None:
+                # no frames found; end here
+                return
+
+        # get the indices of the newly loaded videos
+        new_video_indices = [ len(self.params['video_paths']) - len(video_paths) + i for i in range(len(video_paths)) ]
+
+        # get the paths of videos for which the background needs to be calculated
+        background_calc_paths = [ self.params['video_paths'][k] for k in new_video_indices if self.params['backgrounds'][k] is None ]
+
+        if len(background_calc_paths) > 0:
+            self.param_window.update_background_progress_text(len(background_calc_paths), 0)
+
+            if self.get_backgrounds_thread is None:
+                self.get_backgrounds_thread = GetBackgroundThread(self.param_window)
+                self.get_backgrounds_thread.progress.connect(self.background_calculation_progress)
+                self.get_backgrounds_thread.finished.connect(self.background_calculated)
+
+            self.get_backgrounds_thread.add_video_paths(background_calc_paths)
+            self.background_calc_paths += background_calc_paths
+
+            self.get_backgrounds_thread.start()
+
+        for k in new_video_indices:
+            self.param_window.add_video_item(os.path.basename(self.params['video_paths'][k]))
+
+        self.param_window.change_selected_video_row(self.curr_video_num)
+
+        self.param_window.set_invalid_params_text("")
 
     def open_video(self, video_path):
-        ''' Open one video file. '''
-
         # reset tracking results
         self.tracking_results = []
 
@@ -165,7 +211,7 @@ class Controller():
             fps, n_frames_total = open_media.get_video_info(video_path)
 
             # load evenly spaced frames
-            frame_nums = utilities.split_evenly(min(n_frames_total, 2500), max_n_frames)
+            frame_nums = utilities.split_evenly(min(n_frames_total, 50000), max_n_frames)
 
             # load frames from the video
             self.frames[self.curr_video_num] = open_media.open_video(video_path, frame_nums, True, invert=self.params['invert'], greyscale=True, seek_to_starting_frame=False)
@@ -173,12 +219,6 @@ class Controller():
             if self.params['backgrounds'][self.curr_video_num] is not None:
                 # get background-subtracted frames
                 self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
-
-                # enable "Subtract background" checkbox in param window
-                self.param_window.param_controls["subtract_background"].setEnabled(True)
-            else:
-                # disable "Subtract background" checkbox in param window
-                self.param_window.param_controls["subtract_background"].setEnabled(False)
 
             if self.frames[self.curr_video_num] is None:
                 # no frames found; end here
@@ -207,74 +247,6 @@ class Controller():
             # enable GUI controls
             self.param_window.set_gui_disabled(False)
 
-    def open_video_batch(self, video_paths):
-        ''' Open a batch of video files. '''
-
-        self.first_load = self.first_load or len(self.params['video_paths']) == 0
-
-        if (self.first_load and len(self.params['video_paths']) == 0) or not self.first_load:
-            # update video paths
-            self.params['video_paths'] += video_paths
-            self.params['backgrounds'] += [None]*len(video_paths)
-
-        self.frames        += [None]*len(video_paths)
-        self.bg_sub_frames += [None]*len(video_paths)
-
-        if self.first_load:
-            # update current video number
-            self.curr_video_num = 0
-        
-        self.background_progress = [0 for i in range(len(self.params['video_paths']))]
-
-        # update loaded videos label
-        self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
-
-        if self.first_load:
-            # open the first video from the batch
-            self.open_video(video_paths[self.curr_video_num])
-
-            if self.frames[self.curr_video_num] is None:
-                # no frames found; end here
-                return
-
-        # get backgrounds
-        self.param_window.param_controls["subtract_background"].setEnabled(False)
-        self.param_window.open_background_action.setEnabled(False)
-        self.param_window.save_background_action.setEnabled(False)
-
-        # range of video indices for which the background needs to be calculated
-        background_calc_range = range(len(self.params['video_paths']) - len(video_paths), len(self.params['video_paths']))
-
-        self.param_window.update_background_progress_text(len(background_calc_range), 0)
-
-        for k in background_calc_range:
-            if self.params['backgrounds'][k] is None:
-                # create new thread to calculate the background
-                self.get_background_threads.append(GetBackgroundThread(self.param_window))
-                self.get_background_threads[-1].set_parameters(self.params['video_paths'][k], k, self.params['invert'])
-
-                self.background_calc_paths.append(self.params['video_paths'][k])
-
-                self.get_background_threads[-1].progress.connect(self.background_calculation_progress)
-
-                # set callback function to be called when the background has been calculated
-                self.get_background_threads[-1].finished.connect(self.background_calculated)
-
-                # start thread
-                self.get_background_threads[-1].start()
-            else:
-                self.background_calc_paths.append(self.params['video_paths'][k])
-                
-                # background is already calculated; call the callback function
-                self.background_calculated(self.params['backgrounds'][k], self.params['video_paths'][k])
-
-        for k in range(len(self.params['video_paths']) - len(video_paths), len(self.params['video_paths'])):
-            self.param_window.add_video_item(os.path.basename(self.params['video_paths'][k]))
-
-        self.param_window.change_selected_video_row(self.curr_video_num)
-
-        self.param_window.set_invalid_params_text("")
-
     def prev_video(self):
         if self.curr_video_num != 0:
             # update current video number
@@ -288,7 +260,7 @@ class Controller():
                 self.open_video(self.params['video_paths'][self.curr_video_num])
 
             # switch to first frame
-            self.switch_frame(0, new_load=True)
+            self.show_frame(0, new_load=True)
 
             self.param_window.change_selected_video_row(self.curr_video_num)
 
@@ -305,7 +277,7 @@ class Controller():
                 self.open_video(self.params['video_paths'][self.curr_video_num])
 
             # switch to first frame
-            self.switch_frame(0, new_load=True)
+            self.show_frame(0, new_load=True)
 
             self.param_window.change_selected_video_row(self.curr_video_num)
 
@@ -326,7 +298,7 @@ class Controller():
                     self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
 
             # switch to first frame
-            self.switch_frame(0, new_load=True)
+            self.show_frame(0, new_load=True)
 
     def remove_video(self):
         self.background_calc_paths.remove(self.params['video_paths'][self.curr_video_num])
@@ -338,7 +310,9 @@ class Controller():
 
         self.param_window.remove_video_item(self.curr_video_num)
 
-        if self.curr_video_num != 0 or len(self.params['video_paths']) == 0:
+        # if len(self.params['video_paths']) == 0:
+        #     self.curr_video_num = -1
+        if self.curr_video_num == len(self.params['video_paths']):
             self.curr_video_num -= 1
 
         if self.curr_video_num != -1:
@@ -347,7 +321,7 @@ class Controller():
                 self.open_video(self.params['video_paths'][self.curr_video_num])
 
             # switch to first frame
-            self.switch_frame(0, new_load=True)
+            self.show_frame(0, new_load=True)
         else:
             self.current_frame = None
             self.preview_window.plot_image(None, None, None, None)
@@ -359,19 +333,55 @@ class Controller():
         # update loaded video label
         self.param_window.update_videos_loaded_text(len(self.params['video_paths']), self.curr_video_num)
 
+    def track_videos(self):
+        # get save path
+        self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
+
+        if self.tracking_path != "":
+            if self.get_backgrounds_thread is not None:
+                self.get_backgrounds_thread.running = False
+
+            # track videos
+            if self.track_videos_thread is not None:
+                # another thread is already tracking something; don't let it affect the GUI
+                self.track_videos_thread.progress.disconnect(self.update_video_tracking_progress)
+                self.track_videos_thread.finished.disconnect(self.videos_tracked)
+
+            print(self.params)
+
+            # create new thread to track the videos
+            self.track_videos_thread = TrackVideosThread(self.param_window)
+            self.track_videos_thread.set_parameters(self.params, self.tracking_path)
+
+            # set callback function to be called when the videos has been tracked
+            self.track_videos_thread.finished.connect(self.videos_tracked)
+
+            # set callback function to be called as the videos are being tracked (to show progress)
+            self.track_videos_thread.progress.connect(self.update_video_tracking_progress)
+
+            n_videos = len(self.params['video_paths'])
+
+            self.param_window.update_tracking_progress_text(n_videos, 0, 0)
+
+            # start thread
+            self.track_videos_thread.start()
+
+            self.tracking = True
+
     def background_calculation_progress(self, progress, video_path):
-        self.background_progress[self.params["video_paths"].index(video_path)] = progress
-        n_backgrounds_calculated       = sum([ x is not None for x in self.params['backgrounds'] ])
-        n_backgrounds_being_calculated = sum([ x is None for x in self.params['backgrounds'] ])
-        n_backgrounds_total            = len(self.params['backgrounds'])
+        if video_path in self.params["video_paths"]:
+            self.background_progress[self.params["video_paths"].index(video_path)] = progress
+            n_backgrounds_calculated       = sum([ x is not None for x in self.params['backgrounds'] ])
+            n_backgrounds_being_calculated = sum([ x is None for x in self.params['backgrounds'] ])
+            n_backgrounds_total            = len(self.params['backgrounds'])
 
-        if n_backgrounds_total == 1:
-            true_progress = min(progress, 100)
-        else:
-            true_progress = min(sum(self.background_progress)/n_backgrounds_being_calculated, 100)
+            if n_backgrounds_total == 1:
+                true_progress = min(progress, 100)
+            else:
+                true_progress = min(sum(self.background_progress)/n_backgrounds_being_calculated, 100)
 
-        # update tracking progress label in param window
-        self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, true_progress)
+            # update tracking progress label in param window
+            self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, true_progress)
 
     def background_calculated(self, background, video_path):
         if np.sum(background) == 0:
@@ -396,21 +406,22 @@ class Controller():
                 self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, 100)
 
             if self.curr_video_num == video_num:
-                if self.frames[video_num] is not None and self.bg_sub_frames[video_num] is None:
-                    # generate background subtracted frames
-                    self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
+                if background is not None:
+                    if self.frames[video_num] is not None and self.bg_sub_frames[video_num] is None:
+                        # generate background subtracted frames
+                        self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
 
-                # Enable "Subtract background" checkbox in param window
-                self.param_window.param_controls["subtract_background"].setEnabled(True)
+                    # Enable "Subtract background" checkbox in param window
+                    # self.param_window.param_controls["subtract_background"].setEnabled(True)
 
-                if self.params['subtract_background'] == True:
-                    self.param_window.param_controls["subtract_background"].setChecked(True)
+                    if self.params['subtract_background'] == True:
+                        # self.param_window.param_controls["subtract_background"].setChecked(True)
 
-                    # reshape the image
-                    self.switch_frame(self.n)
+                        # reshape the image
+                        self.show_frame(self.n)
 
-                self.param_window.open_background_action.setEnabled(True)
-                self.param_window.save_background_action.setEnabled(True)
+                    self.param_window.open_background_action.setEnabled(True)
+                    self.param_window.save_background_action.setEnabled(True)
 
     def videos_tracked(self, tracking_time):
         self.param_window.update_tracking_progress_text(1, 0, 100, tracking_time)
@@ -462,7 +473,7 @@ class Controller():
             self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
             # switch to first frame
-            self.switch_frame(0, new_load=True)
+            self.show_frame(0, new_load=True)
 
             if incomplete_load:
                 self.param_window.set_invalid_params_text("Some parameters couldn't be loaded and were set to their default values.")
@@ -489,7 +500,7 @@ class Controller():
         else:
             pass
 
-    def switch_frame(self, n, new_load=False):
+    def show_frame(self, n, new_load=False):
         print("Switching frame")
         if n != self.n:
             # reset tracking results
@@ -584,28 +595,7 @@ class Controller():
         # invert the frames
         self.invert_frames()
 
-        self.switch_frame(self.n)
-
-        if len(self.get_background_threads) > 0:
-            # another thread is already tracking something; don't let it affect the GUI
-            for get_background_thread in self.get_background_threads:
-                get_background_thread.running = False
-            self.get_background_threads = []
-
-        for k in range(len(self.params['video_paths'])):
-            # create new thread to calculate the background
-            self.get_background_threads.append(GetBackgroundThread(self.param_window))
-            self.get_background_threads[-1].set_parameters(self.params['video_paths'][k], k, self.params['invert'])
-
-            self.background_calc_paths.append(self.params['video_paths'][k])
-
-            self.get_background_threads[-1].progress.connect(self.background_calculation_progress)
-
-            # set callback function to be called when the background has been calculated
-            self.get_background_threads[-1].finished.connect(self.background_calculated)
-
-            # start thread
-            self.get_background_threads[-1].start()
+        self.show_frame(self.n)
 
     def generate_thresholded_frames(self):
         # get params of currently selected crop
@@ -630,11 +620,10 @@ class Controller():
         self.params['track_eyes'] = checkbox.isChecked()
 
     def toggle_subtract_background(self, checkbox):
-        if self.params['backgrounds'][self.curr_video_num] is not None:
-            self.params['subtract_background'] = checkbox.isChecked()
+        self.params['subtract_background'] = checkbox.isChecked()
 
-            # reshape the image
-            self.switch_frame(self.n)
+        # reshape the image
+        self.show_frame(self.n)
 
     def toggle_multiprocessing(self, checkbox):
         self.params['use_multiprocessing'] = checkbox.isChecked()
@@ -655,7 +644,7 @@ class Controller():
             # print(self.current_frame, self.scaled_frame)
             # get params from gui
             # self.update_params_from_gui()
-            print(self.params)
+            # print(self.params)
 
             # track current frame
             self.tracking_results, skeleton_matrix, body_crop_coords = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
@@ -675,44 +664,6 @@ class Controller():
                 self.tracking_results['eye_coords'] /= self.params['scale_factor']
 
             self.update_preview(image=None, new_load=False, new_frame=False)
-
-    def track_videos(self):
-        # get save path
-        self.tracking_path = str(QFileDialog.getExistingDirectory(self.param_window, "Select Directory"))
-
-        if self.tracking_path != "":
-            if len(self.get_background_threads) > 0:
-                # another thread is already tracking something; don't let it affect the GUI
-                for get_background_thread in self.get_background_threads:
-                    get_background_thread.running = False
-                self.get_background_threads = []
-
-            # track videos
-            if self.track_videos_thread is not None:
-                # another thread is already tracking something; don't let it affect the GUI
-                self.track_videos_thread.progress.disconnect(self.update_video_tracking_progress)
-                self.track_videos_thread.finished.disconnect(self.videos_tracked)
-
-            print(self.params)
-
-            # create new thread to track the videos
-            self.track_videos_thread = TrackVideosThread(self.param_window)
-            self.track_videos_thread.set_parameters(self.params, self.tracking_path)
-
-            # set callback function to be called when the videos has been tracked
-            self.track_videos_thread.finished.connect(self.videos_tracked)
-
-            # set callback function to be called as the videos are being tracked (to show progress)
-            self.track_videos_thread.progress.connect(self.update_video_tracking_progress)
-
-            n_videos = len(self.params['video_paths'])
-
-            self.param_window.update_tracking_progress_text(n_videos, 0, 0)
-
-            # start thread
-            self.track_videos_thread.start()
-
-            self.tracking = True
 
     def save_background(self):
         if self.params['backgrounds'][self.curr_video_num] is not None:
@@ -860,7 +811,7 @@ class Controller():
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid scale factor value.")
 
@@ -878,7 +829,7 @@ class Controller():
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid background subtraction threshold value.")
 
@@ -893,7 +844,7 @@ class Controller():
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid crop height value.")
 
@@ -908,7 +859,7 @@ class Controller():
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid crop width value.")
 
@@ -923,7 +874,7 @@ class Controller():
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid y offset value.")
 
@@ -938,7 +889,7 @@ class Controller():
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid x offset value.")
 
@@ -953,7 +904,7 @@ class Controller():
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid saved video FPS value.")
 
@@ -968,7 +919,7 @@ class Controller():
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid number of tail points value.")
 
@@ -1004,8 +955,8 @@ class FreeswimmingController(Controller):
 
         self.param_window.set_gui_disabled(True)
 
-    def switch_frame(self, n, new_load=False):
-        Controller.switch_frame(self, n, new_load)
+    def show_frame(self, n, new_load=False):
+        Controller.show_frame(self, n, new_load)
 
         if new_load:
             self.param_window.param_controls['body_crop_height_slider'].setMaximum(self.current_frame.shape[0])
@@ -1173,7 +1124,7 @@ class FreeswimmingController(Controller):
             #     self.generate_thresholded_frames()
 
             # # reshape the image
-            # self.switch_frame(self.n)
+            # self.show_frame(self.n)
 
             # update the image preview
             # self.update_preview(image=None, new_load=False, new_frame=True)
@@ -1189,7 +1140,7 @@ class FreeswimmingController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid minimum tail-body distance value.")
 
@@ -1204,7 +1155,7 @@ class FreeswimmingController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid maximum tail-body distance value.")
 
@@ -1219,7 +1170,7 @@ class FreeswimmingController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid body crop height value.")
 
@@ -1234,7 +1185,7 @@ class FreeswimmingController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid body crop width value.")
 
@@ -1249,7 +1200,7 @@ class FreeswimmingController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid body threshold value.")
 
@@ -1264,7 +1215,7 @@ class FreeswimmingController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid eyes threshold value.")
 
@@ -1279,7 +1230,7 @@ class FreeswimmingController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid tail threshold value.")
 
@@ -1400,7 +1351,7 @@ class HeadfixedController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid heading angle value.")
 
@@ -1411,7 +1362,7 @@ class HeadfixedController(Controller):
 
                 self.param_window.set_invalid_params_text("")
 
-                self.switch_frame(self.n)
+                self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid heading direction value.")
 
@@ -1419,20 +1370,33 @@ class GetBackgroundThread(QThread):
     finished = pyqtSignal(np.ndarray, str)
     progress = pyqtSignal(int, str)
 
-    def set_parameters(self, video_path, video_num, invert):
-        self.video_path = video_path
-        self.video_num  = video_num
-        self.invert     = invert
+    def __init__(self, parent):
+        QThread.__init__(self, parent)
+
+        self.video_paths    = []
+
+    def add_video_paths(self, video_paths):
+        self.video_paths    += video_paths
 
     def run(self):
         self.running = True
 
-        background = open_media.open_video(self.video_path, None, False, True, progress_signal=self.progress, invert=self.invert, thread=self)
+        while len(self.video_paths) > 0 and self.running:
+            fps, n_frames_total = open_media.get_video_info(self.video_paths[-1])
 
-        if background is not None:
-            self.finished.emit(background, self.video_path)
-        else:
-            self.finished.emit(np.zeros(1), self.video_path)
+            frame_nums = utilities.split_evenly(n_frames_total, 1000)
+            # frame_nums = range(self.n_frames_total[-1])
+
+            background = open_media.open_video(self.video_paths[-1], frame_nums, False, True, progress_signal=self.progress, thread=self)
+
+            if background is not None:
+                self.finished.emit(background, self.video_paths[-1])
+            else:
+                self.finished.emit(np.zeros(1), self.video_paths[-1])
+
+            del self.video_paths[-1]
+
+        self.running = False
 
 class TrackVideosThread(QThread):
     finished = pyqtSignal(float)

@@ -68,14 +68,14 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, in_pla
     background_mask = (frames - background < bg_sub_threshold) | (frames - background > 255 - bg_sub_threshold)
 
     if in_place:
+        frames -= background
         frames[background_mask] = 255
         cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
         frames[background_mask] = 0
         cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
         frames[background_mask] = 255
     else:
-        bg_sub_frames = frames.copy()
-
+        bg_sub_frames = frames.copy() - background
         bg_sub_frames[background_mask] = 255
         cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 0
@@ -140,7 +140,9 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # Get video info
     fps, n_frames_total = get_video_info(video_path)
 
-    n_frames_total = 1000
+    n_frames_total -= 6
+
+    # n_frames_total = 1000
 
     print("Total number of frames to track: {}.".format(n_frames_total))
 
@@ -150,8 +152,10 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
     if subtract_background and background is None:
         print("Calculating background...")
+        # frame_nums = utilities.split_evenly(n_frames_total, 1000)
+        frame_nums = range(n_frames_total)
         # Calculate the background
-        background = open_video(video_path, range(n_frames_total), return_frames=False, calc_background=True, capture=capture)
+        background = open_video(video_path, frame_nums, return_frames=False, calc_background=True, capture=capture)
 
     # Initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
@@ -167,7 +171,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # frame_size = frame.shape[0]*frame.shape[1]
     # big_chunk_size = int(mem_to_use / frame_size)
 
-    big_chunk_size = 1000
+    big_chunk_size = 500
 
     # Split frame numbers into big chunks - we keep only one big chunk of frames in memory at a time
     big_split_frame_nums = utilities.split_list_into_chunks(range(n_frames_total), big_chunk_size)
@@ -204,7 +208,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         if i == 0 and params['save_video']:
             # Create the video writer, for saving a video with tracking overlaid
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            new_video_path = "{}_tracked_video.avi".format(os.path.splitext(os.path.basename(video_path))[0])
+            new_video_path = os.path.join(tracking_dir, "{}_tracked_video.avi".format(os.path.splitext(os.path.basename(video_path))[0]))
             writer = cv2.VideoWriter(new_video_path, fourcc, tracking_video_fps,
                 (frames[0].shape[1], frames[0].shape[0]), True)
 
@@ -290,11 +294,6 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
         # Release the video writer
         writer.release()
-
-    if use_multiprocessing:
-        # Close the pool of workers
-        pool.close()
-        pool.join()
     
     # Create the directory for saving tracking data if it doesn't exist
     if not os.path.exists(tracking_dir):
@@ -304,11 +303,22 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     tracking_params = params.copy()
     tracking_params['video_num'] = video_number
 
+    if not params['track_eyes']:
+        eye_coords_array = None
+    if not params['track_tail']:
+        tail_coords_array = None
+        spline_coords_array = None
+
     # Save the tracking data
     np.savez(os.path.join(tracking_dir, "{}_tracking.npz".format(os.path.splitext(os.path.basename(video_path))[0])),
                           tail_coords=tail_coords_array, spline_coords=spline_coords_array,
                           heading_angle=heading_angle_array, body_position=body_position_array,
                           eye_coords=eye_coords_array, params=tracking_params)
+
+    if use_multiprocessing:
+        # Close the pool of workers
+        pool.close()
+        pool.join()
 
     # Close the video capture object
     capture.release()
@@ -423,7 +433,7 @@ def track_cropped_frame(frame, params, crop_params):
                 eye_coords = track_eyes(body_crop_frame, params, crop_params)
 
                 if eye_coords is not None:
-                    heading_angle = update_heading_angle_from_eye_coords(eye_coords, heading_angle)
+                    heading_angle = update_heading_angle_from_eye_coords(eye_coords, heading_angle, body_position)
 
                     # convert eye coords to be relative to initial frame
                     eye_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
@@ -471,7 +481,7 @@ def track_body(frame, params, crop_params, crop_around_body=True):
     body_threshold_frame = get_threshold_frame(frame, body_threshold)
 
     # get heading angle & body position
-    heading_angle, body_position = get_heading_angle_and_body_position(body_threshold_frame)
+    heading_angle, body_position = get_heading_angle_and_body_position(body_threshold_frame, frame)
 
     if crop_around_body:
         # create array of body crop coordinates:
@@ -491,7 +501,7 @@ def track_body(frame, params, crop_params, crop_around_body=True):
 
     return heading_angle, body_position
 
-def get_heading_angle_and_body_position(body_threshold_frame):
+def get_heading_angle_and_body_position(body_threshold_frame, frame):
     # find contours in the thresholded frame
     try:
         image, contours, _ = cv2.findContours(body_threshold_frame, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
@@ -506,36 +516,75 @@ def get_heading_angle_and_body_position(body_threshold_frame):
             # cx = int(M['m10']/M['m00'])
             # cy = int(M['m01']/M['m00'])
 
-            # fit an ellipse and get the angle and center position
-            (x, y), (MA, ma), angle = cv2.fitEllipse(body_contour)
+            if len(body_contour) >= 10:
+                # fit an ellipse and get the angle and center position
+                (x, y), (MA, ma), angle = cv2.fitEllipse(body_contour)
 
-            # create an array for the center position
-            position = np.array([y, x])
+                height      = MA
+                half_width  = ma
 
-            if position[0] < 0 or position[1] < 0 or MA*ma < 100:
+                rad_angle = angle*np.pi/180.0
+
+                mask_1 = np.zeros(body_threshold_frame.shape)
+                point_1 = (x + half_width*np.cos(rad_angle), y + half_width*np.sin(rad_angle))
+                point_2 = (point_1[0] - height*np.sin(rad_angle), point_1[1] + height*np.cos(rad_angle))
+
+                point_3 = (x - half_width*np.cos(rad_angle), y - half_width*np.sin(rad_angle))
+                point_4 = (point_3[0] - height*np.sin(rad_angle), point_3[1] + height*np.cos(rad_angle))
+
+                cv2.fillConvexPoly(mask_1, np.array([point_1, point_2, point_4, point_3]).astype(int), 1)
+
+                mask_2 = np.zeros(body_threshold_frame.shape)
+                point_1 = (x + half_width*np.cos(rad_angle + np.pi), y + half_width*np.sin(rad_angle + np.pi))
+                point_2 = (point_1[0] - height*np.sin(rad_angle + np.pi), point_1[1] + height*np.cos(rad_angle + np.pi))
+
+                point_3 = (x - half_width*np.cos(rad_angle + np.pi), y - half_width*np.sin(rad_angle + np.pi))
+                point_4 = (point_3[0] - height*np.sin(rad_angle + np.pi), point_3[1] + height*np.cos(rad_angle + np.pi))
+
+                cv2.fillConvexPoly(mask_2, np.array([point_1, point_2, point_4, point_3]).astype(int), 1)
+
+                if np.mean(frame[mask_1.astype(bool)]) > np.mean(frame[mask_2.astype(bool)]):
+                    angle += 180
+
+                # create an array for the center position
+                position = np.array([y, x])
+
+                if position[0] < 0 or position[1] < 0 or 4*MA*ma < 100:
+                    return [None]*2
+            else:
                 return [None]*2
         else:
             return [None]*2
 
         return angle, position
     except:
+        # raise
         return [None]*2
 
-def update_heading_angle_from_eye_coords(eye_coords, body_heading_angle):
+def update_heading_angle_from_eye_coords(eye_coords, body_heading_angle, body_position):
     # get heading angle based on eye coordinates
     angle = 180.0 + np.arctan((eye_coords[0, 1] - eye_coords[0, 0])/(eye_coords[1, 1] - eye_coords[1, 0]))*180.0/np.pi
+    # eye_center = np.array([(eye_coords[0, 1] + eye_coords[0, 0])/2, (eye_coords[1, 1] + eye_coords[1, 0])/2])
 
     if body_heading_angle is not None:
+        # if np.sqrt((body_position[0] + np.sin(angle) - eye_center[0])**2 + (body_position[1] + np.cos(angle) - eye_center[1])**2) > np.sqrt((body_position[0] + np.sin(angle + np.pi) - eye_center[0])**2 + (body_position[1] + np.cos(angle + np.pi) - eye_center[1])**2):
+        #     body_heading_angle += 180
+            
+        # body_eye_angle = np.arctan((body_position[0] - (eye_coords[0, 1] + eye_coords[0, 0])/2)/(body_position[1] - (eye_coords[1, 1] + eye_coords[1, 0])/2))*180.0/np.pi
+        # print(body_eye_angle, body_heading_angle)
+        # if abs(body_eye_angle - body_heading_angle) > 45:
+
         # make it aligned with the body threshold heading angle
         if np.abs(angle - body_heading_angle) > 90:
             angle -= 180
 
         # if it's still not within 90º, just set it to the body threshold heading angle
         if np.abs(angle - body_heading_angle) > 90:
-            angle = heading_angle
+            angle = body_heading_angle
         else:
             # set the angle to the average of this angle & the body threshold heading angle
             angle = 0.7*body_heading_angle + 0.3*angle
+        # angle = body_heading_angle
 
     return angle
 
@@ -575,12 +624,17 @@ def get_eye_positions(eyes_threshold_image, prev_eye_coords=None): # todo: rewri
     except ValueError:
         contours, _ = cv2.findContours(eyes_threshold_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
-    if len(contours) < 2:
+    if len(contours) == 0:
         # too few contours found -- we need at least 2 (one for each eye)
         return None
+    elif len(contours) == 1:
+        contours = [contours[0], contours[0].copy()]
 
     # choose the two contours with the largest areas as the eyes
     eye_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
+
+    if cv2.contourArea(eye_contours[0]) < 2:
+        return None
 
     # get moments
     moments = [cv2.moments(contour) for contour in eye_contours]

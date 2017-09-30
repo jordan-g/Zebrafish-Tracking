@@ -187,7 +187,7 @@ class PreviewWindow(QMainWindow):
         self.image_slider.setTickInterval(1)
         self.image_slider.setSingleStep(1)
         self.image_slider.setValue(0)
-        self.image_slider.valueChanged.connect(self.controller.switch_frame)
+        self.image_slider.valueChanged.connect(self.controller.show_frame)
         self.image_slider.hide()
         self.bottom_layout.addWidget(self.image_slider)
 

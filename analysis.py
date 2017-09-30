@@ -3,6 +3,12 @@ import matplotlib.pyplot as plt
 import os
 import glob
 
+def find_nearest(array,value):
+    idx = (np.abs(array-value)).argmin()
+    return array[idx]
+
+# pi_angles = [ a*np.pi for a in range(-30, 30) ]
+
 def open_saved_data(data_path=None):
     # load first crop
     try:
@@ -25,6 +31,12 @@ def open_saved_data(data_path=None):
                 spline_coords_array = None
             if params['track_eyes'] == False:
                 eye_coords_array = None
+
+        # Save the tracking data
+        # np.savez(data_path,
+        #          tail_coords=tail_coords_array, spline_coords=spline_coords_array,
+        #          heading_angle=heading_angle_array, body_position=body_position_array,
+        #          eye_coords=eye_coords_array, params=params)
     except:
         print("Error: Tracking data could not be found.")
         return [None]*6
@@ -39,14 +51,118 @@ def fix_heading_angles(heading_angle_array):
 
     for k in range(n_crops):
         for j in range(n_heading_points):
-            # correct for abrupt jumps in angle due to vectors switching quadrants between frames
+            # heading_angle_array = -heading_angle_array + np.pi/2
+            # heading_angle_array = np.pi - (heading_angle_array - np.pi/2)
+            heading_angle_array = np.pi - heading_angle_array
+
+            for i in range(1, n_frames-1):
+                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.2*np.pi/2 and heading_angle_array[k, i, j] - heading_angle_array[k, i+1, j] >= 0.2*np.pi/2:
+                    heading_angle_array[k, i, j] = heading_angle_array[k, i-1, j]
+                elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.2*np.pi/2 and heading_angle_array[k, i, j] - heading_angle_array[k, i+1, j] <= -0.2*np.pi/2:
+                    heading_angle_array[k, i, j] = heading_angle_array[k, i-1, j]
+
             for i in range(1, n_frames):
-                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.9*np.pi:
-                    heading_angle_array[k, i:, j] -= np.pi
-                elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.9*np.pi:
-                    heading_angle_array[k, i:, j] += np.pi
+                if heading_angle_array[k, i-1, j] < -np.pi/4 and heading_angle_array[k, i, j] > np.pi/4:
+                    heading_angle_array[k, i, j] = -(2*np.pi - heading_angle_array[k, i, j])
+                elif heading_angle_array[k, i-1, j] > np.pi/4 and heading_angle_array[k, i, j] < -np.pi/4:
+                    heading_angle_array[k, i, j] = (2*np.pi + heading_angle_array[k, i, j])
+
+            # for i in range(1, n_frames-1):
+            #     if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.2*np.pi/2 and heading_angle_array[k, i, j] - heading_angle_array[k, i+1, j] >= 0.2*np.pi/2:
+            #         heading_angle_array[k, i, j] = heading_angle_array[k, i-1, j]
+            #     elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.2*np.pi/2 and heading_angle_array[k, i, j] - heading_angle_array[k, i+1, j] <= -0.2*np.pi/2:
+            #         heading_angle_array[k, i, j] = heading_angle_array[k, i-1, j]
+
+            for i in range(1, n_frames):
+                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] > np.pi:
+                    heading_angle_array[k, i:, j] -= 2*np.pi
+                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] < -np.pi:
+                    heading_angle_array[k, i:, j] += 2*np.pi
+
+            # for i in range(1, n_frames):
+            #     if heading_angle_array[k, i-1, j] < -np.pi/4 and heading_angle_array[k, i, j] > np.pi/4:
+            #         heading_angle_array[k, i, j] = -(2*np.pi - heading_angle_array[k, i, j])
+            #     elif heading_angle_array[k, i-1, j] > np.pi/4 and heading_angle_array[k, i, j] < -np.pi/4:
+            #         heading_angle_array[k, i, j] = (2*np.pi + heading_angle_array[k, i, j])
+
+            # for i in range(1, n_frames):
+            #     if heading_angle_array[k, i-1, j] < -np.pi/4 and heading_angle_array[k, i, j] > np.pi/4:
+            #         heading_angle_array[k, i, j] = -(2*np.pi - heading_angle_array[k, i, j])
+            #     elif heading_angle_array[k, i-1, j] > np.pi/4 and heading_angle_array[k, i, j] < -np.pi/4:
+            #         heading_angle_array[k, i, j] = (2*np.pi + heading_angle_array[k, i, j])
+
+
+            # for i in range(1, n_frames):
+            #     if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 1.5*np.pi:
+            #         heading_angle_array[k, i:, j] -= 2*np.pi
+            #         # heading_angle_array[k, i:, j] *= -1
+            #     elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -1.5*np.pi:
+            #         heading_angle_array[k, i:, j] += 2*np.pi
+            #         # heading_angle_array[k, i:, j] *= -1
+
+            # for i in range(1, n_frames):
+            #     if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.9*np.pi:
+            #         heading_angle_array[k, i, j] -= np.pi
+            #     elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.9*np.pi:
+            #         heading_angle_array[k, i, j] += np.pi
+
+            # for i in range(1, n_frames):
+            #     if heading_angle_array[k, i, j] > 0 and heading_angle_array[k, i-1, j] < 0 and heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= np.pi/8:
+            #         heading_angle_array[k, i:, j] -= 2*np.pi
+
+            # for i in range(1, n_frames):
+            #     if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.8*np.pi:
+            #         heading_angle_array[k, i:, j] -= np.pi
+            #     elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.8*np.pi:
+            #         heading_angle_array[k, i:, j] += np.pi
+
+            for i in range(1, n_frames-2):
+                if heading_angle_array[k, i, j] == np.nan and heading_angle_array[k, i-1, j] != np.nan and heading_angle_array[k, i+1, j] != np.nan:
+                    heading_angle_array[k, i, j] = (heading_angle_array[k, i-1, j] + heading_angle_array[k, i+1, j])/2
+                elif heading_angle_array[k, i, j] == np.nan and heading_angle_array[k, i+1, j] == np.nan and heading_angle_array[k, i-1, j] != np.nan and heading_angle_array[k, i+2, j] != np.nan:
+                    heading_angle_array[k, i:i+2, j] = (heading_angle_array[k, i-1, j] + heading_angle_array[k, i+2, j])/2
+
+            # heading_angle_array = -(heading_angle_array - np.pi - np.pi/2)
+            # heading_angle_array = -(np.pi + ((heading_angle_array - np.pi - np.pi/2)))
+
+            # # correct for abrupt jumps in angle due to vectors switching quadrants between frames
+            # for i in range(1, n_frames):
+            #     if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.95*np.pi:
+            #         heading_angle_array[k, i:, j] -= np.pi
+            #     elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.95*np.pi:
+            #         heading_angle_array[k, i:, j] += np.pi
+
+            # # correct for abrupt jumps in angle due to vectors switching quadrants between frames
+            # for i in range(1, n_frames):
+            #     if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.95*np.pi/2:
+            #         heading_angle_array[k, i:, j] -= np.pi/2
+            #     elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.95*np.pi/2:
+            #         heading_angle_array[k, i:, j] += np.pi/2
+
+            # correct for abrupt jumps in angle due to vectors switching quadrants between frames
+            # for i in range(1, n_frames-1):
+            #     if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] >= 0.5*np.pi/2 and heading_angle_array[k, i, j] - heading_angle_array[k, i+1, j] >= 0.5*np.pi/2:
+            #         heading_angle_array[k, i, j] = (heading_angle_array[k, i-1, j] + heading_angle_array[k, i+1, j])/2
+            #     elif heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] <= -0.5*np.pi/2 and heading_angle_array[k, i, j] - heading_angle_array[k, i+1, j] <= -0.5*np.pi/2:
+            #         heading_angle_array[k, i, j] = (heading_angle_array[k, i-1, j] + heading_angle_array[k, i+1, j])/2
 
     return heading_angle_array
+
+def fix_body_position(body_position_array):
+    # get number of crops, frames & tail points
+    n_crops          = body_position_array.shape[0]
+    n_frames         = body_position_array.shape[1]
+    n_heading_points = body_position_array.shape[-1]
+
+    for k in range(n_crops):
+        for j in range(n_heading_points):
+            for i in range(1, n_frames-1):
+                if body_position_array[k, i, j] - body_position_array[k, i-1, j] >= 20 and body_position_array[k, i, j] - body_position_array[k, i+1, j] >= 20:
+                    body_position_array[k, i, j] = (body_position_array[k, i-1, j] + body_position_array[k, i+1, j])/2
+                elif body_position_array[k, i, j] - body_position_array[k, i-1, j] <= -20 and body_position_array[k, i, j] - body_position_array[k, i+1, j] <= -20:
+                    body_position_array[k, i, j] = (body_position_array[k, i-1, j] + body_position_array[k, i+1, j])/2
+
+    return body_position_array
 
 def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_position_array):
     # get number of crops, frames & tail points
