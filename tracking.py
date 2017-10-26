@@ -668,12 +668,23 @@ def track_freeswimming_tail(frame, params, crop_params, body_position, heading_a
     tail_threshold     = crop_params['tail_threshold']
 
     # threshold the frame to extract the tail
-    tail_threshold_frame = get_threshold_frame(frame, tail_threshold)
+    tail_threshold_frame = get_threshold_frame(frame, tail_threshold, remove_noise=True)
 
     # get tail coordinates
     tail_coords, spline_coords, skeleton_matrix = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
                                                               min_tail_body_dist, max_tail_body_dist,
                                                               n_tail_points, alt_tracking=alt_tail_tracking)
+
+    if tail_coords is None:
+        i = 1
+
+        while i <= 5:
+            tail_coords, spline_coords, skeleton_matrix = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
+                                                              min_tail_body_dist+i, max_tail_body_dist,
+                                                              n_tail_points, alt_tracking=alt_tail_tracking)
+
+            i += 1
+
 
     if adjust_thresholds and tail_coords is None:
         # initialize counter
@@ -684,7 +695,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position, heading_a
         
         while tail_coords is None and i < 8:
             #  create a thresholded frame using new threshold
-            tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i])
+            tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i], remove_noise=True)
 
             # get tail coordinates
             tail_coords, spline_coords, skeleton_matrix = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
@@ -696,7 +707,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position, heading_a
 
     return tail_coords, spline_coords, skeleton_matrix
 
-def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=5, smoothing_factor=3, alt_tracking=False): # todo: make max radius & smoothing factor user settable
+def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=2, smoothing_factor=3, alt_tracking=False): # todo: make max radius & smoothing factor user settable
     # get tail skeleton matrix
     skeleton_matrix = get_tail_skeleton_frame(tail_threshold_frame)
 
@@ -827,6 +838,8 @@ def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body
     if len(contours) > 0:
         # choose the contour with the most points as the tail contour
         tail_contour = max(contours, key=len)
+    else:
+        return None
 
     # create initial array of tail coordinates
     tail_coords = np.array([ (i[0][1], i[0][0]) for i in tail_contour ]).T
@@ -1333,26 +1346,27 @@ def scale_frame(frame, scale_factor, interpolation):
         frame = cv2.resize(frame, (0, 0), fx=scale_factor, fy=scale_factor, interpolation=interpolation)
     return frame
 
-def get_threshold_frame(frame, threshold):
+def get_threshold_frame(frame, threshold, remove_noise=False):
     _, threshold_frame = cv2.threshold(frame, threshold, 255, cv2.THRESH_BINARY_INV)
     np.divide(threshold_frame, 255, out=threshold_frame, casting='unsafe')
 
     # remove noise from the thresholded image
-    # kernel = np.ones((3, 3),np.uint8)
-    # threshold_frame = cv2.erode(threshold_frame, kernel, iterations=1)
-    # threshold_frame = cv2.dilate(threshold_frame, kernel, iterations=1)
-
-    kernel = np.ones((5,5),np.uint8)
-    cv2.morphologyEx(threshold_frame, cv2.MORPH_CLOSE, kernel)
-
-    kernel = np.ones((3,3),np.uint8)
-    cv2.morphologyEx(threshold_frame, cv2.MORPH_OPEN, kernel)
+    # if remove_noise:
+    #     kernel = np.ones((3, 3), np.uint8)
+    #     threshold_frame = cv2.erode(threshold_frame, kernel, iterations=1)
+    #     threshold_frame = cv2.dilate(threshold_frame, kernel, iterations=1)
 
     # kernel = np.ones((5,5),np.uint8)
     # cv2.morphologyEx(threshold_frame, cv2.MORPH_CLOSE, kernel)
 
-    kernel = np.ones((5,5),np.uint8)
-    cv2.morphologyEx(threshold_frame, cv2.MORPH_OPEN, kernel)
+    # kernel = np.ones((3,3),np.uint8)
+    # cv2.morphologyEx(threshold_frame, cv2.MORPH_OPEN, kernel)
+
+    # kernel = np.ones((5,5),np.uint8)
+    # cv2.morphologyEx(threshold_frame, cv2.MORPH_CLOSE, kernel)
+
+    # kernel = np.ones((5,5),np.uint8)
+    # cv2.morphologyEx(threshold_frame, cv2.MORPH_OPEN, kernel)
 
     return threshold_frame
 

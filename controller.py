@@ -463,10 +463,12 @@ class Controller():
 
             self.first_load = False
 
+            self.param_window.crop_tabs_widget.blockSignals(True)
             # create tabs for all saved crops
             for j in range(len(self.params['crop_params'])):
                 self.current_crop += 1
                 self.param_window.create_crop_tab(self.params['crop_params'][j])
+            self.param_window.crop_tabs_widget.blockSignals(False)
 
             # update gui controls
             self.param_window.update_gui_from_params(self.params)
@@ -648,7 +650,7 @@ class Controller():
 
             # track current frame
             self.tracking_results, skeleton_matrix, body_crop_coords = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
-            if skeleton_matrix is not None:
+            if skeleton_matrix is not None and body_crop_coords is not None:
                 self.tail_skeleton_frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1]] = skeleton_matrix*255
             else:
                 print("No skeleton matrix.")

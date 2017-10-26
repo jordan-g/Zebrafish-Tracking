@@ -187,10 +187,10 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
     tail_distances = np.sqrt((heading_coords_array[:, :, 0, :] - tail_coords_array[:, :, 0, 0][:, :, np.newaxis])**2 + (heading_coords_array[:, :, 1, :] - tail_coords_array[:, :, 1, 0][:, :, np.newaxis])**2)
 
     # get frames where the "starting" heading coordinate is closer to the tail than the "ending" coordinate
-    mask = tail_distances[:, :, 0] < tail_distances[:, :, 1]
+    # mask = tail_distances[:, :, 0] < tail_distances[:, :, 1]
 
     # flip heading vectors for these frames, so that all vectors point toward the tail
-    heading_vectors[mask, :] *= -1
+    # heading_vectors[mask, :] *= -1
 
     # create tail vectors by subtracting points along the tail and the body position
     tail_vectors = tail_coords_array - body_position_array[:, :, :, np.newaxis]
@@ -198,11 +198,11 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
     tail_distance_start = np.sqrt((heading_coords_array[:, :, 0, 0] - tail_coords_array[:, :, 0, 0])**2 + (heading_coords_array[:, :, 1, 0] - tail_coords_array[:, :, 1, 0])**2)
     tail_distance_end   = np.sqrt((heading_coords_array[:, :, 0, 0] - tail_coords_array[:, :, 0, -1])**2 + (heading_coords_array[:, :, 1, 0] - tail_coords_array[:, :, 1, -1])**2)
 
-    mask = tail_distance_end < tail_distance_start
+    # mask = tail_distance_end < tail_distance_start
 
     # tail_coords_array[mask, :, :] = np.fliplr(tail_coords_array[mask, :, :])
 
-    tail_vectors[mask, :, :] *= -1
+    # tail_vectors[mask, :, :] *= -1
 
     for k in range(n_crops):
         for j in range(n_tail_points):
@@ -219,11 +219,11 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
             # tail_angle_array[k, :, j] = ((2*np.pi - np.arctan2(tail_vectors[k, :, 0, j], tail_vectors[k, :, 1, j])) % 2*np.pi) - ((np.arctan2(heading_vectors[k, :, 0], heading_vectors[k, :, 1])) % 2*np.pi)
 
             # correct for abrupt jumps in angle due to vectors switching quadrants between frames
-            for i in range(0, n_frames):
-                if tail_angle_array[k, i, j] > np.pi/2.0:
-                    tail_angle_array[k, i, j] -= np.pi
-                elif tail_angle_array[k, i, j] < -np.pi/2.0:
-                    tail_angle_array[k, i, j] += np.pi
+            # for i in range(0, n_frames):
+            #     if tail_angle_array[k, i, j] > np.pi/2.0:
+            #         tail_angle_array[k, i, j] -= np.pi
+            #     elif tail_angle_array[k, i, j] < -np.pi/2.0:
+            #         tail_angle_array[k, i, j] += np.pi
 
             # for i in range(1, n_frames):
             #     if tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] > 0.8*np.pi/2.0 and tail_angle_array[k, i, j] - tail_angle_array[k, i+1, j] > 0.8*np.pi/2.0:
@@ -246,31 +246,31 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
             #     elif tail_angle_array[k, i, j] - tail_angle_array[k, i-1, j] <= -3*np.pi/4.0:
             #         tail_angle_array[k, i, j] += np.pi
 
-            if tail_angle_array[k, 0, j] >= np.pi/2.0:
-                tail_angle_array[k, :, j] -= np.pi
-            elif tail_angle_array[k, 0, j] <= -np.pi/2.0:
-                tail_angle_array[k, :, j] += np.pi
+            # if tail_angle_array[k, 0, j] >= np.pi/2.0:
+            #     tail_angle_array[k, :, j] -= np.pi
+            # elif tail_angle_array[k, 0, j] <= -np.pi/2.0:
+            #     tail_angle_array[k, :, j] += np.pi
 
             nan_inds = np.argwhere(np.isnan(tail_angle_array[k, :, j])).T[0]
 
-            for i in range(1, len(nan_inds)):
-                if nan_inds[i] - nan_inds[i-1] > 1:
-                    baseline = np.mean(tail_angle_array[k, nan_inds[i-1]+1:nan_inds[i], j])
+            # for i in range(1, len(nan_inds)):
+            #     if nan_inds[i] - nan_inds[i-1] > 1:
+            #         baseline = np.mean(tail_angle_array[k, nan_inds[i-1]+1:nan_inds[i], j])
 
-                    if baseline > 1.8*np.pi:
-                        add_factor = -2*np.pi
-                    elif baseline > 0.9*np.pi:
-                        add_factor = -np.pi
-                    elif baseline < -1.8*np.pi:
-                        add_factor = 2*np.pi
-                    elif baseline < -0.9*np.pi:
-                        add_factor = np.pi
-                    else:
-                        add_factor = 0
+            #         if baseline > 1.8*np.pi:
+            #             add_factor = -2*np.pi
+            #         elif baseline > 0.9*np.pi:
+            #             add_factor = -np.pi
+            #         elif baseline < -1.8*np.pi:
+            #             add_factor = 2*np.pi
+            #         elif baseline < -0.9*np.pi:
+            #             add_factor = np.pi
+            #         else:
+            #             add_factor = 0
 
-                    tail_angle_array[k, nan_inds[i-1]+1:nan_inds[i], j] += add_factor
+            #         tail_angle_array[k, nan_inds[i-1]+1:nan_inds[i], j] += add_factor
 
-                    baseline = np.mean(tail_angle_array[k, nan_inds[i-1]+1:nan_inds[i], j])
+            #         baseline = np.mean(tail_angle_array[k, nan_inds[i-1]+1:nan_inds[i], j])
 
     return tail_angle_array
 
