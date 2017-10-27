@@ -372,6 +372,14 @@ class PreviewWindow(QMainWindow):
         if image is not None and self.zoom != 1 and zoom:
             image = image[:int(round(image.shape[0]/self.zoom)), :int(round(image.shape[1]/self.zoom)), :].copy()
 
+        if image is not None:
+            if zoom:
+                self.setWindowTitle("Preview - Zoom: {}x".format(int(self.zoom)))
+            else:
+                self.setWindowTitle("Preview - Zoom: 1x")
+        else:
+            self.setWindowTitle("Preview")
+
         self.image_label.update_pixmap(image)
 
         # update label's pixmap size
