@@ -6,6 +6,7 @@ import json
 
 import numpy as np
 import cv2
+from scipy.ndimage import zoom
 
 # import the Qt library
 try:
@@ -69,7 +70,6 @@ class PreviewQLabel(QLabel):
                 # draw tail start coordinate
                 self.preview_window.remove_tail_start()
                 self.preview_window.draw_tail_start(np.array(self.end_crop_coord))
-
 
     def set_scale_factor(self, scale_factor):
         self.scale_factor = scale_factor
@@ -191,12 +191,15 @@ class PreviewWindow(QMainWindow):
         self.image_slider.hide()
         self.bottom_layout.addWidget(self.image_slider)
 
+        self.zoom = 1
+
         # initialize variables
         self.image                  = None  # image to show
         self.tracking_data          = None  # list of tracking data
         self.selecting_crop         = False # whether user is selecting a crop
         self.changing_heading_angle = False # whether the user is changing the heading angle
         self.body_crop              = None
+        self.final_image            = None
 
         # set main widget
         self.setCentralWidget(self.main_widget)
@@ -205,6 +208,14 @@ class PreviewWindow(QMainWindow):
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowFullscreenButtonHint)
 
         self.show()
+
+    def wheelEvent(self, event):
+        old_zoom = self.zoom
+        self.zoom = max(1, self.zoom + event.pixelDelta().y()/100)
+
+        self.zoom = int(self.zoom*100)/100.0
+
+        self.update_image_label(self.final_image)
 
     def resizeEvent(self, event):
         # get new size
@@ -297,8 +308,10 @@ class PreviewWindow(QMainWindow):
             if crop_around_body:
                 _, image = tracking.crop_frame_around_body(image, body_position, params['body_crop'], params['scale_factor'])
 
+            self.final_image = image
+
             # update image label
-            self.update_image_label(image)
+            self.update_image_label(self.final_image, zoom=(not (crop_around_body and body_position is not None)))
 
     def draw_crop_selection(self, start_crop_coords, end_crop_coords):
         if self.selecting_crop and self.image is not None:
@@ -355,7 +368,10 @@ class PreviewWindow(QMainWindow):
     def remove_angle_overlay(self):
         self.update_image_label(self.image)
 
-    def update_image_label(self, image):
+    def update_image_label(self, image, zoom=True):
+        if image is not None and self.zoom != 1 and zoom:
+            image = image[:int(round(image.shape[0]/self.zoom)), :int(round(image.shape[1]/self.zoom)), :].copy()
+
         self.image_label.update_pixmap(image)
 
         # update label's pixmap size

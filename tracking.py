@@ -98,7 +98,7 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, in_pla
             cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
             bg_sub_frames[background_mask] = 0
 
-        return bg_sub_frames
+    return bg_sub_frames
 
 # --- Noise Removal --- #
 
