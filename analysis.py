@@ -179,12 +179,12 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
     heading_vectors[:, :, 1][:, :, np.newaxis] = np.cos(heading_angle_array)
 
     # create array of start/end coordinates of the line with the heading angle passing through the body center position
-    heading_coords_array = np.zeros((n_crops, n_frames, 2, 2))
-    heading_coords_array[:, :, :, 0] = body_position_array + heading_vectors
-    heading_coords_array[:, :, :, 1] = body_position_array - heading_vectors
+    # heading_coords_array = np.zeros((n_crops, n_frames, 2, 2))
+    # heading_coords_array[:, :, :, 0] = body_position_array + heading_vectors
+    # heading_coords_array[:, :, :, 1] = body_position_array - heading_vectors
 
     # get distances between start/end coordinates of the heading line and the starting coordinates of the tail
-    tail_distances = np.sqrt((heading_coords_array[:, :, 0, :] - tail_coords_array[:, :, 0, 0][:, :, np.newaxis])**2 + (heading_coords_array[:, :, 1, :] - tail_coords_array[:, :, 1, 0][:, :, np.newaxis])**2)
+    # tail_distances = np.sqrt((heading_coords_array[:, :, 0, :] - tail_coords_array[:, :, 0, 0][:, :, np.newaxis])**2 + (heading_coords_array[:, :, 1, :] - tail_coords_array[:, :, 1, 0][:, :, np.newaxis])**2)
 
     # get frames where the "starting" heading coordinate is closer to the tail than the "ending" coordinate
     # mask = tail_distances[:, :, 0] < tail_distances[:, :, 1]
@@ -195,8 +195,10 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
     # create tail vectors by subtracting points along the tail and the body position
     tail_vectors = tail_coords_array - body_position_array[:, :, :, np.newaxis]
 
-    tail_distance_start = np.sqrt((heading_coords_array[:, :, 0, 0] - tail_coords_array[:, :, 0, 0])**2 + (heading_coords_array[:, :, 1, 0] - tail_coords_array[:, :, 1, 0])**2)
-    tail_distance_end   = np.sqrt((heading_coords_array[:, :, 0, 0] - tail_coords_array[:, :, 0, -1])**2 + (heading_coords_array[:, :, 1, 0] - tail_coords_array[:, :, 1, -1])**2)
+    # print(tail_coords_array[0, 0], body_position_array[0, 0])
+
+    # tail_distance_start = np.sqrt((heading_coords_array[:, :, 0, 0] - tail_coords_array[:, :, 0, 0])**2 + (heading_coords_array[:, :, 1, 0] - tail_coords_array[:, :, 1, 0])**2)
+    # tail_distance_end   = np.sqrt((heading_coords_array[:, :, 0, 0] - tail_coords_array[:, :, 0, -1])**2 + (heading_coords_array[:, :, 1, 0] - tail_coords_array[:, :, 1, -1])**2)
 
     # mask = tail_distance_end < tail_distance_start
 
@@ -206,13 +208,12 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
 
     for k in range(n_crops):
         for j in range(n_tail_points):
-
             # get dot product and determinant between the tail vectors and the heading vectors
-            dot = tail_vectors[k, :, 0, j]*heading_vectors[k, :, 0] + tail_vectors[k, :, 1, j]*heading_vectors[k, :, 1] # dot product
-            det = tail_vectors[k, :, 0, j]*heading_vectors[k, :, 1] - tail_vectors[k, :, 1, j]*heading_vectors[k, :, 0] # determinant
+            dot = tail_vectors[k, :, 1, j]*heading_vectors[k, :, 1] + tail_vectors[k, :, 0, j]*heading_vectors[k, :, 0] # dot product
+            det = tail_vectors[k, :, 1, j]*heading_vectors[k, :, 0] - tail_vectors[k, :, 0, j]*heading_vectors[k, :, 1] # determinant
 
             # get an angle between 0 and 2*pi
-            tail_angle_array[k, :, j] = np.arctan2(dot, det)
+            tail_angle_array[k, :, j] = np.arctan2(det, dot)
 
             # compressed_tail_angle_array = tail_angle_array[ ~np.isnan(tail_angle_array) ]
 
@@ -251,7 +252,7 @@ def get_freeswimming_tail_angles(tail_coords_array, heading_angle_array, body_po
             # elif tail_angle_array[k, 0, j] <= -np.pi/2.0:
             #     tail_angle_array[k, :, j] += np.pi
 
-            nan_inds = np.argwhere(np.isnan(tail_angle_array[k, :, j])).T[0]
+            # nan_inds = np.argwhere(np.isnan(tail_angle_array[k, :, j])).T[0]
 
             # for i in range(1, len(nan_inds)):
             #     if nan_inds[i] - nan_inds[i-1] > 1:
@@ -284,7 +285,7 @@ def get_tail_end_angles(tail_angle_array, num_to_average=1):
             tail_angles = tail_angle_array[k, i, :]
             tail_end_angles[k, i] = np.mean(tail_angles[ ~np.isnan(tail_angles) ][-num_to_average:])
 
-        for i in range(1, n_frames):
+        for i in range(1, n_frames-1):
             if tail_end_angles[k, i] - tail_end_angles[k, i-1] > 0.8*np.pi/2.0 and tail_end_angles[k, i] - tail_end_angles[k, i+1] > 0.8*np.pi/2.0:
                 tail_end_angles[k, i] -= np.pi/2.0
             elif tail_end_angles[k, i] - tail_end_angles[k, i-1] < -0.8*np.pi/2.0 and tail_end_angles[k, i] - tail_end_angles[k, i+1] < -0.8*np.pi/2.0:

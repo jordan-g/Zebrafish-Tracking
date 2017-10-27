@@ -61,8 +61,6 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     # get video info
     fps, n_frames_total = get_video_info(video_path)
 
-    print(n_frames_total)
-
     # no frame numbers given; read all frames
     if frame_nums is None:
         frame_nums = range(n_frames_total)

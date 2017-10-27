@@ -50,7 +50,7 @@ cv2.setNumThreads(0) # Avoids crashes when using multiprocessing with OpenCV
 
 # --- Background subtraction --- #
 
-def subtract_background_from_frames(frames, background, bg_sub_threshold, in_place=False):
+def subtract_background_from_frames(frames, background, bg_sub_threshold, in_place=False, invert=False):
     '''
     Subtract a background image from an array of frames.
 
@@ -67,20 +67,36 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, in_pla
 
     background_mask = (frames - background < bg_sub_threshold) | (frames - background > 255 - bg_sub_threshold)
 
-    if in_place:
-        frames -= background
-        frames[background_mask] = 255
-        cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
-        frames[background_mask] = 0
-        cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
-        frames[background_mask] = 255
+    if not invert:
+        if in_place:
+            frames -= background
+            frames[background_mask] = 255
+            cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
+            frames[background_mask] = 0
+            cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
+            frames[background_mask] = 255
+        else:
+            bg_sub_frames = frames.copy() - background
+            bg_sub_frames[background_mask] = 255
+            cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+            bg_sub_frames[background_mask] = 0
+            cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+            bg_sub_frames[background_mask] = 255
     else:
-        bg_sub_frames = frames.copy() - background
-        bg_sub_frames[background_mask] = 255
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-        bg_sub_frames[background_mask] = 0
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-        bg_sub_frames[background_mask] = 255
+        if in_place:
+            frames -= background
+            frames[background_mask] = 0
+            cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
+            frames[background_mask] = 255
+            cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
+            frames[background_mask] = 0
+        else:
+            bg_sub_frames = frames.copy() - background
+            bg_sub_frames[background_mask] = 0
+            cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+            bg_sub_frames[background_mask] = 255
+            cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+            bg_sub_frames[background_mask] = 0
 
         return bg_sub_frames
 

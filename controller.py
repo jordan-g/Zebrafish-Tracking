@@ -218,7 +218,7 @@ class Controller():
             
             if self.params['backgrounds'][self.curr_video_num] is not None:
                 # get background-subtracted frames
-                self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
+                self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'], invert=self.params['invert'])
 
             if self.frames[self.curr_video_num] is None:
                 # no frames found; end here
@@ -242,7 +242,7 @@ class Controller():
             
             if self.params['backgrounds'][self.curr_video_num] is not None and self.bg_sub_frames[self.curr_video_num] is None:
                 # generate background subtracted frames
-                self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
+                self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'], invert=self.params['invert'])
 
             # enable GUI controls
             self.param_window.set_gui_disabled(False)
@@ -295,7 +295,7 @@ class Controller():
             else:
                 if self.frames[video_num] is not None and self.bg_sub_frames[video_num] is None:
                     # generate background subtracted frames
-                    self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
+                    self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'], invert=self.params['invert'])
 
             # switch to first frame
             self.show_frame(0, new_load=True)
@@ -346,8 +346,6 @@ class Controller():
                 # another thread is already tracking something; don't let it affect the GUI
                 self.track_videos_thread.progress.disconnect(self.update_video_tracking_progress)
                 self.track_videos_thread.finished.disconnect(self.videos_tracked)
-
-            print(self.params)
 
             # create new thread to track the videos
             self.track_videos_thread = TrackVideosThread(self.param_window)
@@ -409,7 +407,7 @@ class Controller():
                 if background is not None:
                     if self.frames[video_num] is not None and self.bg_sub_frames[video_num] is None:
                         # generate background subtracted frames
-                        self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'])
+                        self.bg_sub_frames[video_num] = tracking.subtract_background_from_frames(self.frames[video_num], self.params['backgrounds'][video_num], self.params['bg_sub_threshold'], invert=self.params['invert'])
 
                     # Enable "Subtract background" checkbox in param window
                     # self.param_window.param_controls["subtract_background"].setEnabled(True)
@@ -503,7 +501,7 @@ class Controller():
             pass
 
     def show_frame(self, n, new_load=False):
-        print("Switching frame")
+        print("Showing frame {}.".format(n))
         if n != self.n:
             # reset tracking results
             self.tracking_results = None
@@ -514,18 +512,12 @@ class Controller():
 
         # set current frame
         if self.params['subtract_background'] and self.bg_sub_frames[self.curr_video_num] is not None:
-            frames = self.bg_sub_frames
+            self.current_frame = self.bg_sub_frames[self.curr_video_num][self.n]
         else:
-            frames = self.frames
-
-        self.current_frame = frames[self.curr_video_num][self.n]
+            self.current_frame = self.frames[self.curr_video_num][self.n]
 
         # reshape the image (shrink, crop & invert)
         self.reshape_frame()
-
-        # invert the frame
-        # if self.params['invert'] == True:
-        #     self.invert_frame()
 
         if self.params['type'] == "freeswimming":
             # generate thresholded frames
@@ -542,7 +534,6 @@ class Controller():
         self.tracking_results = None
 
         if self.current_frame is not None:
-            # print(self.current_frame)
             # get params of currently selected crop
             current_crop_params = self.params['crop_params'][self.current_crop]
 
@@ -569,6 +560,13 @@ class Controller():
     def invert_frames(self):
         self.frames[self.curr_video_num] = 255 - self.frames[self.curr_video_num]
 
+        for i in range(len(self.params['backgrounds'])):
+            if self.params['backgrounds'][i] is not None:
+                self.params['backgrounds'][i] = 255 - self.params['backgrounds'][i]
+
+                if self.bg_sub_frames[i] is not None:
+                    self.bg_sub_frames[i] = 255 - self.bg_sub_frames[i]
+
     def update_preview(self, image=None, new_load=False, new_frame=False):
         if image is None:
             # use the cropped current frame by default
@@ -592,8 +590,6 @@ class Controller():
     def toggle_invert_image(self, checkbox):
         self.params['invert'] = checkbox.isChecked()
 
-        self.bg_sub_frames[self.curr_video_num] = None
-
         # invert the frames
         self.invert_frames()
 
@@ -605,7 +601,7 @@ class Controller():
 
         # generate thresholded frames
         self.body_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['body_threshold'])*255
-        self.eyes_threshold_frame  = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['eyes_threshold'])*255
+        self.eyes_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['eyes_threshold'])*255
         self.tail_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['tail_threshold'])*255
         self.tail_skeleton_frame  = tracking.get_tail_skeleton_frame(self.tail_threshold_frame/255)*255
 
@@ -643,17 +639,10 @@ class Controller():
 
     def track_frame(self):
         if self.current_frame is not None:
-            # print(self.current_frame, self.scaled_frame)
-            # get params from gui
-            # self.update_params_from_gui()
-            # print(self.params)
-
             # track current frame
             self.tracking_results, skeleton_matrix, body_crop_coords = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
             if skeleton_matrix is not None and body_crop_coords is not None:
                 self.tail_skeleton_frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1]] = skeleton_matrix*255
-            else:
-                print("No skeleton matrix.")
 
             # rescale coordinates
             if self.tracking_results['tail_coords'] is not None:
@@ -683,11 +672,10 @@ class Controller():
                 background_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open image', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)'))
             elif pyqt_version == 5:
                 background_path = str(QFileDialog.getOpenFileName(self.param_window, 'Open image', '', 'Images (*.jpg  *.jpeg *.tif *.tiff *.png)')[0])
-            # print(background_path)
+
             background = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
 
             if background.shape == self.current_frame.shape:
-                # print("hey")
                 self.params['backgrounds'][self.curr_video_num] = cv2.imread(background_path, cv2.IMREAD_GRAYSCALE)
                 self.background_calculated(self.params['backgrounds'][self.curr_video_num], self.curr_video_num)
 
@@ -827,7 +815,7 @@ class Controller():
                 self.params['bg_sub_threshold'] = bg_sub_threshold
 
                 if self.params['backgrounds'][self.curr_video_num] is not None:
-                    self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
+                    self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'], invert=self.params['invert'])
 
                 self.param_window.set_invalid_params_text("")
 
