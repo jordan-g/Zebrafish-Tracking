@@ -119,7 +119,10 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
 
             if calc_background:
                 # update background array
-                mask_2 = np.less(background, frame)
+                if invert:
+                    mask_2 = np.greater(background, frame)
+                else:
+                    mask_2 = np.less(background, frame)
                 background[mask_2] = frame[mask_2]
 
             frame_count += 1

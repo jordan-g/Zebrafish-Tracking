@@ -176,6 +176,13 @@ class Controller():
                 # no frames found; end here
                 return
 
+        print(np.mean(self.frames[self.curr_video_num]))
+
+        if np.mean(self.frames[self.curr_video_num]) < 100:
+            self.invert_background = True
+        else:
+            self.invert_background = False
+
         # get the indices of the newly loaded videos
         new_video_indices = [ len(self.params['video_paths']) - len(video_paths) + i for i in range(len(video_paths)) ]
 
@@ -186,7 +193,7 @@ class Controller():
             self.param_window.update_background_progress_text(len(background_calc_paths), 0)
 
             if self.get_backgrounds_thread is None:
-                self.get_backgrounds_thread = GetBackgroundThread(self.param_window)
+                self.get_backgrounds_thread = GetBackgroundThread(self.param_window, self.invert_background)
                 self.get_backgrounds_thread.progress.connect(self.background_calculation_progress)
                 self.get_backgrounds_thread.finished.connect(self.background_calculated)
 
@@ -351,7 +358,7 @@ class Controller():
                 self.track_videos_thread.finished.disconnect(self.videos_tracked)
 
             # create new thread to track the videos
-            self.track_videos_thread = TrackVideosThread(self.param_window)
+            self.track_videos_thread = TrackVideosThread(self.param_window, self.invert_background)
             self.track_videos_thread.set_parameters(self.params, self.tracking_path)
 
             # set callback function to be called when the videos has been tracked
@@ -1363,10 +1370,11 @@ class GetBackgroundThread(QThread):
     finished = pyqtSignal(np.ndarray, str)
     progress = pyqtSignal(int, str)
 
-    def __init__(self, parent):
+    def __init__(self, parent, invert=False):
         QThread.__init__(self, parent)
 
         self.video_paths    = []
+        self.invert = invert
 
     def add_video_paths(self, video_paths):
         self.video_paths    += video_paths
@@ -1380,7 +1388,7 @@ class GetBackgroundThread(QThread):
             frame_nums = utilities.split_evenly(n_frames_total, 1000)
             # frame_nums = range(self.n_frames_total[-1])
 
-            background = open_media.open_video(self.video_paths[-1], frame_nums, False, True, progress_signal=self.progress, thread=self)
+            background = open_media.open_video(self.video_paths[-1], frame_nums, False, True, invert=self.invert, progress_signal=self.progress, thread=self)
 
             if background is not None:
                 self.finished.emit(background, self.video_paths[-1])
@@ -1395,6 +1403,11 @@ class TrackVideosThread(QThread):
     finished = pyqtSignal(float)
     progress = pyqtSignal(int, float)
 
+    def __init__(self, parent, invert=False):
+        QThread.__init__(self, parent)
+
+        self.invert = invert
+
     def set_parameters(self, params, tracking_path):
         self.params = params
         self.tracking_path = tracking_path
@@ -1405,7 +1418,7 @@ class TrackVideosThread(QThread):
         if self.tracking_path != "":
             start_time = time.time()
 
-            tracking_func(self.params, self.tracking_path, progress_signal=self.progress)
+            tracking_func(self.params, self.tracking_path, invert_background=self.invert, progress_signal=self.progress)
 
             end_time = time.time()
 

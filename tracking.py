@@ -84,6 +84,8 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, in_pla
             bg_sub_frames[background_mask] = 0
             cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
             bg_sub_frames[background_mask] = 255
+
+            return bg_sub_frames
     else:
         if in_place:
             frames -= background
@@ -100,7 +102,7 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, in_pla
             cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
             bg_sub_frames[background_mask] = 0
 
-    return bg_sub_frames
+            return bg_sub_frames
 
 # --- Noise Removal --- #
 
@@ -125,7 +127,7 @@ def remove_noise(frames):
 
 # --- Tracking --- #
 
-def open_and_track_video(video_path, params, tracking_dir, video_number=0, progress_signal=None): # todo: add video creation from tracking data
+def open_and_track_video(video_path, params, tracking_dir, video_number=0, progress_signal=None, invert_background=False): # todo: add video creation from tracking data
     # Extract parameters
     subtract_background = params['subtract_background']
     background          = params['backgrounds'][video_number]
@@ -173,7 +175,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         # frame_nums = utilities.split_evenly(n_frames_total, 1000)
         frame_nums = range(n_frames_total)
         # Calculate the background
-        background = open_video(video_path, frame_nums, return_frames=False, calc_background=True, capture=capture)
+        background = open_video(video_path, frame_nums, return_frames=False, invert=invert_background, calc_background=True, capture=capture)
 
     # Initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
@@ -321,11 +323,14 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     tracking_params = params.copy()
     tracking_params['video_num'] = video_number
 
-    if not params['track_eyes']:
+    try:
+        if not params['track_eyes']:
+            eye_coords_array = None
+        if not params['track_tail']:
+            tail_coords_array = None
+            spline_coords_array = None
+    except:
         eye_coords_array = None
-    if not params['track_tail']:
-        tail_coords_array = None
-        spline_coords_array = None
 
     # Save the tracking data
     np.savez(os.path.join(tracking_dir, "{}_tracking.npz".format(os.path.splitext(os.path.basename(video_path))[0])),
@@ -347,12 +352,12 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # Print the total tracking time
     print("Finished tracking. Total time: {}s.".format(end_time - start_time))
 
-def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
+def open_and_track_video_batch(params, tracking_dir, invert_background=False, progress_signal=None):
     video_paths = params['video_paths']
 
     # track each video with the same parameters
     for i in range(len(video_paths)):
-        open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal)
+        open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal, invert_background=invert_background)
 
 def track_frames(params, background, frames):
     # Extract parameters
