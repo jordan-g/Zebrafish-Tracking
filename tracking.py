@@ -21,12 +21,14 @@ from multiprocessing import sharedctypes
 from functools import partial
 from itertools import chain
 
-import imageio
-try:
-    from moviepy.video.io.ffmpeg_reader import *
-except imageio.core.fetching.NeedDownloadError:
-    imageio.plugins.ffmpeg.download()
-    from moviepy.video.io.ffmpeg_reader import *
+from moviepy.video.io.ffmpeg_reader import *
+
+# import imageio
+# try:
+#     from moviepy.video.io.ffmpeg_reader import *
+# except imageio.core.fetching.NeedDownloadError:
+#     imageio.plugins.ffmpeg.download()
+#     from moviepy.video.io.ffmpeg_reader import *
 
 from skimage.morphology import skeletonize
 from collections import deque
@@ -477,6 +479,7 @@ def track_cropped_frame(frame, params, crop_params):
         # track tail
         tail_coords, spline_coords = track_headfixed_tail(frame, params, crop_params)
         skeleton_matrix = None
+        body_crop_coords = None
 
     results = { 'tail_coords'    : tail_coords,
                 'spline_coords'  : spline_coords,

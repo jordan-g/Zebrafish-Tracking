@@ -209,9 +209,12 @@ class Controller():
         if video_path not in ("", None):
             # get video info
             fps, n_frames_total = open_media.get_video_info(video_path)
+            # print(n_frames_total)
 
             # load evenly spaced frames
             frame_nums = utilities.split_evenly(min(n_frames_total, 50000), max_n_frames)
+
+            # frame_nums = list(range(200, 300))
 
             # load frames from the video
             self.frames[self.curr_video_num] = open_media.open_video(video_path, frame_nums, True, invert=self.params['invert'], greyscale=True, seek_to_starting_frame=False)
