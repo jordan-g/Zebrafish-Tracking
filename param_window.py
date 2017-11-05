@@ -19,7 +19,7 @@ except:
 
 # set options for the interpolation & heading direction comboboxes
 interpolation_options     = ["Nearest Neighbor", "Linear", "Bicubic", "Lanczos"]
-heading_direction_options = ["Down", "Right", "Up", "Left"]
+heading_direction_options = ["Right", "Up", "Left", "Down"]
 
 class ParamWindow(QMainWindow):
     def __init__(self, controller):
@@ -498,6 +498,7 @@ class ParamWindow(QMainWindow):
 
         # make textbox & add to layout
         textbox = QLineEdit()
+        textbox.setStyleSheet("border-radius: 3px; border: 1px solid #ccc; padding: 2px;")
         textbox.setAlignment(Qt.AlignHCenter)
         textbox.setObjectName(textbox_label)
         textbox.setFixedWidth(36)
@@ -609,6 +610,7 @@ class ParamWindow(QMainWindow):
     def add_param_textbox(self, label, description, return_func, default_value, parent):
         # make textbox & add row to form layout
         param_box = QLineEdit()
+        param_box.setStyleSheet("border-radius: 3px; border: 1px solid #ccc; padding: 2px;")
         param_box.setObjectName(label)
         param_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         param_box.editingFinished.connect(lambda:return_func(float(param_box.text())))
@@ -807,7 +809,7 @@ class FreeswimmingParamWindow(ParamWindow):
         self.right_layout.addLayout(self.checkbox_layout)
 
         # add checkboxes - (key, description, function to call, initial value, parent layout)
-        self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.checkbox_layout, 0, 0)
+        self.add_checkbox('dark_background', "Dark background", self.controller.toggle_dark_background, params['dark_background'], self.checkbox_layout, 0, 0)
         self.add_checkbox('show_body_threshold', "Show body threshold", self.controller.toggle_threshold_image, params['gui_params']['show_body_threshold'], self.checkbox_layout, 1, 0)
         self.add_checkbox('show_eyes_threshold', "Show eyes threshold", self.controller.toggle_threshold_image, params['gui_params']['show_eyes_threshold'], self.checkbox_layout, 2, 0)
         self.add_checkbox('show_tail_threshold', "Show tail threshold", self.controller.toggle_threshold_image, params['gui_params']['show_tail_threshold'], self.checkbox_layout, 3, 0)
@@ -840,7 +842,7 @@ class FreeswimmingParamWindow(ParamWindow):
     def update_gui_from_params(self, params):
         # update param controls with current parameters
         if self.param_controls is not None:
-            self.param_controls['invert'].setChecked(params['invert'])
+            self.param_controls['dark_background'].setChecked(params['dark_background'])
             self.param_controls['show_body_threshold'].setChecked(params['gui_params']['show_body_threshold'])
             self.param_controls['show_eyes_threshold'].setChecked(params['gui_params']['show_eyes_threshold'])
             self.param_controls['show_tail_threshold'].setChecked(params['gui_params']['show_tail_threshold'])
@@ -898,7 +900,7 @@ class HeadfixedParamWindow(ParamWindow):
         self.right_layout.addLayout(self.checkbox_layout)
 
         # add checkboxes - (key, description, function to call, initial value, parent layout)
-        self.add_checkbox('invert', "Invert image", self.controller.toggle_invert_image, params['invert'], self.checkbox_layout, 0, 0)
+        self.add_checkbox('dark_background', "Dark background", self.controller.toggle_dark_background, params['dark_background'], self.checkbox_layout, 0, 0)
         self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.checkbox_layout, 1, 0)
         self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 2, 0)
         self.add_checkbox('use_multiprocessing', 'Use multiprocessing', self.controller.toggle_multiprocessing, params['use_multiprocessing'], self.checkbox_layout, 0, 1)
@@ -920,7 +922,7 @@ class HeadfixedParamWindow(ParamWindow):
     def update_gui_from_params(self, params):
         # update param controls with current parameters
         if self.param_controls is not None:
-            self.param_controls['invert'].setChecked(params['invert'])
+            self.param_controls['dark_background'].setChecked(params['dark_background'])
             self.param_controls['save_video'].setChecked(params['save_video'])
             self.param_controls['subtract_background'].setChecked(params['subtract_background'])
             self.param_controls['use_multiprocessing'].setChecked(params['use_multiprocessing'])

@@ -46,48 +46,43 @@ class PreviewQLabel(QLabel):
         # accept clicks
         self.setAcceptDrops(True)
 
+    def resizeEvent(self, event):
+        if self.pix is not None:
+            self.setPixmap(self.pix.scaled(self.width(), self.height(), Qt.KeepAspectRatio))
+
     def mousePressEvent(self, event):
         if self.scale_factor:
-            self.start_crop_coord = (int(round(event.y()/self.scale_factor)), int(round(event.x()/self.scale_factor)))
+            self.click_start_coord = (int((event.y()/self.scale_factor)), int((event.x()/self.scale_factor)))
+
+            self.prev_coord = self.click_start_coord
 
     def mouseMoveEvent(self, event):
         if self.scale_factor:
-            self.end_crop_coord = (int(round(event.y()/self.scale_factor)), int(round(event.x()/self.scale_factor)))
+            self.click_end_coord = (int((event.y()/self.scale_factor)), int((event.x()/self.scale_factor)))
 
-            # draw colored crop selection
-            self.preview_window.draw_crop_selection(self.start_crop_coord, self.end_crop_coord)
+            if self.preview_window.selecting_crop:
+                # draw colored crop selection
+                self.preview_window.draw_crop_selection(self.click_start_coord, self.click_end_coord)
+            else:
+                self.preview_window.change_offset(self.prev_coord, self.click_end_coord)
+
+            self.prev_coord = self.click_end_coord
 
     def mouseReleaseEvent(self, event):
         if self.scale_factor:
-            self.end_crop_coord = (int(round(event.y()/self.scale_factor)), int(round(event.x()/self.scale_factor)))
+            self.click_end_coord = (int((event.y()/self.scale_factor)), int((event.x()/self.scale_factor)))
 
-            print("user clicked {}.".format(self.end_crop_coord))
+            print("User clicked {}.".format(self.click_end_coord))
 
-            if self.end_crop_coord != self.start_crop_coord:
+            if self.click_end_coord != self.click_start_coord:
                 # finished selecting crop area; crop the image
-                self.preview_window.crop_selection(self.start_crop_coord, self.end_crop_coord)
+                self.preview_window.crop_selection(self.click_start_coord, self.click_end_coord)
             else:
                 # draw tail start coordinate
                 self.preview_window.remove_tail_start()
-                self.preview_window.draw_tail_start(np.array(self.end_crop_coord))
+                self.preview_window.draw_tail_start(np.array(self.click_end_coord))
 
-    def set_scale_factor(self, scale_factor):
-        self.scale_factor = scale_factor
-
-    def update_size(self):
-        if self.pix:
-            # calculate new label vs. image scale factor
-            scale_factor = float(self.pix_size)/max(self.pix.width(), self.pix.height())
-            self.scale_factor = scale_factor
-
-            # scale pixmap
-            pix = self.pix.scaled(self.pix.width()*scale_factor, self.pix.height()*scale_factor, Qt.KeepAspectRatio, Qt.FastTransformation)
-
-            # update pixmap & size
-            self.setPixmap(pix)
-            self.setFixedSize(pix.size())
-
-    def update_pixmap(self, image):
+    def update_pixmap(self, image, new_load=False, zoom=1):
         if image is None:
             self.scale_factor   = None
             self.pix            = None  # image label's pixmap
@@ -105,23 +100,16 @@ class PreviewQLabel(QLabel):
             # generate pixmap
             self.pix = QPixmap(qimage)
 
+            if not new_load:
+                self.setPixmap(self.pix.scaled(self.width(), self.height(), Qt.KeepAspectRatio, Qt.FastTransformation))
+            else:
+                self.setPixmap(self.pix)
+
+            self.scale_factor = self.height()/image.shape[0]
+
 class PreviewWindow(QMainWindow):
     """
     QMainWindow subclass used to show frames & tracking.
-
-    Properties:
-        controller        (Controller): controller object
-        main_widget          (QWidget): main window widget
-        main_layout          (QLayout): main window layout
-        image_label    (PreviewQLabel): label for showing a preview image
-        instructions_label    (QLabel): label for showing instructions
-        image_slider         (QSlider): slider for switching between frames
-        image                  (Array): image to show
-        pixmap                 = None  # image label's pixmap
-        pixmap_size            = None  # size of image label's pixmap
-        tracking_data          = None  # list of tracking data
-        selecting_crop         = False # whether user is selecting a crop
-        changing_heading_angle = False # whether the user is changing the heading angle
     """
 
     def __init__(self, controller):
@@ -138,12 +126,11 @@ class PreviewWindow(QMainWindow):
         param_window_y      = self.controller.param_window.y()
         param_window_width  = self.controller.param_window.width()
 
-        # set position & size
+        # set position & size to be next to the parameter window
         self.setGeometry(param_window_x + param_window_width, param_window_y, 10, 10)
 
         # create main widget
         self.main_widget = QWidget(self)
-        self.main_widget.setStyleSheet("background-color: #b3b9bc;")
         self.main_widget.setMinimumSize(QSize(500, 500))
 
         # create main layout
@@ -154,7 +141,7 @@ class PreviewWindow(QMainWindow):
         # create label that shows frames
         self.image_widget = QWidget(self)
         self.image_layout = QHBoxLayout(self.image_widget)
-        self.image_layout.setContentsMargins(16, 16, 16, 16)
+        self.image_layout.setContentsMargins(0, 0, 0, 0)
         self.image_label = PreviewQLabel(self)
         self.image_label.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
         self.image_label.setAlignment(Qt.AlignCenter)
@@ -162,16 +149,12 @@ class PreviewWindow(QMainWindow):
         self.image_layout.addWidget(self.image_label)
         self.main_layout.addWidget(self.image_widget, 0, 0)
 
-        self.image_label.setStyleSheet("border: 1px solid rgba(122, 127, 130, 0.5)")
-        image_label_shadow = QGraphicsDropShadowEffect()
-        image_label_shadow.setBlurRadius(16)
-        image_label_shadow.setColor(QColor(122, 127, 130, 100))
-        image_label_shadow.setOffset(0)
-        self.image_label.setGraphicsEffect(image_label_shadow)
+        # self.image_label.setStyleSheet("border: 1px solid rgba(122, 127, 130, 0.5)")
 
         self.bottom_widget = QWidget(self)
         self.bottom_layout = QVBoxLayout(self.bottom_widget)
         self.bottom_layout.setContentsMargins(8, 0, 8, 8)
+        self.bottom_widget.setMaximumHeight(40)
         self.main_layout.addWidget(self.bottom_widget, 1, 0)
 
         # create label that shows crop instructions
@@ -192,6 +175,7 @@ class PreviewWindow(QMainWindow):
         self.bottom_layout.addWidget(self.image_slider)
 
         self.zoom = 1
+        self.offset = [0, 0]
 
         # initialize variables
         self.image                  = None  # image to show
@@ -217,25 +201,6 @@ class PreviewWindow(QMainWindow):
 
         self.update_image_label(self.final_image)
 
-    def resizeEvent(self, event):
-        # get new size
-        size = event.size()
-
-        # update label's pixmap size
-        self.image_label.pix_size = self.get_available_pix_size()
-
-        # update size of image label
-        self.image_label.update_size()
-
-    def get_available_pix_size(self):
-        available_width  = self.width() - 16
-        available_height = self.height() - self.bottom_widget.height() - 30
-
-        if available_height < available_width:
-            return available_height
-        else:
-            return available_width
-
     def start_selecting_crop(self):
         # start selecting crop
         self.selecting_crop = True
@@ -260,6 +225,8 @@ class PreviewWindow(QMainWindow):
                 else:
                     self.image_slider.hide()
 
+                self.main_widget.setMinimumSize(QSize(image.shape[1], image.shape[0] + self.bottom_widget.height()))
+
             # convert to RGB
             if len(image.shape) == 2:
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
@@ -279,7 +246,6 @@ class PreviewWindow(QMainWindow):
                 # add tail start point to image
                 cv2.circle(image, (int(round(tail_start_coords[1] - crop_params['offset'][1])), int(round(tail_start_coords[0] - crop_params['offset'][0]))), 1, (180, 180, 50), -1)
             except (KeyError, TypeError) as error:
-                # print(error)
                 tail_start_coords = None
 
             if tracking_results is not None:
@@ -311,7 +277,7 @@ class PreviewWindow(QMainWindow):
             self.final_image = image
 
             # update image label
-            self.update_image_label(self.final_image, zoom=(not (crop_around_body and body_position is not None)))
+            self.update_image_label(self.final_image, zoom=(not (crop_around_body and body_position is not None)), new_load=new_load)
 
     def draw_crop_selection(self, start_crop_coords, end_crop_coords):
         if self.selecting_crop and self.image is not None:
@@ -332,6 +298,12 @@ class PreviewWindow(QMainWindow):
 
             # update image label
             self.update_image_label(image)
+
+    def change_offset(self, prev_coords, new_coords):
+        self.offset[0] -= new_coords[0] - prev_coords[0]
+        self.offset[1] -= new_coords[1] - prev_coords[1]
+
+        self.update_image_label(self.final_image)
 
     def draw_tail_start(self, rel_tail_start_coords):
         if self.controller.params['type'] == "headfixed":
@@ -359,8 +331,8 @@ class PreviewWindow(QMainWindow):
         center_y = image_height/2
         center_x = image_width/2
 
-        cv2.arrowedLine(image, (int(center_x - 0.3*image_height*np.sin(angle*np.pi/180)), int(center_y - 0.3*image_width*np.cos(angle*np.pi/180))),
-                        (int(center_x + 0.3*image_height*np.sin(angle*np.pi/180)), int(center_y + 0.3*image_width*np.cos(angle*np.pi/180))),
+        cv2.arrowedLine(image, (int(center_x - 0.3*image_height*np.sin((angle+90)*np.pi/180)), int(center_y - 0.3*image_width*np.cos((angle+90)*np.pi/180))),
+                        (int(center_x + 0.3*image_height*np.sin((angle+90)*np.pi/180)), int(center_y + 0.3*image_width*np.cos((angle+90)*np.pi/180))),
                         (50, 255, 50), 2)
 
         self.update_image_label(image)
@@ -368,9 +340,12 @@ class PreviewWindow(QMainWindow):
     def remove_angle_overlay(self):
         self.update_image_label(self.image)
 
-    def update_image_label(self, image, zoom=True):
+    def update_image_label(self, image, zoom=True, new_load=False):
         if image is not None and self.zoom != 1 and zoom:
-            image = image[:int(round(image.shape[0]/self.zoom)), :int(round(image.shape[1]/self.zoom)), :].copy()
+            self.offset[0] = min(max(0, self.offset[0]), image.shape[0] - int(round(image.shape[0]/self.zoom)))
+            self.offset[1] = min(max(0, self.offset[1]), image.shape[1] - int(round(image.shape[1]/self.zoom)))
+
+            image = image[self.offset[0]:int(round(image.shape[0]/self.zoom))+self.offset[0], self.offset[1]:int(round(image.shape[1]/self.zoom))+self.offset[1], :].copy()
 
         if image is not None:
             if zoom:
@@ -380,13 +355,7 @@ class PreviewWindow(QMainWindow):
         else:
             self.setWindowTitle("Preview")
 
-        self.image_label.update_pixmap(image)
-
-        # update label's pixmap size
-        self.image_label.pix_size = self.get_available_pix_size()
-
-        # update size of image label
-        self.image_label.update_size()
+        self.image_label.update_pixmap(image, new_load=new_load)
 
     def crop_selection(self, start_crop_coord, end_crop_coord):
         if self.selecting_crop:

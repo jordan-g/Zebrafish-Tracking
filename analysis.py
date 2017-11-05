@@ -43,6 +43,64 @@ def open_saved_data(data_path=None):
 
     return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array, params
 
+def load_tail_angles(csv_path):
+    tail_angle_array = np.loadtxt(csv_path, delimiter=",")
+
+    return tail_angle_array
+
+def calculate_tail_angles(heading_angle, tail_coords_array):
+    '''
+    Returns a K x J x M array of tail angles along the length of the tail, where
+        - K is the number of crops (almost always 1),
+        - J is the number of points along the tail, and
+        - M is the number of frames in the video.
+    '''
+
+    # convert heading angle to radians
+    heading_angle = heading_angle*np.pi/180.0
+
+    # get number of crops, frames & tail points
+    n_crops       = tail_coords_array.shape[0]
+    n_frames      = tail_coords_array.shape[1]
+    n_tail_points = tail_coords_array.shape[-1]
+
+    # initialize array for storing tail angles
+    tail_angle_array = np.zeros((n_crops, n_frames, n_tail_points)) + np.nan
+
+    # create heading vectors based on heading angle
+    heading_vectors = np.zeros((n_crops, n_frames, 2)) + np.nan
+    heading_vectors[:, :, 0][:, :, np.newaxis] = -np.sin(heading_angle + np.pi/2)
+    heading_vectors[:, :, 1][:, :, np.newaxis] = np.cos(heading_angle + np.pi/2)
+
+    # create tail vectors by subtracting points along the tail and the body position
+    tail_vectors = tail_coords_array - tail_coords_array[:, :, :, 0][:, :, :, np.newaxis]
+
+    for k in range(n_crops):
+        for j in range(n_tail_points):
+            for m in range(n_frames):
+                if np.linalg.norm(tail_vectors[k, m, :, j]) != 0:
+                    # get an angle between -pi and pi
+                    tail_angle_array[k, m, j] = np.arccos(np.dot(heading_vectors[k, m], tail_vectors[k, m, :, j].T)/(np.linalg.norm(heading_vectors[k, m])*np.linalg.norm(tail_vectors[k, m, :, j]))) - np.pi/2
+
+    return tail_angle_array
+
+def calculate_tail_end_angles(tail_angle_array, num_to_average=1, plot=False):
+    n_frames = tail_angle_array.shape[0]
+    tail_end_angles = np.zeros(n_frames)
+
+    for i in range(n_frames):
+        tail_angles = tail_angle_array[i, :]
+        tail_end_angles[i] = np.mean(tail_angles[ ~np.isnan(tail_angles) ][-num_to_average:])
+
+    if plot:
+        plt.plot(tail_end_angles, 'r', lw=1)
+        plt.title("Tail end angles (averaged over last {} point{} along the tail)".format(num_to_average, "s"*(num_to_average > 1)))
+        plt.xlabel("Frame #")
+        plt.ylabel("Angle (Degrees)")
+        plt.show()
+
+    return tail_end_angles
+
 def fix_heading_angles(heading_angle_array):
     # get number of crops, frames & tail points
     n_crops          = heading_angle_array.shape[0]
@@ -284,12 +342,6 @@ def get_tail_end_angles(tail_angle_array, num_to_average=1):
         for i in range(n_frames):
             tail_angles = tail_angle_array[k, i, :]
             tail_end_angles[k, i] = np.mean(tail_angles[ ~np.isnan(tail_angles) ][-num_to_average:])
-
-        for i in range(1, n_frames-1):
-            if tail_end_angles[k, i] - tail_end_angles[k, i-1] > 0.8*np.pi/2.0 and tail_end_angles[k, i] - tail_end_angles[k, i+1] > 0.8*np.pi/2.0:
-                tail_end_angles[k, i] -= np.pi/2.0
-            elif tail_end_angles[k, i] - tail_end_angles[k, i-1] < -0.8*np.pi/2.0 and tail_end_angles[k, i] - tail_end_angles[k, i+1] < -0.8*np.pi/2.0:
-                tail_end_angles[k, i] += np.pi/2.0
 
     return tail_end_angles
 

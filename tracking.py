@@ -23,18 +23,12 @@ from itertools import chain
 
 from moviepy.video.io.ffmpeg_reader import *
 
-# import imageio
-# try:
-#     from moviepy.video.io.ffmpeg_reader import *
-# except imageio.core.fetching.NeedDownloadError:
-#     imageio.plugins.ffmpeg.download()
-#     from moviepy.video.io.ffmpeg_reader import *
-
 from skimage.morphology import skeletonize
 from collections import deque
 
 from open_media import open_image, open_video
 import utilities
+import analysis
 
 try:
     xrange
@@ -52,7 +46,7 @@ cv2.setNumThreads(0) # Avoids crashes when using multiprocessing with OpenCV
 
 # --- Background subtraction --- #
 
-def subtract_background_from_frames(frames, background, bg_sub_threshold, in_place=False, invert=False):
+def subtract_background_from_frames(frames, background, bg_sub_threshold, dark_background=False):
     '''
     Subtract a background image from an array of frames.
 
@@ -60,8 +54,9 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, in_pla
         frames (ndarray)       : (t, y, x) array of frames.
         background (ndarray)   : (y, x) background image array.
         bg_sub_threshold (int) : Threshold of the difference between a pixel and its background value that
-                                 will cause to be considered a background pixel (and be set to white).
-        in_place (bool)        : Whether to subtract the background in-place (faster, but overwrites the frames array).
+                                 will cause to be considered a background pixel (and be set to white/black).
+        dark_background (bool) : Whether the video has a dark background and light fish. If so, background pixels
+                                 will be set to black rather than white.
 
     Returns:
         bg_sub_frames (ndarray) : The background-subtracted frames.
@@ -69,40 +64,28 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, in_pla
 
     background_mask = (frames - background < bg_sub_threshold) | (frames - background > 255 - bg_sub_threshold)
 
-    if not invert:
-        if in_place:
-            frames -= background
-            frames[background_mask] = 255
-            cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
-            frames[background_mask] = 0
-            cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
-            frames[background_mask] = 255
-        else:
-            bg_sub_frames = frames.copy() - background
-            bg_sub_frames[background_mask] = 255
-            cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-            bg_sub_frames[background_mask] = 0
-            cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-            bg_sub_frames[background_mask] = 255
-
-            return bg_sub_frames
+    if dark_background:
+        bg_sub_frames = frames - background.astype(float)
+        bg_sub_frames += np.mean(background)
+        bg_sub_frames[background_mask] = 0
+        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        bg_sub_frames[background_mask] = 255
+        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        bg_sub_frames[background_mask] = 0
+        bg_sub_frames[bg_sub_frames < 0] = 0
+        bg_sub_frames[bg_sub_frames > 255] = 255
     else:
-        if in_place:
-            frames -= background
-            frames[background_mask] = 0
-            cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
-            frames[background_mask] = 255
-            cv2.normalize(frames, frames, 0, 255, cv2.NORM_MINMAX)
-            frames[background_mask] = 0
-        else:
-            bg_sub_frames = frames.copy() - background
-            bg_sub_frames[background_mask] = 0
-            cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-            bg_sub_frames[background_mask] = 255
-            cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-            bg_sub_frames[background_mask] = 0
+        bg_sub_frames = frames - background.astype(float)
+        bg_sub_frames += np.mean(background)
+        bg_sub_frames[background_mask] = 255
+        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        bg_sub_frames[background_mask] = 0
+        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        bg_sub_frames[background_mask] = 255
+        bg_sub_frames[bg_sub_frames < 0] = 0
+        bg_sub_frames[bg_sub_frames > 255] = 255
 
-            return bg_sub_frames
+    return bg_sub_frames.astype(np.uint8)
 
 # --- Noise Removal --- #
 
@@ -127,7 +110,7 @@ def remove_noise(frames):
 
 # --- Tracking --- #
 
-def open_and_track_video(video_path, params, tracking_dir, video_number=0, progress_signal=None, invert_background=False): # todo: add video creation from tracking data
+def open_and_track_video(video_path, params, tracking_dir, video_number=0, progress_signal=None):
     # Extract parameters
     subtract_background = params['subtract_background']
     background          = params['backgrounds'][video_number]
@@ -138,6 +121,8 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     use_multiprocessing = params['use_multiprocessing']
     n_crops             = len(params['crop_params'])
     bg_sub_threshold    = params['bg_sub_threshold']
+    tracking_type       = params['type']
+    dark_background     = params['dark_background']
 
     # Initialize a counter for the number of frames that have been tracked
     n_frames_tracked = 0
@@ -160,10 +145,6 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # Get video info
     fps, n_frames_total = get_video_info(video_path)
 
-    n_frames_total -= 6
-
-    # n_frames_total = 1000
-
     print("Total number of frames to track: {}.".format(n_frames_total))
 
     if tracking_video_fps == 0:
@@ -175,7 +156,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         # frame_nums = utilities.split_evenly(n_frames_total, 1000)
         frame_nums = range(n_frames_total)
         # Calculate the background
-        background = open_video(video_path, frame_nums, return_frames=False, invert=invert_background, calc_background=True, capture=capture)
+        background = open_video(video_path, frame_nums, return_frames=False, calc_background=True, capture=capture, dark_background=dark_background)
 
     # Initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
@@ -323,14 +304,25 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     tracking_params = params.copy()
     tracking_params['video_num'] = video_number
 
-    try:
+    if tracking_type == "freeswimming":
         if not params['track_eyes']:
             eye_coords_array = None
         if not params['track_tail']:
-            tail_coords_array = None
+            tail_coords_array   = None
             spline_coords_array = None
-    except:
-        eye_coords_array = None
+    else:
+        eye_coords_array    = None
+        body_position_array = None
+
+        # calculate the tail angles (in degrees)
+        tail_angle_array = analysis.calculate_tail_angles(params['heading_angle'], tail_coords_array)*180.0/np.pi
+
+        # save tail angles as CSV files -- rows are points along the tail, columns are video frames
+        if n_crops > 1:
+            for k in range(n_crops):
+                np.savetxt(os.path.join(tracking_dir, "{}_tail_angles_crop_{}.csv".format(os.path.splitext(os.path.basename(video_path))[0], k)), tail_angle_array[k], fmt="%.4f", delimiter=",")
+        else:
+            np.savetxt(os.path.join(tracking_dir, "{}_tail_angles.csv".format(os.path.splitext(os.path.basename(video_path))[0])), tail_angle_array[0], fmt="%.4f", delimiter=",")
 
     # Save the tracking data
     np.savez(os.path.join(tracking_dir, "{}_tracking.npz".format(os.path.splitext(os.path.basename(video_path))[0])),
@@ -352,12 +344,12 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     # Print the total tracking time
     print("Finished tracking. Total time: {}s.".format(end_time - start_time))
 
-def open_and_track_video_batch(params, tracking_dir, invert_background=False, progress_signal=None):
+def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
     video_paths = params['video_paths']
 
     # track each video with the same parameters
     for i in range(len(video_paths)):
-        open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal, invert_background=invert_background)
+        open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal)
 
 def track_frames(params, background, frames):
     # Extract parameters
@@ -368,7 +360,7 @@ def track_frames(params, background, frames):
     interpolation       = utilities.translate_interpolation(params['interpolation'])
     subtract_background = params['subtract_background']
     bg_sub_threshold    = params['bg_sub_threshold']
-    invert              = params['invert']
+    dark_background     = params['dark_background']
 
     # Get number of frames & number of crops
     n_frames = frames.shape[0]
@@ -385,13 +377,9 @@ def track_frames(params, background, frames):
     track_head = tracking_type == "freeswimming"
     track_tail = tracking_type == "headfixed" or params['track_tail'] == True
 
-    if invert:
-        # Invert the frames if necessary
-        frames = 255 - frames
-
     if subtract_background and background is not None:
         # Subtract the background in-place
-        subtract_background_from_frames(frames, background, bg_sub_threshold, in_place=True)
+        frames = subtract_background_from_frames(frames, background, bg_sub_threshold, dark_background=dark_background)
 
     for frame_number in range(n_frames):
         # Get the frame
@@ -1014,6 +1002,9 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
     heading_direction = params['heading_direction']
     n_tail_points     = params['n_tail_points']
     heading_angle     = params['heading_angle']
+
+    # shift heading angle so that 0 degrees is down
+    heading_angle += 90
 
     global fitted_tail, tail_funcs, tail_brightness, background_brightness, tail_length
     
