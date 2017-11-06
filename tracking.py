@@ -602,7 +602,7 @@ def update_heading_angle_from_eye_coords(eye_coords, body_heading_angle, body_po
         if np.abs(angle - body_heading_angle) > 90:
             angle -= 180
 
-        # if it's still not within 90º, just set it to the body threshold heading angle
+        # if it's still not within 90, just set it to the body threshold heading angle
         if np.abs(angle - body_heading_angle) > 90:
             angle = body_heading_angle
         else:
