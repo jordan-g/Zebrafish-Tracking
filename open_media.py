@@ -24,27 +24,11 @@ def open_image(image_path):
 
     return frame
 
-def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, invert=False, greyscale=True, thread=None):
+def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, dark_background=False, greyscale=True, thread=None):
     # mask_points = np.array([(415, 0), (281, 79), (163, 206), (110, 315), (77, 513), (98, 665), (161, 803), (254, 917), (409, 1021), (886, 1021), (1057, 896), (1154, 709), (1183, 496), (1148, 311), (1050, 152), (840, 0)])
     # mask = np.zeros((1024, 1280)).astype(np.uint8)
     # cv2.fillConvexPoly(mask, mask_points, 1)
     # mask = mask.astype(bool)
-
-    def process_frame(frame, invert=False, greyscale=False, mask=None):
-        # optionally invert the frame
-        # if invert:
-        #     frame = 255 - frame
-
-        # convert to greyscale
-        # if len(frame.shape) >= 3 and greyscale:
-        # frame = frame[..., 0]
-
-        # frame = denoise_tv_chambolle(frame, weight=0.01, multichannel=False)
-        # frame = ndi.median_filter(frame, 3) #Added
-
-        # frame[mask == False] = 255
-
-        return frame
 
     # create a capture object if it's not provided
     if capture is None:
@@ -87,7 +71,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
 
     if calc_background:
         # initialize background array
-        background = frame.copy().astype(np.uint8)
+        background = frame.copy()
 
     if return_frames:
         # initialize array to hold all frames
@@ -119,7 +103,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
 
             if calc_background:
                 # update background array
-                if invert:
+                if dark_background:
                     mask_2 = np.greater(background, frame)
                 else:
                     mask_2 = np.less(background, frame)
@@ -130,11 +114,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             if thread is not None and thread.running == False:
                 return None
     else:
-        while frame_count < n_frames-1:
-            # _, frame = capture.read()
-
-            # frame = process_frame(frame, invert=invert, greyscale=greyscale, mask=mask)
-
+        while frame_count <= n_frames-1:
             if return_frames:
                 frames[frame_count] = capture.read()[1][..., 0]
             else:
