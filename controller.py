@@ -42,7 +42,6 @@ DEFAULT_HEADFIXED_PARAMS = {'crop_params': [],
                             'tracking_video_fps': 0,               # fps for the generated video
                             'n_tail_points': 30,                   # number of tail points to use
                             'subtract_background': False,          # whether to perform background subtraction
-                            'heading_direction': "Down",           # "Right" / "Left" / "Up" / "Down"
                             'heading_angle': 0,                    # heading angle (degrees) - overrides the heading direction parameter
                             'bg_sub_threshold': 30,                # threshold used in background subtraction
                             'video_paths': [],                     # paths to videos that will be tracked
@@ -110,9 +109,10 @@ class Controller():
         self.get_backgrounds_thread = None # thread used for calculating backgrounds
         self.track_videos_thread    = None # thread used for tracking videos
 
-        self.closing    = False # whether the user is closing the app
-        self.first_load = True  # False if we are reloading parameters or videos have already been loaded; True otherwise
-        self.tracking   = False # whether tracking is currently being done
+        self.closing            = False # whether the user is closing the app
+        self.first_load         = True  # False if we are reloading parameters or videos have already been loaded; True otherwise
+        self.placeholder_params = True  # whether the parameters are the default, placeholder ones
+        self.tracking           = False # whether tracking is currently being done
 
     def select_and_open_videos(self):
         # ask the user to select one or more videos to open
@@ -132,7 +132,7 @@ class Controller():
         if len(new_video_paths) > 0 and new_video_paths[0] != '':
             if self.first_load:
                 # set params to defaults
-                self.params = self.default_params.copy()
+                # self.params = self.default_params.copy()
 
                 # reset the current crop
                 self.current_crop = -1
@@ -148,7 +148,8 @@ class Controller():
                 # create a crop
                 self.create_crop()
 
-                self.first_load = False
+                self.first_load         = False
+                self.placeholder_params = False
 
             # show the first frame
             self.show_frame(0, new_load=True)
@@ -200,6 +201,9 @@ class Controller():
 
         # clear the invalid params text
         self.param_window.set_invalid_params_text("")
+        self.param_window.load_params_button.setEnabled(True)
+        self.param_window.reload_params_button.setEnabled(True)
+        self.param_window.save_params_button.setEnabled(True)
 
         if len(background_calc_paths) > 0:
             # reset the background progress text
@@ -249,14 +253,14 @@ class Controller():
             # get number of loaded frames
             self.n_frames = len(self.frames[self.curr_video_num])
 
-            if self.params['type'] == "headfixed":
-                # estimate tail direction
-                total_luminosities = [np.sum(self.current_frame[0:10, :]), np.sum(self.current_frame[:, 0:10]),
-                                      np.sum(self.current_frame[-1:-11, :]), np.sum(self.current_frame[:, -1:-11])]
+            # if self.params['type'] == "headfixed":
+            #     # estimate tail direction
+            #     total_luminosities = [np.sum(self.current_frame[0:10, :]), np.sum(self.current_frame[:, 0:10]),
+            #                           np.sum(self.current_frame[-1:-11, :]), np.sum(self.current_frame[:, -1:-11])]
 
-                self.params['heading_direction'] = heading_direction_options[np.argmin(total_luminosities)]
+            #     self.params['heading_direction'] = heading_direction_options[np.argmin(total_luminosities)]
 
-                self.param_window.update_gui_from_params(self.params)
+            #     self.param_window.update_gui_from_params(self.params)
 
             # enable GUI controls
             self.param_window.set_gui_disabled(False)
@@ -338,6 +342,9 @@ class Controller():
             self.first_load = True
             self.param_window.param_controls["subtract_background"].setText("Subtract background")
             self.param_window.set_gui_disabled(True)
+            self.param_window.load_params_button.setEnabled(False)
+            self.param_window.reload_params_button.setEnabled(False)
+            self.param_window.save_params_button.setEnabled(False)
             self.clear_crops()
 
         # update loaded video label
@@ -447,6 +454,8 @@ class Controller():
                 return
             saved_params = params_file['params'][()]
 
+            current_params = self.params.copy()
+
             # set params to saved params
             incomplete_load = False
             self.params = self.default_params.copy()
@@ -456,18 +465,31 @@ class Controller():
                 else:
                     incomplete_load = True
 
-            self.current_crop = -1
+
+            self.params['video_paths'] = current_params['video_paths']
+            self.params['backgrounds'] = current_params['backgrounds']
 
             # re-open the video paths specified in the loaded params
-            self.open_video_batch(self.params['video_paths'])
+            # self.open_video_batch(self.params['video_paths'])
 
-            self.first_load = False
+            # self.first_load = False
 
             self.param_window.crop_tabs_widget.blockSignals(True)
+
+            # remove all crops
+            for i in range(len(current_params['crop_params'])):
+                # remove crop tab
+                self.param_window.remove_crop_tab(i)
+
+            self.current_crop = -1
+
+            # print(self.params['crop_params'])
+
             # create tabs for all saved crops
             for j in range(len(self.params['crop_params'])):
                 self.current_crop += 1
                 self.param_window.create_crop_tab(self.params['crop_params'][j])
+
             self.param_window.crop_tabs_widget.blockSignals(False)
 
             # update gui controls
@@ -475,12 +497,18 @@ class Controller():
             self.param_window.update_gui_from_crop_params(self.params['crop_params'])
 
             # switch to first frame
-            self.show_frame(0, new_load=True)
+            # print(self.current_crop)
 
             if incomplete_load:
                 self.param_window.set_invalid_params_text("Some parameters couldn't be loaded and were set to their default values.")
             else:
                 self.param_window.set_invalid_params_text("")
+
+            for i in range(len(self.params['video_paths'])):
+                    if self.params['backgrounds'][i] is not None:
+                        self.bg_sub_frames[i] = tracking.subtract_background_from_frames(self.frames[i], self.params['backgrounds'][i], self.params['bg_sub_threshold'], dark_background=self.params['dark_background'])
+
+            self.show_frame(0, new_load=True)
         else:
             pass
 
@@ -1305,7 +1333,6 @@ class HeadfixedController(Controller):
             # get params from gui
             try:
                 scale_factor   = float(self.param_window.param_controls['scale_factor' + '_textbox'].text())
-                heading_direction  = str(self.param_window.param_controls['heading_direction'].currentText())
                 tracking_video_fps = int(self.param_window.param_controls['tracking_video_fps'].text())
                 n_tail_points   = int(self.param_window.param_controls['n_tail_points'].text())
             except ValueError:
@@ -1318,7 +1345,6 @@ class HeadfixedController(Controller):
 
             if valid_params:
                 self.params['scale_factor']   = scale_factor
-                self.params['heading_direction']  = heading_direction
                 self.params['tracking_video_fps'] = tracking_video_fps
                 self.params['n_tail_points']   = n_tail_points
 
@@ -1347,17 +1373,6 @@ class HeadfixedController(Controller):
                 self.show_frame(self.n)
             except:
                 self.param_window.set_invalid_params_text("Invalid heading angle value.")
-
-    def update_heading_direction(self, heading_direction):
-        if self.current_frame is not None:
-            try:
-                self.params['heading_direction'] = heading_direction
-
-                self.param_window.set_invalid_params_text("")
-
-                self.show_frame(self.n)
-            except:
-                self.param_window.set_invalid_params_text("Invalid heading direction value.")
 
 class GetBackgroundThread(QThread):
     finished = pyqtSignal(np.ndarray, str)

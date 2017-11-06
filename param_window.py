@@ -19,7 +19,6 @@ except:
 
 # set options for the interpolation & heading direction comboboxes
 interpolation_options     = ["Nearest Neighbor", "Linear", "Bicubic", "Lanczos"]
-heading_direction_options = ["Right", "Up", "Left", "Down"]
 
 class ParamWindow(QMainWindow):
     def __init__(self, controller):
@@ -288,16 +287,19 @@ class ParamWindow(QMainWindow):
         self.reload_params_button = QPushButton('Reload Parameters', self)
         self.reload_params_button.clicked.connect(lambda:self.controller.load_params(select_path=False))
         self.reload_params_button.setToolTip("Reload the previously quick-saved parameters.")
+        self.reload_params_button.setEnabled(False)
         main_button_layout.addWidget(self.reload_params_button, 0, 1)
 
         self.save_params_button = QPushButton(u'Save Parameters\u2026', self)
         self.save_params_button.clicked.connect(lambda:self.controller.save_params(select_path=True))
         self.save_params_button.setToolTip("Save the current set of parameters.")
+        self.save_params_button.setEnabled(False)
         main_button_layout.addWidget(self.save_params_button, 1, 0)
 
         self.load_params_button = QPushButton(u'Load Parameters\u2026', self)
         self.load_params_button.clicked.connect(lambda:self.controller.load_params(select_path=True))
         self.load_params_button.setToolTip("Load a set of parameters.")
+        self.load_params_button.setEnabled(False)
         main_button_layout.addWidget(self.load_params_button, 1, 1)
 
         self.track_frame_button = QPushButton('Track Frame', self)
@@ -556,24 +558,6 @@ class ParamWindow(QMainWindow):
             angle = int(float(textbox.text()))
             self.controller.add_angle_overlay(angle)
 
-            if 0 <= angle < 45 or 315 <= angle <= 360:
-                index = 0
-            elif 45 <= angle < 135:
-                index = 1
-            elif 135 <= angle < 225:
-                index = 2
-            elif 225 <= angle < 315:
-                index = 3
-            else:
-                index = None
-
-            if index is not None:
-                combobox = self.param_controls["heading_direction"]
-
-                combobox.blockSignals(True)
-                combobox.setCurrentIndex(index)
-                combobox.blockSignals(False)
-
     def slider_released(self, slider):
         label = slider.objectName()
         if label in ("body_threshold_slider", "eyes_threshold_slider", "tail_threshold_slider"):
@@ -717,26 +701,6 @@ class ParamWindow(QMainWindow):
         parent.addRow(description, combobox)
 
         self.param_controls[label] = combobox
-
-    def combobox_index_changed(self, combobox):
-        label = combobox.objectName()
-
-        if label == "heading_direction":
-            index = combobox.currentIndex()
-
-            if index == 0:
-                angle = 0
-            elif index == 1:
-                angle = 90
-            elif index == 2:
-                angle = 180
-            elif index == 3:
-                angle = 270
-
-            self.param_controls["heading_angle_slider"].setValue(angle)
-            self.param_controls["heading_angle_textbox"].setText(str(angle))
-
-            self.controller.update_heading_direction(heading_direction_options[index])
 
     def update_videos_loaded_text(self, n_videos, curr_video_num):
         if n_videos > 0:
@@ -910,8 +874,7 @@ class HeadfixedParamWindow(ParamWindow):
         self.add_param_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.params_layout, tick_interval=10, slider_scale_factor=10.0)
         self.add_param_slider('bg_sub_threshold', 'Background subtraction threshold:', 1, 100, self.controller.update_bg_sub_threshold, round(params['bg_sub_threshold']), self.params_layout, tick_interval=10, int_values=True)
         self.add_param_slider('heading_angle', 'Heading angle:', 0, 360, self.controller.update_heading_angle, params['heading_angle'], self.params_layout, int_values=True)
-        self.add_param_combobox('heading_direction', 'Heading direction:', heading_direction_options, params['heading_direction'], self.params_layout)
-
+        
         # add textboxes - (key, decription, initial value, parent layout)
         self.add_param_textbox('tracking_video_fps', 'Tracking video FPS:', self.controller.update_tracking_video_fps, params['tracking_video_fps'], self.params_layout)
         self.add_param_textbox('n_tail_points', 'Number of tail points:', self.controller.update_n_tail_points, params['n_tail_points'], self.params_layout)
@@ -935,7 +898,6 @@ class HeadfixedParamWindow(ParamWindow):
             self.param_controls['tracking_video_fps'].setText(str(params['tracking_video_fps']))
             self.param_controls['n_tail_points'].setText(str(params['n_tail_points']))
 
-            self.param_controls['heading_direction'].setCurrentIndex(heading_direction_options.index(params['heading_direction']))
             self.param_controls['interpolation'].setCurrentIndex(interpolation_options.index(params['interpolation']))
 
 class QHLine(QFrame):
