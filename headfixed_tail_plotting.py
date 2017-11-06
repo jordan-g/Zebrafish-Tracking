@@ -5,7 +5,7 @@ import scipy.stats
 import os
 import json
 
-csv_path = "testing/May.19.17 day2fish deep lv30 0.3 escape 3_tail_angles.csv"
+csv_path = "testing_Nov6/May.19.17 day2Fish loom lv30 0.3 at 10s_tail_angles.csv"
 
 tail_angle_array = analysis.load_tail_angles(csv_path)
 

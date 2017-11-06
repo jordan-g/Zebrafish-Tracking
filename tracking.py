@@ -68,9 +68,9 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, dark_b
         bg_sub_frames = frames - background.astype(float)
         bg_sub_frames += np.mean(background)
         bg_sub_frames[background_mask] = 0
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 255
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 0
         bg_sub_frames[bg_sub_frames < 0] = 0
         bg_sub_frames[bg_sub_frames > 255] = 255
@@ -78,9 +78,9 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, dark_b
         bg_sub_frames = frames - background.astype(float)
         bg_sub_frames += np.mean(background)
         bg_sub_frames[background_mask] = 255
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 0
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 255
         bg_sub_frames[bg_sub_frames < 0] = 0
         bg_sub_frames[bg_sub_frames > 255] = 255
@@ -997,9 +997,8 @@ def find_unique_coords(coords, found_coords):
 
 # --- Headfixed tail tracking --- #
 
-def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # todo: make smoothing factor user settable
+def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30, heading_direction=None): # todo: make smoothing factor user settable
     tail_start_coords = get_relative_coords(params['tail_start_coords'], crop_params['offset'], params['scale_factor'])
-    heading_direction = params['heading_direction']
     n_tail_points     = params['n_tail_points']
     heading_angle     = params['heading_angle']
 
@@ -1217,13 +1216,16 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30): # tod
     
     if n_tail_coords > n_tail_points:
         # get evenly spaced tail indices
-        tail_nums = [0] + r(n_tail_points-2, tail_coords.shape[1]) + [tail_coords.shape[1]-1]
+        tail_nums = r(n_tail_points-1, tail_coords.shape[1]) + [tail_coords.shape[1]-1]
+        # print(tail_nums)
     
         tail_coords = tail_coords[:, tail_nums]
 
+    # print(tail_coords)
+
     # get number of tail coordinates
     n_tail_coords = tail_coords.shape[1]
-    
+
     try:
         # make ascending spiral in 3D space
         t = np.zeros(n_tail_coords)
