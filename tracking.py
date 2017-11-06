@@ -67,10 +67,11 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, dark_b
     if dark_background:
         bg_sub_frames = frames - background.astype(float)
         bg_sub_frames += np.mean(background)
+        print(bg_sub_frames.shape)
         bg_sub_frames[background_mask] = 0
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+	    # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 255
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 0
         bg_sub_frames[bg_sub_frames < 0] = 0
         bg_sub_frames[bg_sub_frames > 255] = 255
@@ -78,9 +79,9 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, dark_b
         bg_sub_frames = frames - background.astype(float)
         bg_sub_frames += np.mean(background)
         bg_sub_frames[background_mask] = 255
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 0
-        cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
+        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
         bg_sub_frames[background_mask] = 255
         bg_sub_frames[bg_sub_frames < 0] = 0
         bg_sub_frames[bg_sub_frames > 255] = 255
