@@ -88,15 +88,22 @@ def calculate_tail_end_angles(tail_angle_array, num_to_average=1, plot=False):
     n_frames = tail_angle_array.shape[0]
     tail_end_angles = np.zeros(n_frames)
     time_for_graph = []
+##    ytime_for_graph = []
 
     for i in range(n_frames):
         tail_angles = tail_angle_array[i, :]
         tail_end_angles[i] = np.mean(tail_angles[ ~np.isnan(tail_angles) ][-num_to_average:])
         time_for_graph.append(float(i)/350)
 
+##    print max(tail_end_angles)
+##    print min(tail_end_angles)
+    yAdd = max(tail_end_angles) + 5
+    yTime = np.zeros(n_frames)
+    ytime_for_graph = [x + yAdd for x in yTime]
+
     if plot:
         plt.plot(time_for_graph, tail_end_angles,'r', lw=1)
-##        plt.plot(time_for_graph, time_for_graph, 'b', lw=1)#Second graph for activity
+        plt.plot(time_for_graph, ytime_for_graph, 'b', lw=1)#Second graph for activity
         plt.title("Tail end angles (averaged over last {} point{} along the tail)".format(num_to_average, "s"*(num_to_average > 1)))
         plt.xlabel("Time (Seconds)")
         plt.ylabel("Angle (Degrees)")

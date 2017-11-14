@@ -6,12 +6,12 @@ import os
 import json
 
 def getStimParams ():
-    stimType = input("Please type a single number to select the stimulus.\
-1 for moving dot\
-2 for loom\
-3 for OMR")
+    stimType = input("Please type a single number to select the stimulus. 1 for moving dot, 2 for loom, 3 for OMR ")
+    preStimDelay = input("How long was the delay before the stimulation started? ")
+    activeStimDuration =  input("How long was the stimulus active for? ")
+    postStimDelay = input("How long was the stimulation finished before imaging ended? ")
 
-csv_path = "../testing-nov6B/Oct.11.17_1B_prey_tail_angles.csv"
+csv_path = "../testing-nov6B/OMR behaviour 350fps to 30fps_tail_angles.csv"
 
 tail_angle_array = analysis.load_tail_angles(csv_path)
 
