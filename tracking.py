@@ -410,67 +410,84 @@ def track_frames(params, background, frames):
     return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array
 
 def track_cropped_frame(frame, params, crop_params):
+    '''
+    Perform tracking on the provided frame.
+
+    Arguments:
+        frame (ndarray)    : Frame to perform tracking on.
+        params (dict)      : Dictionary of tracking parameters.
+        crop_params (dict) : Dictionary of extra tracking parameters for the cropped frame.
+
+    Returns:
+        results (dict)           : Dictionary containing tracking results..
+        skeleton_frame (ndarray) : The result of skeletonizing the thresholded frame (used by the
+                                   GUI to preview the skeleton frame).
+        body_crop_coords (list)  : List of coordinates of the crop around the tracked body position
+                                   that is used to track the eyes and tail (for freeswimming fish).
+    '''
+
+    # extract tracking type
     tracking_type  = params['type']
 
     if tracking_type == "freeswimming":
+        # extract parameters
         body_crop       = params['body_crop']
         track_tail_bool = params['track_tail']
         track_eyes_bool = params['track_eyes']
 
-        body_crop_frame  = None
-        body_crop_coords = None
-
+        # only crop around the body if we're tracking the eyes and/or tail
         crop_around_body = (track_eyes_bool or track_tail_bool) and body_crop is not None
 
-        # track body
+        # track the heading angle and body position
         if crop_around_body:
             heading_angle, body_position, rel_body_position, body_crop_coords, body_crop_frame = track_body(frame, params, crop_params, crop_around_body=True)
         else:
             heading_angle, body_position = track_body(frame, params, crop_params, crop_around_body=False)
+            rel_body_position = body_position
+            body_crop_coords  = None
+            body_crop_frame   = frame
 
-        # track eyes
         if track_eyes_bool:
-            if crop_around_body and body_crop_coords is not None and body_crop_frame is not None and np.sum(body_crop_frame) > 0:
-                eye_coords = track_eyes(body_crop_frame, params, crop_params)
+            # track the eyes
+            eye_coords = track_eyes(body_crop_frame, params, crop_params)
 
-                if eye_coords is not None:
-                    heading_angle = update_heading_angle_from_eye_coords(eye_coords, heading_angle, body_position)
+            if eye_coords is not None:
+                # update the heading angle based on the found eye coordinates
+                heading_angle = update_heading_angle_from_eye_coords(eye_coords, heading_angle, body_position)
 
-                    # convert eye coords to be relative to initial frame
+                if crop_around_body and body_crop_coords is not None and np.sum(body_crop_frame) > 0:
+                    # convert the eye coords to be relative to the initial frame
                     eye_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
-            else:
-                eye_coords = track_eyes(frame, params, crop_params)
         else:
             eye_coords = None
 
         if track_tail_bool and body_position is not None:
-            # track tail
-            if crop_around_body and body_crop_coords is not None and body_crop_frame is not None and np.sum(body_crop_frame) > 0:
-                tail_coords, spline_coords, skeleton_matrix = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position, heading_angle)
-                if tail_coords is not None:
-                    # convert eye coords to be relative to initial frame
+            # track the tail only if the body center was found
+            tail_coords, spline_coords, skeleton_frame = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position, heading_angle)
+            if tail_coords is not None:
+                if crop_around_body and body_crop_coords is not None and np.sum(body_crop_frame) > 0:
+                    # convert the tail coords to be relative to the initial frame
                     tail_coords   += body_crop_coords[:, 0][:, np.newaxis].astype(int)
                     spline_coords += body_crop_coords[:, 0][:, np.newaxis].astype(int)
-            else:
-                tail_coords, spline_coords, skeleton_matrix = track_freeswimming_tail(frame, params, crop_params, body_position, heading_angle)
         else:
-            tail_coords, spline_coords, skeleton_matrix = [None]*3
+            tail_coords, spline_coords, skeleton_frame = [None]*3
     elif tracking_type == "headfixed":
-        # set head coords to None since we aren't interested in them
+        # set body, heading and eye position variables to None since we aren't interested in them
         heading_angle, body_position, eye_coords = [None]*3
 
-        # track tail
+        # track the tail
         tail_coords, spline_coords = track_headfixed_tail(frame, params, crop_params)
-        skeleton_matrix = None
+        skeleton_frame   = None
         body_crop_coords = None
 
+    # create a dictionary of results
     results = { 'tail_coords'    : tail_coords,
                 'spline_coords'  : spline_coords,
                 'heading_angle'  : heading_angle,
                 'body_position'  : body_position,
                 'eye_coords'     : eye_coords }
 
-    return results, skeleton_matrix, body_crop_coords
+    return results, skeleton_frame, body_crop_coords
 
 # --- Heading tracking --- #
 
