@@ -597,7 +597,7 @@ class Controller():
             self.get_backgrounds_thread.running = False
 
         # get the paths of videos for which the background needs to be calculated
-        background_calc_paths = self.params['video_paths']
+        background_calc_paths = self.params['video_paths'].copy()
 
         self.param_window.set_invalid_params_text("")
 
