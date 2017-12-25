@@ -36,8 +36,6 @@ DEFAULT_FREESWIMMING_CROP_PARAMS = { 'offset': np.array([0, 0]), # crop (y, x) o
 DEFAULT_HEADFIXED_PARAMS = {'crop_params': [],
                             'dark_background': False,              # whether the video has a dark background and light fish
                             'type': "headfixed",                   # "headfixed" / "freeswimming"
-                            'scale_factor': 1.0,                   # factor by which to down/upscale the original video
-                            'interpolation': 'Nearest Neighbor',   # interpolation to use when down/upscaling the original video
                             'save_video': True,                    # whether to make a video with tracking overlaid
                             'tracking_video_fps': 0,               # fps for the generated video
                             'n_tail_points': 30,                   # number of tail points to use
@@ -53,8 +51,6 @@ DEFAULT_HEADFIXED_PARAMS = {'crop_params': [],
 DEFAULT_FREESWIMMING_PARAMS = {'crop_params': [],
                                'dark_background': False,                     # whether the video has a dark background and light fish
                                'type': "freeswimming",                       # "headfixed" / "freeswimming"
-                               'scale_factor': 1.0,                          # factor by which to down/upscale the original video
-                               'interpolation': 'Nearest Neighbor',          # interpolation to use when down/upscaling the original video
                                'save_video': True,                           # whether to make a video with tracking overlaid
                                'tracking_video_fps': 30,                     # fps for the generated video
                                'n_tail_points': 30,                          # number of tail points to use
@@ -89,8 +85,7 @@ class Controller():
         self.default_crop_params = default_crop_params.copy()
 
         # initialize variables
-        self.current_frame      = None # currently showing frame (unscaled and uncropped)
-        self.scaled_frame       = None # scaled frame
+        self.current_frame      = None # currently showing frame (uncropped)
         self.cropped_frame      = None # cropped frame
         self.body_cropped_frame = None # frame cropped around the body
 
@@ -572,16 +567,10 @@ class Controller():
             else:
                 self.cropped_frame = self.current_frame
 
-            # scale the frame
-            if self.params['scale_factor'] is not None:
-                self.scaled_frame = tracking.scale_frame(self.cropped_frame, self.params['scale_factor'], utilities.translate_interpolation(self.params['interpolation']))
-            else:
-                self.scaled_frame = self.cropped_frame
-
     def update_preview(self, image=None, new_load=False, new_frame=False):
         if image is None:
             # use the cropped current frame by default
-            image = self.scaled_frame
+            image = self.cropped_frame
 
         if self.params['type'] == "freeswimming":
             crop_around_body = self.params['gui_params']['zoom_body_crop'] and self.tracking_results is not None and self.tracking_results['body_position'] is not None and self.tracking_results['heading_angle']
@@ -630,9 +619,9 @@ class Controller():
         current_crop_params = self.params['crop_params'][self.current_crop]
 
         # generate thresholded frames
-        self.body_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['body_threshold'])*255
-        self.eyes_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['eyes_threshold'])*255
-        self.tail_threshold_frame = tracking.get_threshold_frame(self.scaled_frame, current_crop_params['tail_threshold'])*255
+        self.body_threshold_frame = tracking.get_threshold_frame(self.cropped_frame, current_crop_params['body_threshold'])*255
+        self.eyes_threshold_frame = tracking.get_threshold_frame(self.cropped_frame, current_crop_params['eyes_threshold'])*255
+        self.tail_threshold_frame = tracking.get_threshold_frame(self.cropped_frame, current_crop_params['tail_threshold'])*255
         self.tail_skeleton_frame  = tracking.get_tail_skeleton_frame(self.tail_threshold_frame/255)*255
 
     def toggle_save_video(self, checkbox):
@@ -670,19 +659,9 @@ class Controller():
     def track_frame(self):
         if self.current_frame is not None:
             # track current frame
-            self.tracking_results, skeleton_matrix, body_crop_coords = tracking.track_cropped_frame(self.scaled_frame, self.params, self.params['crop_params'][self.current_crop])
+            self.tracking_results, skeleton_matrix, body_crop_coords = tracking.track_cropped_frame(self.cropped_frame, self.params, self.params['crop_params'][self.current_crop])
             if skeleton_matrix is not None and body_crop_coords is not None:
                 self.tail_skeleton_frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1]] = skeleton_matrix*255
-
-            # rescale coordinates
-            if self.tracking_results['tail_coords'] is not None:
-                self.tracking_results['tail_coords'] /= self.params['scale_factor']
-            if self.tracking_results['spline_coords'] is not None:
-                self.tracking_results['spline_coords'] /= self.params['scale_factor']
-            if self.tracking_results['body_position'] is not None:
-                self.tracking_results['body_position'] /= self.params['scale_factor']
-            if self.tracking_results['eye_coords'] is not None:
-                self.tracking_results['eye_coords'] /= self.params['scale_factor']
 
             self.update_preview(image=None, new_load=False, new_frame=False)
 
@@ -711,11 +690,11 @@ class Controller():
 
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
         # get start & end coordinates - end_add adds a pixel to the end coordinates (for a more accurate crop)
-        y_start = round(start_crop_coord[0]/self.params['scale_factor'])
-        y_end   = round(end_crop_coord[0]/self.params['scale_factor'])
-        x_start = round(start_crop_coord[1]/self.params['scale_factor'])
-        x_end   = round(end_crop_coord[1]/self.params['scale_factor'])
-        end_add = round(1*self.params['scale_factor'])
+        y_start = round(start_crop_coord[0])
+        y_end   = round(end_crop_coord[0])
+        x_start = round(start_crop_coord[1])
+        x_end   = round(end_crop_coord[1])
+        end_add = 1
 
         # get params of currently selected crop
         current_crop_params = self.params['crop_params'][self.current_crop].copy()
@@ -819,21 +798,6 @@ class Controller():
 
             # update the image preview
             self.update_preview(image=None, new_load=False, new_frame=True)
-
-    def update_scale_factor(self, scale_factor):
-        if self.current_frame is not None:
-            try:
-                scale_factor = float(scale_factor)
-                if not (0 < scale_factor <= 4):
-                    raise
-
-                self.params['scale_factor'] = scale_factor
-
-                self.param_window.set_invalid_params_text("")
-
-                self.show_frame(self.n)
-            except:
-                self.param_window.set_invalid_params_text("Invalid scale factor value.")
 
     def update_bg_sub_threshold(self, bg_sub_threshold):
         if self.current_frame is not None:
@@ -995,7 +959,7 @@ class FreeswimmingController(Controller):
             elif self.params['gui_params']["show_tail_skeleton"]:
                 image = self.tail_skeleton_frame
             else:
-                image = self.scaled_frame
+                image = self.cropped_frame
 
         Controller.update_preview(self, image, new_load, new_frame)
 
@@ -1048,9 +1012,6 @@ class FreeswimmingController(Controller):
     def update_crop_params_from_gui(self):
         old_crop_params = self.params['crop_params']
 
-        # get current shrink factor
-        scale_factor = self.params['scale_factor']
-
         # get crop params from gui
         for c in range(len(self.params['crop_params'])):
             crop_y   = int(float(self.param_window.crop_param_controls[c]['crop_y' + '_textbox'].text()))
@@ -1098,7 +1059,6 @@ class FreeswimmingController(Controller):
         if self.current_frame is not None:
             # get params from gui
             try:
-                scale_factor      = float(self.param_window.param_controls['scale_factor' + '_textbox'].text())
                 tracking_video_fps    = int(float(self.param_window.param_controls['tracking_video_fps'].text()))
                 n_tail_points      = int(float(self.param_window.param_controls['n_tail_points'].text()))
                 body_crop_height   = int(float(self.param_window.param_controls['body_crop_height' + '_textbox'].text()))
@@ -1106,13 +1066,11 @@ class FreeswimmingController(Controller):
                 min_tail_body_dist = int(float(self.param_window.param_controls['min_tail_body_dist'].text()))
                 max_tail_body_dist = int(float(self.param_window.param_controls['max_tail_body_dist'].text()))
                 bg_sub_threshold   = int(float(self.param_window.param_controls['bg_sub_threshold' + '_textbox'].text()))
-                interpolation      = str(self.param_window.param_controls['interpolation'].currentText())
             except ValueError:
                 self.param_window.set_invalid_params_text("Invalid tracking parameters.")
                 return
 
-            valid_params = (scale_factor > 0
-                        and tracking_video_fps >= 0
+            valid_params = (tracking_video_fps >= 0
                         and n_tail_points > 0
                         and body_crop_height > 0
                         and body_crop_width > 0
@@ -1123,14 +1081,12 @@ class FreeswimmingController(Controller):
                 # if self.params['bg_sub_threshold'] != bg_sub_threshold:
                 #     self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
                 
-                self.params['scale_factor']       = scale_factor
                 self.params['tracking_video_fps']    = tracking_video_fps
                 self.params['n_tail_points']      = n_tail_points
                 self.params['body_crop']          = np.array([body_crop_height, body_crop_width])
                 self.params['min_tail_body_dist'] = min_tail_body_dist
                 self.params['max_tail_body_dist'] = max_tail_body_dist
                 self.params['bg_sub_threshold']   = bg_sub_threshold
-                self.params['interpolation']      = interpolation
 
                 self.param_window.set_invalid_params_text("")
             else:
@@ -1322,8 +1278,7 @@ class HeadfixedController(Controller):
 
     def update_tail_start_coords(self, rel_tail_start_coords):
         self.params['tail_start_coords'] = tracking.get_absolute_coords(rel_tail_start_coords,
-                                                                                   self.params['crop_params'][self.current_crop]['offset'],
-                                                                                   self.params['scale_factor'])
+                                                                                   self.params['crop_params'][self.current_crop]['offset'])
 
         # reset headfixed tracking
         tracking.clear_headfixed_tracking()
@@ -1332,19 +1287,16 @@ class HeadfixedController(Controller):
         if self.current_frame is not None:
             # get params from gui
             try:
-                scale_factor   = float(self.param_window.param_controls['scale_factor' + '_textbox'].text())
                 tracking_video_fps = int(self.param_window.param_controls['tracking_video_fps'].text())
                 n_tail_points   = int(self.param_window.param_controls['n_tail_points'].text())
             except ValueError:
                 self.param_window.set_invalid_params_text("Invalid parameters.")
                 return
 
-            valid_params = (0 < scale_factor <= 1
-                        and tracking_video_fps >= 0
+            valid_params = (tracking_video_fps >= 0
                         and n_tail_points > 0)
 
             if valid_params:
-                self.params['scale_factor']   = scale_factor
                 self.params['tracking_video_fps'] = tracking_video_fps
                 self.params['n_tail_points']   = n_tail_points
 

@@ -1,8 +1,4 @@
-import open_media
-import cv2
-import peakdetect
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.ndimage import zoom
 
 try:
@@ -11,6 +7,19 @@ except:
     xrange = range
 
 def clipped_zoom(img, zoom_factor, **kwargs):
+    '''
+    Efficiently zoom an image , preserving aspect ratio, by clipping it before zooming.
+    Obtained from https://stackoverflow.com/a/37121993
+
+    Arguments:
+        img (ndarray)       : 2D image to zoom.
+        zoom_factor (float) : Factor by which to zoom the image.
+        kwargs              : Extra arguments to the scipy.ndimage.zoom function.
+
+    Returns:
+        out (ndarray) : Zoomed image.
+    '''
+
     h, w = img.shape[:2]
 
     # width and height of the zoomed image
@@ -48,61 +57,20 @@ def clipped_zoom(img, zoom_factor, **kwargs):
         out = img
     return out
 
-def estimate_thresholds(frame, delta=0.0001, n_bins=20, plot_histogram=False):
-    # get number of pixels in the frame
-    n_pixels = np.product(frame.shape)
-
-    # get pixel brightness histogram
-    hist = cv2.calcHist([frame], [0], None, [n_bins], [0, 256])
-
-    if plot_histogram:
-        x = np.linspace(0, 256 - (256/n_bins), n_bins)
-        plt.bar(x, hist, width=(256/n_bins))
-        plt.show()
-
-    # get lowest peak location
-    max_peaks, _ = peakdetect.peakdet(hist, delta*n_pixels)
-
-    peak_indices = max_peaks[:, 0]
-    peak_locations = peak_indices*(256/n_bins)
-
-    if len(peak_locations) >= 4:
-        est_eye_threshold  = int(peak_locations[0])
-        est_body_threshold = int(peak_locations[1])
-        est_tail_threshold = int(peak_locations[2])
-    elif len(peak_locations) >= 3:
-        est_eye_threshold  = int(peak_locations[0])
-        est_body_threshold = int(peak_locations[0]) + 30
-        est_tail_threshold = int(peak_locations[1])
-    elif len(peak_locations) >= 2:
-        est_eye_threshold  = int(peak_locations[0])
-        est_body_threshold = int(peak_locations[0]) + 30
-        est_tail_threshold = int(peak_locations[0]) + 70
-    else:
-        est_eye_threshold  = 50
-        est_body_threshold = 80
-        est_tail_threshold = 120
-
-    print("Estimated thresholds: {}, {}, {}.".format(est_tail_threshold, est_body_threshold, est_eye_threshold))
-
-    return est_tail_threshold, est_body_threshold, est_eye_threshold
-
-def translate_interpolation(interpolation_string):
-    # get matching opencv interpolation variable from string
-    if interpolation_string == 'Nearest Neighbor':
-        interpolation = cv2.INTER_NEAREST
-    elif interpolation_string == 'Linear':
-        interpolation = cv2.INTER_LINEAR
-    elif interpolation_string == 'Bicubic':
-        interpolation = cv2.INTER_CUBIC
-    elif interpolation_string == 'Lanczos':
-        interpolation = cv2.INTER_LANCZOS4
-
-    return interpolation
-
 def split_evenly(n, m, start=0):
-    # generate a list of m evenly spaced numbers in the range of (start, start + n)
-    # eg. split_evenly(100, 5, 30) = [40, 60, 80, 100, 120]
+    '''
+    Return a list of m evenly-spaced integers in the range (start, start + n).
+    For example, split_evenly(100, 5, 30) = [40, 60, 80, 100, 120]
+
+    Arguments:
+        n (int)     : Range size.
+        m (int)     : Number of integers to return.
+        start (int) : Starting integer of range.
+
+    Returns:
+        l (list) : List of evenly-spaced integers from the provided range.
+    '''
+
     return [i*n//m + n//(2*m) + start for i in range(m)]
 
 def yield_chunks_from_array(array, n):
@@ -116,6 +84,7 @@ def yield_chunks_from_array(array, n):
     Yields:
         chunk (ndarray) : n-sized chunk from the input array.
     '''
+
     for i in xrange(0, array.shape[0], n):
         yield array[i:i + n]
 

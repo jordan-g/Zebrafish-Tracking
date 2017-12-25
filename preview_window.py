@@ -100,10 +100,7 @@ class PreviewQLabel(QLabel):
             # generate pixmap
             self.pix = QPixmap(qimage)
 
-            if not new_load:
-                self.setPixmap(self.pix.scaled(self.width(), self.height(), Qt.KeepAspectRatio, Qt.FastTransformation))
-            else:
-                self.setPixmap(self.pix)
+            self.setPixmap(self.pix.scaled(self.width(), self.height(), Qt.KeepAspectRatio, Qt.FastTransformation))
 
             self.scale_factor = self.height()/image.shape[0]
 
@@ -225,15 +222,25 @@ class PreviewWindow(QMainWindow):
                 else:
                     self.image_slider.hide()
 
-                self.main_widget.setMinimumSize(QSize(image.shape[1], image.shape[0] + self.bottom_widget.height()))
+                max_inititial_size = 500
+                if image.shape[0] > max_inititial_size:
+                    min_height = max_inititial_size
+                    min_width = max_inititial_size*image.shape[1]/image.shape[0]
+                elif image.shape[1] > max_inititial_size:
+                    min_width = max_inititial_size
+                    min_height = max_inititial_size*image.shape[0]/image.shape[1]
+                else:
+                    min_height = image.shape[0]
+                    min_width = image.shape[1]
+
+                self.main_widget.setMinimumSize(QSize(min_width, min_height + self.bottom_widget.height()))
 
             # convert to RGB
             if len(image.shape) == 2:
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
             # update image
-            self.image = tracking.scale_frame(image, 1.0/params['scale_factor'], utilities.translate_interpolation(self.controller.params['interpolation']))
-            image = self.image.copy()
+            self.image = image.copy()
 
             try:
                 body_crop = params['body_crop']
@@ -272,7 +279,7 @@ class PreviewWindow(QMainWindow):
                         self.body_crop = body_crop
             
             if crop_around_body:
-                _, image = tracking.crop_frame_around_body(image, body_position, params['body_crop'], params['scale_factor'])
+                _, image = tracking.crop_frame_around_body(image, body_position, params['body_crop'])
 
             self.final_image = image
 

@@ -62,29 +62,26 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, dark_b
         bg_sub_frames (ndarray) : The background-subtracted frames.
     '''
 
+    # create a mask that is True wherever a pixel value is sufficiently close to the background pixel value
     background_mask = (frames - background < bg_sub_threshold) | (frames - background > 255 - bg_sub_threshold)
 
+    # subtract the background from the frames
+    bg_sub_frames = frames - background.astype(float)
+
+    # add back the mean background intensity (so the background-subtracted
+    # frames have similar brightness to the original frames)
+    bg_sub_frames += np.mean(background)
+
+    # set the brightness of the background appropriately
     if dark_background:
-        bg_sub_frames = frames - background.astype(float)
-        bg_sub_frames += np.mean(background)
-        # print(bg_sub_frames.shape)
-        bg_sub_frames[background_mask] = 0
-	    # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-        bg_sub_frames[background_mask] = 255
-        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-        bg_sub_frames[background_mask] = 0
-        bg_sub_frames[bg_sub_frames < 0] = 0
-        bg_sub_frames[bg_sub_frames > 255] = 255
+        bg_value = 0
     else:
-        bg_sub_frames = frames - background.astype(float)
-        bg_sub_frames += np.mean(background)
-        bg_sub_frames[background_mask] = 255
-        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-        bg_sub_frames[background_mask] = 0
-        # cv2.normalize(bg_sub_frames, bg_sub_frames, 0, 255, cv2.NORM_MINMAX)
-        bg_sub_frames[background_mask] = 255
-        bg_sub_frames[bg_sub_frames < 0] = 0
-        bg_sub_frames[bg_sub_frames > 255] = 255
+        bg_value = 255
+    bg_sub_frames[background_mask] = bg_value
+
+    # make sure the background-subtracted frames are in the range [0, 255]
+    bg_sub_frames[bg_sub_frames < 0] = 0
+    bg_sub_frames[bg_sub_frames > 255] = 255
 
     return bg_sub_frames.astype(np.uint8)
 
@@ -265,10 +262,10 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
         # Convert tracking coordinates from cropped frame space to original frame space
         for k in range(n_crops):
-            tail_coords_array[k]   = get_absolute_coords(tail_coords_array[k], params['crop_params'][k]['offset'], params['scale_factor'])
-            spline_coords_array[k] = get_absolute_coords(spline_coords_array[k], params['crop_params'][k]['offset'], params['scale_factor'])
-            body_position_array[k] = get_absolute_coords(body_position_array[k], params['crop_params'][k]['offset'], params['scale_factor'])
-            eye_coords_array[k]    = get_absolute_coords(eye_coords_array[k], params['crop_params'][k]['offset'], params['scale_factor'])
+            tail_coords_array[k]   = get_absolute_coords(tail_coords_array[k], params['crop_params'][k]['offset'])
+            spline_coords_array[k] = get_absolute_coords(spline_coords_array[k], params['crop_params'][k]['offset'])
+            body_position_array[k] = get_absolute_coords(body_position_array[k], params['crop_params'][k]['offset'])
+            eye_coords_array[k]    = get_absolute_coords(eye_coords_array[k], params['crop_params'][k]['offset'])
 
         if params['save_video']:
             print("Adding frames to tracking video...")
@@ -357,7 +354,6 @@ def track_frames(params, background, frames):
     crop_params         = params['crop_params']
     tracking_type       = params['type']
     n_tail_points       = params['n_tail_points']
-    scale_factor        = params['scale_factor']
     interpolation       = utilities.translate_interpolation(params['interpolation'])
     subtract_background = params['subtract_background']
     bg_sub_threshold    = params['bg_sub_threshold']
@@ -393,20 +389,9 @@ def track_frames(params, background, frames):
 
             # Shrink & crop the frame
             cropped_frame        = crop_frame(frame, offset, crop)
-            scaled_cropped_frame = scale_frame(cropped_frame, scale_factor, interpolation)
 
             # Track the frame
-            results, _, _ = track_cropped_frame(scaled_cropped_frame, params, crop_params[k])
-
-            # Re-scale coordinates
-            if results['tail_coords'] is not None:
-                results['tail_coords'] /= scale_factor
-            if results['spline_coords'] is not None:
-                results['spline_coords'] /= scale_factor
-            if results['body_position'] is not None:
-                results['body_position'] /= scale_factor
-            if results['eye_coords'] is not None:
-                results['eye_coords'] /= scale_factor
+            results, _, _ = track_cropped_frame(cropped_frame, params, crop_params[k])
 
             # Add coordinates to tracking data arrays
             if results['tail_coords'] is not None:
@@ -420,7 +405,6 @@ def track_frames(params, background, frames):
 
 def track_cropped_frame(frame, params, crop_params):
     tracking_type  = params['type']
-    scale_factor   = params['scale_factor']
     interpolation  = utilities.translate_interpolation(params['interpolation'])
 
     if tracking_type == "freeswimming":
@@ -673,9 +657,8 @@ def get_eye_positions(eyes_threshold_image, prev_eye_coords=None): # todo: rewri
 
 def track_freeswimming_tail(frame, params, crop_params, body_position, heading_angle):
     adjust_thresholds  = params['adjust_thresholds']
-    scale_factor       = params['scale_factor']
-    min_tail_body_dist = params['min_tail_body_dist']*scale_factor
-    max_tail_body_dist = params['max_tail_body_dist']*scale_factor
+    min_tail_body_dist = params['min_tail_body_dist']
+    max_tail_body_dist = params['max_tail_body_dist']
     n_tail_points      = params['n_tail_points']
     alt_tail_tracking  = params['alt_tail_tracking']
     tail_threshold     = crop_params['tail_threshold']
@@ -999,7 +982,7 @@ def find_unique_coords(coords, found_coords):
 # --- Headfixed tail tracking --- #
 
 def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30, heading_direction=None): # todo: make smoothing factor user settable
-    tail_start_coords = get_relative_coords(params['tail_start_coords'], crop_params['offset'], params['scale_factor'])
+    tail_start_coords = get_relative_coords(params['tail_start_coords'], crop_params['offset'])
     # heading_direction = params['heading_direction']
     n_tail_points     = params['n_tail_points']
     heading_angle     = params['heading_angle']
@@ -1268,12 +1251,12 @@ def clear_headfixed_tracking():
 
 # --- Helper functions --- #
 
-def crop_frame_around_body(frame, body_position, body_crop, scale_factor=1):
+def crop_frame_around_body(frame, body_position, body_crop):
     if body_crop is None or body_position is None:
         body_crop_coords = np.array([[0, frame.shape[0]], [0, frame.shape[1]]])
     else:
-        body_crop_coords = np.array([[np.maximum(0, int((body_position[0]-body_crop[0])/scale_factor)), np.minimum(frame.shape[0], int((body_position[0]+body_crop[0])/scale_factor))],
-                                     [np.maximum(0, int((body_position[1]-body_crop[1])/scale_factor)), np.minimum(frame.shape[1], int((body_position[1]+body_crop[1])/scale_factor))]])
+        body_crop_coords = np.array([[np.maximum(0, int((body_position[0]-body_crop[0]))), np.minimum(frame.shape[0], int((body_position[0]+body_crop[0])))],
+                                     [np.maximum(0, int((body_position[1]-body_crop[1]))), np.minimum(frame.shape[1], int((body_position[1]+body_crop[1])))]])
 
     # crop the frame to the tail
     if len(frame.shape) == 3:
@@ -1357,11 +1340,6 @@ def crop_frame(frame, offset, crop):
     else:
         return frame
 
-def scale_frame(frame, scale_factor, interpolation):
-    if scale_factor != 1:
-        frame = cv2.resize(frame, (0, 0), fx=scale_factor, fy=scale_factor, interpolation=interpolation)
-    return frame
-
 def get_threshold_frame(frame, threshold, remove_noise=False):
     _, threshold_frame = cv2.threshold(frame, threshold, 255, cv2.THRESH_BINARY_INV)
     np.divide(threshold_frame, 255, out=threshold_frame, casting='unsafe')
@@ -1389,20 +1367,16 @@ def get_threshold_frame(frame, threshold, remove_noise=False):
 def get_tail_skeleton_frame(tail_threshold_frame):
     return skeletonize(tail_threshold_frame).astype(np.uint8)
 
-def get_relative_body_crop(body_crop, scale_factor):
-    return body_crop*scale_factor
+def get_relative_coords(coords, offset):
+    return (coords - offset)
 
-def get_relative_coords(coords, offset, scale_factor):
-    return (coords - offset)*scale_factor
-
-def get_absolute_coords(coords, offset, scale_factor):
+def get_absolute_coords(coords, offset):
     '''
     Convert an array of cropped frame coordinates to absolute (original frame) coordinates.
 
     Arguments:
         coords (ndarray) : Array of coordinates.
         offset (ndarray) : (y, x) frame crop offset.
-        scale_factor (float) : Scaling factor of the cropped frame.
 
     Returns:
         abs_coords (ndarray) : Coordinates in the original frame.
@@ -1410,11 +1384,11 @@ def get_absolute_coords(coords, offset, scale_factor):
     '''
 
     if coords.ndim == 1:
-        return coords/scale_factor + offset
+        return coords + offset
     elif coords.ndim == 2:
-        return coords/scale_factor + offset[np.newaxis, :]
+        return coords + offset[np.newaxis, :]
     elif coords.ndim == 3:
-        return coords/scale_factor + offset[np.newaxis, :, np.newaxis]
+        return coords + offset[np.newaxis, :, np.newaxis]
 
 # --- Misc. --- #
 

@@ -17,9 +17,6 @@ except:
     from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
     from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView, QFrame
 
-# set options for the interpolation & heading direction comboboxes
-interpolation_options     = ["Nearest Neighbor", "Linear", "Bicubic", "Lanczos"]
-
 class ParamWindow(QMainWindow):
     def __init__(self, controller):
         QMainWindow.__init__(self)
@@ -789,7 +786,6 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_checkbox('alt_tail_tracking', 'Alternate tail tracking', self.controller.toggle_alt_tail_tracking, params['alt_tail_tracking'], self.checkbox_layout, 6, 1)
 
         # add sliders - (key, description, start, end, callback function, initial value, parent layout)
-        self.add_param_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.params_layout, slider_scale_factor=10.0)
         self.add_param_slider('body_crop_height', 'Body crop height:', 1, 100, self.controller.update_body_crop_height, round(params['body_crop'][0]), self.params_layout, tick_interval=10, int_values=True)
         self.add_param_slider('body_crop_width', 'Body crop width:', 1, 100, self.controller.update_body_crop_width, round(params['body_crop'][1]), self.params_layout, tick_interval=10, int_values=True)
         self.add_param_slider('bg_sub_threshold', 'Background subtraction threshold:', 1, 100, self.controller.update_bg_sub_threshold, round(params['bg_sub_threshold']), self.params_layout, tick_interval=10, int_values=True)
@@ -799,9 +795,6 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_param_textbox('max_tail_body_dist', 'Body/tail max. dist.:', self.controller.update_max_tail_body_dist, params['max_tail_body_dist'], self.params_layout)
         self.add_param_textbox('tracking_video_fps', 'Tracking video FPS:', self.controller.update_tracking_video_fps, params['tracking_video_fps'], self.params_layout)
         self.add_param_textbox('n_tail_points', 'Number of tail points:', self.controller.update_n_tail_points, params['n_tail_points'], self.params_layout)
-
-        # add comboboxes
-        self.add_param_combobox('interpolation', 'Interpolation:', interpolation_options, params['interpolation'], self.params_layout)
 
     def update_gui_from_params(self, params):
         # update param controls with current parameters
@@ -821,7 +814,6 @@ class FreeswimmingParamWindow(ParamWindow):
             self.param_controls['zoom_body_crop'].setChecked(params['gui_params']['zoom_body_crop'])
             self.param_controls['alt_tail_tracking'].setChecked(params['alt_tail_tracking'])
 
-            self.set_slider_value('scale_factor', params['scale_factor'], slider_scale_factor=10)
             self.set_slider_value('body_crop_height', params['body_crop'][0], int_values=True)
             self.set_slider_value('body_crop_width', params['body_crop'][1], int_values=True)
             self.set_slider_value('bg_sub_threshold', params['bg_sub_threshold'], int_values=True)
@@ -830,8 +822,6 @@ class FreeswimmingParamWindow(ParamWindow):
             self.param_controls['max_tail_body_dist'].setText(str(params['max_tail_body_dist']))
             self.param_controls['tracking_video_fps'].setText(str(params['tracking_video_fps']))
             self.param_controls['n_tail_points'].setText(str(params['n_tail_points']))
-
-            self.param_controls['interpolation'].setCurrentIndex(interpolation_options.index(params['interpolation']))
 
     def create_crop_param_controls(self, crop_params, crop_params_layout):
         ParamWindow.create_crop_param_controls(self, crop_params, crop_params_layout)
@@ -871,16 +861,12 @@ class HeadfixedParamWindow(ParamWindow):
         self.add_checkbox('auto_track', 'Auto track', self.controller.toggle_auto_tracking, params['gui_params']['auto_track'], self.checkbox_layout, 1, 1)
 
         # add sliders - (key, description, start, end, initial value, parent layout)
-        self.add_param_slider('scale_factor', 'Scale factor:', 1, 40, self.controller.update_scale_factor, 10.0*params['scale_factor'], self.params_layout, tick_interval=10, slider_scale_factor=10.0)
         self.add_param_slider('bg_sub_threshold', 'Background subtraction threshold:', 1, 100, self.controller.update_bg_sub_threshold, round(params['bg_sub_threshold']), self.params_layout, tick_interval=10, int_values=True)
         self.add_param_slider('heading_angle', 'Heading angle:', 0, 360, self.controller.update_heading_angle, params['heading_angle'], self.params_layout, int_values=True)
         
         # add textboxes - (key, decription, initial value, parent layout)
         self.add_param_textbox('tracking_video_fps', 'Tracking video FPS:', self.controller.update_tracking_video_fps, params['tracking_video_fps'], self.params_layout)
         self.add_param_textbox('n_tail_points', 'Number of tail points:', self.controller.update_n_tail_points, params['n_tail_points'], self.params_layout)
-
-        # add comboboxes
-        self.add_param_combobox('interpolation', 'Interpolation:', interpolation_options, params['interpolation'], self.params_layout)
 
     def update_gui_from_params(self, params):
         # update param controls with current parameters
@@ -891,14 +877,11 @@ class HeadfixedParamWindow(ParamWindow):
             self.param_controls['use_multiprocessing'].setChecked(params['use_multiprocessing'])
             self.param_controls['auto_track'].setChecked(params['gui_params']['auto_track'])
 
-            self.set_slider_value('scale_factor', params['scale_factor'], slider_scale_factor=10)
             self.set_slider_value('bg_sub_threshold', params['bg_sub_threshold'], int_values=True)
             self.set_slider_value('heading_angle', params['heading_angle'], int_values=True)
 
             self.param_controls['tracking_video_fps'].setText(str(params['tracking_video_fps']))
             self.param_controls['n_tail_points'].setText(str(params['n_tail_points']))
-
-            self.param_controls['interpolation'].setCurrentIndex(interpolation_options.index(params['interpolation']))
 
 class QHLine(QFrame):
     def __init__(self):
