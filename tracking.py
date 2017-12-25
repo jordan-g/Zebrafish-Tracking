@@ -319,6 +319,16 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     print("Finished tracking. Total time: {}s.".format(end_time - start_time))
 
 def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
+    '''
+    Open and perform tracking on a batch of videos.
+
+    Arguments:
+        params (dict)             : Dictionary of tracking parameters, including the video paths.
+        tracking_dir (str)        : Directory in which to save tracking data.
+        progress_signal (QSignal) : Signal to use to update the GUI with tracking progress.
+    '''
+
+    # extract video paths
     video_paths = params['video_paths']
 
     # track each video with the same parameters
@@ -326,7 +336,28 @@ def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
         open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal)
 
 def track_frames(params, background, frames):
-    # Extract parameters
+    '''
+    Perform tracking on the provided frames.
+
+    Arguments:
+        params (dict)             : Dictionary of tracking parameters.
+        background (ndarray/None) : Background to subtract.
+        frames (ndarray)          : Frames to perform tracking on.
+
+    Returns:
+        tail_coords_array (ndarray)   : Array containing coordinates of points along the tail.
+                                        Dimensions are (# of crops, # of frames, 2, # tail points).
+        spline_coords_array (ndarray) : Array containing coordinates of points along a spline fitted to the tail.
+                                        Dimensions are (# of crops, # of frames, 2, # tail points).
+        heading_angle_array (ndarray) : Array containing the heading angle of the zebrafish.
+                                        Dimensions are (# of crops, # of frames, 1).
+        body_position_array (ndarray) : Array containing the body center coordinates of the zebrafish.
+                                        Dimensions are (# of crops, # of frames, 2).
+        eye_position_array (ndarray)  : Array containing the coordinates of the eyes of the zebrafish.
+                                        Dimensions are (# of crops, # of frames, 2, 2).
+    '''
+
+    # extract parameters
     crop_params         = params['crop_params']
     tracking_type       = params['type']
     n_tail_points       = params['n_tail_points']
@@ -334,41 +365,41 @@ def track_frames(params, background, frames):
     bg_sub_threshold    = params['bg_sub_threshold']
     dark_background     = params['dark_background']
 
-    # Get number of frames & number of crops
+    # get number of frames & number of crops
     n_frames = frames.shape[0]
     n_crops  = len(crop_params)
 
-    # Initialize tracking data arrays
+    # initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames, 2, n_tail_points)) + np.nan
     spline_coords_array  = np.zeros((n_crops, n_frames, 2, n_tail_points)) + np.nan
     heading_angle_array  = np.zeros((n_crops, n_frames, 1)) + np.nan
     body_position_array  = np.zeros((n_crops, n_frames, 2)) + np.nan
     eye_coords_array     = np.zeros((n_crops, n_frames, 2, 2)) + np.nan
 
-    # Set booleans for head & tail tracking
+    # set booleans for head & tail tracking
     track_head = tracking_type == "freeswimming"
     track_tail = tracking_type == "headfixed" or params['track_tail'] == True
 
     if subtract_background and background is not None:
-        # Subtract the background in-place
+        # subtract the background
         frames = subtract_background_from_frames(frames, background, bg_sub_threshold, dark_background=dark_background)
 
     for frame_number in range(n_frames):
-        # Get the frame
+        # get the frame
         frame = frames[frame_number]
 
         for k in range(n_crops):
-            # Get the crop & offset
+            # get the crop & offset
             crop   = crop_params[k]['crop']
             offset = crop_params[k]['offset']
 
-            # Shrink & crop the frame
-            cropped_frame        = crop_frame(frame, offset, crop)
+            # crop the frame
+            cropped_frame = crop_frame(frame, offset, crop)
 
-            # Track the frame
+            # track the frame
             results, _, _ = track_cropped_frame(cropped_frame, params, crop_params[k])
 
-            # Add coordinates to tracking data arrays
+            # add coordinates to tracking data arrays
             if results['tail_coords'] is not None:
                 tail_coords_array[k, frame_number, :, :results['tail_coords'].shape[1]]     = results['tail_coords']
                 spline_coords_array[k, frame_number, :, :results['spline_coords'].shape[1]] = results['spline_coords']
