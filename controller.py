@@ -18,7 +18,6 @@ except:
     from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
     from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog
     pyqt_version = 5
-
 try:
     xrange
 except:
@@ -659,9 +658,9 @@ class Controller():
     def track_frame(self):
         if self.current_frame is not None:
             # track current frame
-            self.tracking_results, skeleton_matrix, body_crop_coords = tracking.track_cropped_frame(self.cropped_frame, self.params, self.params['crop_params'][self.current_crop])
-            if skeleton_matrix is not None and body_crop_coords is not None:
-                self.tail_skeleton_frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1]] = skeleton_matrix*255
+            self.tracking_results, skeleton_image, body_crop_coords = tracking.track_cropped_frame(self.cropped_frame, self.params, self.params['crop_params'][self.current_crop])
+            if skeleton_image is not None and body_crop_coords is not None:
+                self.tail_skeleton_frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1]] = skeleton_image*255
 
             self.update_preview(image=None, new_load=False, new_frame=False)
 

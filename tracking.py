@@ -499,9 +499,10 @@ def track_cropped_frame(frame, params, crop_params):
 
     return results, skeleton_frame, body_crop_coords
 
-# --- Heading tracking --- #
+# --- Body position & heading angle tracking --- #
 
 def track_body(frame, params, crop_params, crop_around_body=True):
+    # extract parameters
     adjust_thresholds = params['adjust_thresholds']
     body_threshold    = crop_params['body_threshold']
     body_crop         = params['body_crop']
@@ -541,9 +542,6 @@ def get_heading_angle_and_body_position(body_threshold_frame, frame):
         if len(contours) > 0:
             # choose the contour with the largest area as the body
             body_contour = max(contours, key=cv2.contourArea)
-            # M = cv2.moments(body_contour)
-            # cx = int(M['m10']/M['m00'])
-            # cy = int(M['m01']/M['m00'])
 
             if len(body_contour) >= 10:
                 # fit an ellipse and get the angle and center position
@@ -554,6 +552,8 @@ def get_heading_angle_and_body_position(body_threshold_frame, frame):
 
                 rad_angle = angle*np.pi/180.0
 
+                # create rotated rectangle mask from the center of the ellipse to one end of the major axis
+                # this rectangle covers the half of the ellipse that is in the direction of the heading angle
                 mask_1 = np.zeros(body_threshold_frame.shape)
                 point_1 = (x + half_width*np.cos(rad_angle), y + half_width*np.sin(rad_angle))
                 point_2 = (point_1[0] - height*np.sin(rad_angle), point_1[1] + height*np.cos(rad_angle))
@@ -563,6 +563,8 @@ def get_heading_angle_and_body_position(body_threshold_frame, frame):
 
                 cv2.fillConvexPoly(mask_1, np.array([point_1, point_2, point_4, point_3]).astype(int), 1)
 
+                # create rotated rectangle mask from the center of the ellipse to the other end of the major axis
+                # this rectangle covers the half of the ellipse that is in the opposite direction of the heading angle
                 mask_2 = np.zeros(body_threshold_frame.shape)
                 point_1 = (x + half_width*np.cos(rad_angle + np.pi), y + half_width*np.sin(rad_angle + np.pi))
                 point_2 = (point_1[0] - height*np.sin(rad_angle + np.pi), point_1[1] + height*np.cos(rad_angle + np.pi))
@@ -572,6 +574,8 @@ def get_heading_angle_and_body_position(body_threshold_frame, frame):
 
                 cv2.fillConvexPoly(mask_2, np.array([point_1, point_2, point_4, point_3]).astype(int), 1)
 
+                # if the average brightness of the masked frame in the direction of the the heading angle is larger than
+                # that opposite of the heading angle (ie. the heading angle points toward the tail), flip it
                 if np.mean(frame[mask_1.astype(bool)]) > np.mean(frame[mask_2.astype(bool)]):
                     angle += 180
 
@@ -579,6 +583,7 @@ def get_heading_angle_and_body_position(body_threshold_frame, frame):
                 position = np.array([y, x])
 
                 if position[0] < 0 or position[1] < 0 or 4*MA*ma < 100:
+                    # discard results if they're erroneuous and if the body area is too small
                     return [None]*2
             else:
                 return [None]*2
@@ -587,37 +592,31 @@ def get_heading_angle_and_body_position(body_threshold_frame, frame):
 
         return angle, position
     except:
-        # raise
         return [None]*2
 
 def update_heading_angle_from_eye_coords(eye_coords, body_heading_angle, body_position):
-    # get heading angle based on eye coordinates
+    # get the heading angle based on eye coordinates
     angle = 180.0 + np.arctan((eye_coords[0, 1] - eye_coords[0, 0])/(eye_coords[1, 1] - eye_coords[1, 0]))*180.0/np.pi
-    # eye_center = np.array([(eye_coords[0, 1] + eye_coords[0, 0])/2, (eye_coords[1, 1] + eye_coords[1, 0])/2])
-
+    
     if body_heading_angle is not None:
-        # if np.sqrt((body_position[0] + np.sin(angle) - eye_center[0])**2 + (body_position[1] + np.cos(angle) - eye_center[1])**2) > np.sqrt((body_position[0] + np.sin(angle + np.pi) - eye_center[0])**2 + (body_position[1] + np.cos(angle + np.pi) - eye_center[1])**2):
-        #     body_heading_angle += 180
-            
-        # body_eye_angle = np.arctan((body_position[0] - (eye_coords[0, 1] + eye_coords[0, 0])/2)/(body_position[1] - (eye_coords[1, 1] + eye_coords[1, 0])/2))*180.0/np.pi
-        # print(body_eye_angle, body_heading_angle)
-        # if abs(body_eye_angle - body_heading_angle) > 45:
-
-        # make it aligned with the body threshold heading angle
-        if np.abs(angle - body_heading_angle) > 90:
+        # if the angle is too different from the heading angle found by fitting an ellipse to the body,
+        # try flipping it
+        if angle - body_heading_angle > 90:
             angle -= 180
+        elif angle - body_heading_angle < -90:
+            angle += 180
 
-        # if it's still not within 90, just set it to the body threshold heading angle
+        # if it's still not within 90 degrees, just set it to the body threshold heading angle
         if np.abs(angle - body_heading_angle) > 90:
             angle = body_heading_angle
         else:
-            # set the angle to the average of this angle & the body threshold heading angle
+            # otherwise set the final angle to be a mix of this angle & the body threshold heading angle
             angle = 0.7*body_heading_angle + 0.3*angle
-        # angle = body_heading_angle
 
     return angle
 
 def track_eyes(frame, params, crop_params):
+    # extract parameters
     adjust_thresholds = params['adjust_thresholds']
     eyes_threshold    = crop_params['eyes_threshold']
 
@@ -646,22 +645,21 @@ def track_eyes(frame, params, crop_params):
 
     return eye_positions
 
-def get_eye_positions(eyes_threshold_image, prev_eye_coords=None): # todo: rewrite
+def get_eye_positions(eyes_threshold_image, prev_eye_coords=None):
     # find contours
     try:
         image, contours, _ = cv2.findContours(eyes_threshold_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     except ValueError:
         contours, _ = cv2.findContours(eyes_threshold_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
-    if len(contours) == 0:
+    if len(contours) < 2:
         # too few contours found -- we need at least 2 (one for each eye)
         return None
-    elif len(contours) == 1:
-        contours = [contours[0], contours[0].copy()]
 
     # choose the two contours with the largest areas as the eyes
     eye_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
 
+    # stop if the largest area is too small
     if cv2.contourArea(eye_contours[0]) < 2:
         return None
 
@@ -688,6 +686,7 @@ def get_eye_positions(eyes_threshold_image, prev_eye_coords=None): # todo: rewri
 # --- Freeswimming tail tracking --- #
 
 def track_freeswimming_tail(frame, params, crop_params, body_position, heading_angle):
+    # extract parameters
     adjust_thresholds  = params['adjust_thresholds']
     min_tail_body_dist = params['min_tail_body_dist']
     max_tail_body_dist = params['max_tail_body_dist']
@@ -699,15 +698,16 @@ def track_freeswimming_tail(frame, params, crop_params, body_position, heading_a
     tail_threshold_frame = get_threshold_frame(frame, tail_threshold, remove_noise=True)
 
     # get tail coordinates
-    tail_coords, spline_coords, skeleton_matrix = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
+    tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
                                                               min_tail_body_dist, max_tail_body_dist,
                                                               n_tail_points, alt_tracking=alt_tail_tracking)
 
     if tail_coords is None:
+        # try increasing the minimum tail-body distance
         i = 1
 
         while i <= 5:
-            tail_coords, spline_coords, skeleton_matrix = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
+            tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
                                                               min_tail_body_dist+i, max_tail_body_dist,
                                                               n_tail_points, alt_tracking=alt_tail_tracking)
 
@@ -726,22 +726,24 @@ def track_freeswimming_tail(frame, params, crop_params, body_position, heading_a
             tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i], remove_noise=True)
 
             # get tail coordinates
-            tail_coords, spline_coords, skeleton_matrix = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
+            tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
                                                                       min_tail_body_dist, max_tail_body_dist,
                                                                       n_tail_points, alt_tracking=alt_tail_tracking)
 
             # increase counter
             i += 1
 
-    return tail_coords, spline_coords, skeleton_matrix
+    return tail_coords, spline_coords, skeleton_image
 
 def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=2, smoothing_factor=3, alt_tracking=False): # todo: make max radius & smoothing factor user settable
-    # get tail skeleton matrix
-    skeleton_matrix = get_tail_skeleton_frame(tail_threshold_frame)
+    # get tail skeleton image
+    skeleton_image = get_tail_skeleton_frame(tail_threshold_frame)
 
-    # zero out pixels that are close to body
-    skeleton_matrix = cv2.circle(skeleton_matrix, (int(round(body_position[1])), int(round(body_position[0]))), int(min_tail_body_dist), 0, -1).astype(np.uint8)
+    # zero out pixels that are close to the body
+    skeleton_image = cv2.circle(skeleton_image, (int(round(body_position[1])), int(round(body_position[0]))), int(min_tail_body_dist), 0, -1).astype(np.uint8)
 
+    # zero out a rectangle rotated in the heading direction of the fish
+    # this essentially zeroes out the head of the fish
     height = 20
     width  = 20
 
@@ -753,20 +755,17 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_an
 
     points = np.array([point_1, point_2, point_4, point_3, point_1]).astype(int)
 
-    cv2.fillConvexPoly(skeleton_matrix, points, 0)
-
-    # zero out a rectangle of pixels covering the head
-    # skeleton_matrix = cv2.rectangle(skeleton_matrix, (int(round(body_position[1])), int(round(body_position[0]))), (int(round(body_position[1] - 20*np.sin(heading_angle*np.pi/180.0))), int(round(body_position[0] + 20*np.cos(heading_angle*np.pi/180.0)))), 128, -1)
+    cv2.fillConvexPoly(skeleton_image, points, 0)
 
     if alt_tracking:
         # get an ordered list of coordinates of the tail, from one end to the other
-        tail_coords = get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body_dist, max_tail_body_dist)
+        tail_coords = get_ordered_tail_coords(skeleton_image, max_r, body_position, min_tail_body_dist, max_tail_body_dist)
     else:
-        # find contours
+        # find contours in the skeleton image
         try:
-            image, contours, _ = cv2.findContours(skeleton_matrix, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            image, contours, _ = cv2.findContours(skeleton_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
         except ValueError:
-            contours, _ = cv2.findContours(skeleton_matrix, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            contours, _ = cv2.findContours(skeleton_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
         if len(contours) > 0:
             # choose the contour with the most points as the tail contour
@@ -804,9 +803,9 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_an
 
     if tail_coords is None:
         # couldn't get tail coordinates; end here.
-        return [None]*2 + [skeleton_matrix]
+        return [None]*2 + [skeleton_image]
 
-    # get number of tail coordinates
+    # get number of found tail coordinates
     n_tail_coords = tail_coords.shape[1]
 
     # get size of thresholded image
@@ -820,9 +819,10 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_an
     if n_tail_coords > n_tail_points:
         r = lambda m, n: [i*n//m + n//(2*m) for i in range(m)] # generates a list of m evenly spaced numbers from 0 to n
 
-        # get evenly spaced tail indices
+        # get evenly-spaced tail indices
         tail_nums = [0] + r(n_tail_points-2, tail_coords.shape[1]) + [tail_coords.shape[1]-1]
 
+        # pick evenly-spaced points along the tail
         tail_coords = tail_coords[:, tail_nums]
 
     n_tail_coords = tail_coords.shape[1]
@@ -842,26 +842,23 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_an
 
         spline_coords = np.array([spline_y_coords, spline_x_coords])
 
-        # get evenly spaced tail indices
+        # get evenly-spaced spline indices
         spline_nums = [0] + r(n_tail_points-2, spline_coords.shape[1]) + [spline_coords.shape[1]-1]
 
+        # pick evenly-spaced points along the spline
         spline_coords = spline_coords[:, spline_nums]
     except:
         print("Error: Could not calculate tail spline.")
-        return [None]*2 + [skeleton_matrix]
+        return [None]*2 + [skeleton_image]
 
-    return tail_coords, spline_coords, skeleton_matrix
+    return tail_coords, spline_coords, skeleton_image
 
-def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body_dist, max_tail_body_dist, min_n_tail_points=10):
-    # get size of matrix
-    y_size = skeleton_matrix.shape[0]
-    x_size = skeleton_matrix.shape[1]
-
-    # find contours
+def get_ordered_tail_coords(skeleton_image, max_r, body_position, min_tail_body_dist, max_tail_body_dist, min_n_tail_points=10):
+    # find contours in the skeleton image
     try:
-        image, contours, _ = cv2.findContours(skeleton_matrix, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        image, contours, _ = cv2.findContours(skeleton_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     except ValueError:
-        contours, _ = cv2.findContours(skeleton_matrix, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        contours, _ = cv2.findContours(skeleton_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
     if len(contours) > 0:
         # choose the contour with the most points as the tail contour
@@ -874,54 +871,18 @@ def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body
 
     # pick point closest to the body as the starting point
     startpoint_index = np.argmin((np.sum((tail_coords - body_position[:, np.newaxis])**2, axis=0)))
-
     tail_start_coords = tail_coords[:, startpoint_index]
-
-    # # get coordinates of nonzero points of skeleton matrix
-    # nonzeros = np.nonzero(skeleton_matrix)
-
-    # # initialize tail starting point coordinates
-    # tail_start_coords = None
-
-    # # initialize variable for storing the closest distance to the center of the body
-    # closest_body_distance = None
-
-    # # loop through all nonzero points of the tail skeleton
-    # for (r, c) in zip(nonzeros[0], nonzeros[1]):
-    #     # get distance of this point to the body center
-    #     body_distance = np.sqrt((r - body_position[0])**2 + (c - body_position[1])**2)
-
-    #     # look for an endpoint near the body
-    #     if body_distance < max_tail_body_dist:
-    #         if (closest_body_distance == None) or (closest_body_distance != None and body_distance < closest_body_distance):
-    #             # either no point has been found yet or this is a closer point than the previous best
-
-    #             # get nonzero elements in 3x3 neigbourhood around the point
-    #             nonzero_neighborhood = skeleton_matrix[r-1:r+2, c-1:c+2] != 0
-
-    #             # if the number of non-zero points in the neighborhood is at least 2
-    #             # (ie. there's at least one direction to move in along the tail),
-    #             # set this to our tail starting point.
-    #             if np.sum(nonzero_neighborhood) == 2:
-    #                 tail_start_coords = np.array([r, c])
-    #                 tail_start_coords_candidates.append(tail_start_coords)
-    #                 closest_body_distance = body_distance
 
     if tail_start_coords is None:
         print("Couldn't find start of the tail.")
         # still could not find start of the tail; end here.
         return None
 
-    # walk along the tail
-    found_coords = walk_along_tail(tail_start_coords, max_r, skeleton_matrix)
-
-    # zero out pixels that are close to body and eyes
-    for i in range(len(found_coords)-1, -1, -1):
-        if np.sqrt((found_coords[i][0] - body_position[0])**2 + (found_coords[i][1] - body_position[1])**2) < min_tail_body_dist:
-            del found_coords[i]
+    # walk along the tail, finding coordinates
+    found_coords = walk_along_tail(tail_start_coords, max_r, skeleton_image)
 
     if len(found_coords) < min_n_tail_points:
-        # we still didn't get enough tail points; give up here.
+        # we didn't get enough tail points; give up here.
         return None
 
     # convert to an array
@@ -929,7 +890,8 @@ def get_ordered_tail_coords(skeleton_matrix, max_r, body_position, min_tail_body
 
     return found_coords
 
-def walk_along_tail(tail_start_coords, max_r, skeleton_matrix):
+def walk_along_tail(tail_start_coords, max_r, skeleton_image):
+    # create a list of tuples of tail coordinates, initially only containing the starting coordinates
     found_coords = [tuple(tail_start_coords)]
 
     # initialize radius (half the side length of square area to look in for the next point)
@@ -940,7 +902,7 @@ def walk_along_tail(tail_start_coords, max_r, skeleton_matrix):
 
     while len(found_coords) < max_tail_points and r <= max_r:
         # find coordinates of the next point
-        next_coords = find_next_tail_coords_in_neighborhood(found_coords, r, skeleton_matrix)
+        next_coords = find_next_tail_coords_in_neighborhood(found_coords, r, skeleton_image)
 
         if next_coords is not None:
             # add coords to found coords list
@@ -950,10 +912,10 @@ def walk_along_tail(tail_start_coords, max_r, skeleton_matrix):
 
     return found_coords
 
-def find_next_tail_coords_in_neighborhood(found_coords, r, skeleton_matrix):
-    # pad the skeleton matrix with zeros
-    padded_matrix = np.zeros((skeleton_matrix.shape[0] + 2*r, skeleton_matrix.shape[1] + 2*r))
-    padded_matrix[r:-r, r:-r] = skeleton_matrix
+def find_next_tail_coords_in_neighborhood(found_coords, r, skeleton_image):
+    # pad the skeleton image with zeros
+    padded_matrix = np.zeros((skeleton_image.shape[0] + 2*r, skeleton_image.shape[1] + 2*r))
+    padded_matrix[r:-r, r:-r] = skeleton_image
 
     # get x, y of last coordinates
     last_coords = found_coords[-1]
@@ -983,27 +945,27 @@ def find_next_tail_coords_in_neighborhood(found_coords, r, skeleton_matrix):
         return None
 
     if r > 1:
-        # # find the closest point to the last found coordinate
-        # distances = [ np.sqrt((unique_coords[i][0] - found_coords[-1][0])**2 + (unique_coords[i][1] - found_coords[-1][1])**2) for i in xrange(len(unique_coords))]
-        # closest_index = np.argmin(distances)
-
-        # next_coords = unique_coords[closest_index]
-
+        # get the angles between a vector from the starting point to the last found point, and vectors from the starting point to each of the potential new points
         angles = [ max(0, angle_between(np.array(found_coords[-1]) - np.array(found_coords[0]), np.array(unique_coords[i]) - np.array(found_coords[0]))) for i in xrange(len(unique_coords)) ]
-        # print(r, angles, found_coords[-1], unique_coords)
-        if np.amin(angles) > 0.7:
+        
+        # if the angles are all too large, give up
+        # if we were properly traversing the tail, the vector pointing to the previous
+        # coordinate and the one pointing to the next coordinate should be somewhat close to each other
+        if np.amin(angles) > 1.5:
             return None
-        closest_index = np.argmin(angles)
 
+        # set the next coordinate to be the one for which the angle is smallest
+        closest_index = np.argmin(angles)
         next_coords = unique_coords[closest_index]
     elif len(unique_coords) > 1:
-        # pick the point that is in a similar direction to the tail
-        angles = [ np.abs(angle_between(np.array(found_coords[-1]) - np.array(found_coords[0]), np.array(unique_coords[i]) - np.array(found_coords[0]))) for i in xrange(len(unique_coords)) ]
-        # print(r, angles, found_coords[-1], unique_coords)
-        closest_index = np.argmin(angles)
+        # same as above, but don't specify a minimum angle
 
+        angles = [ np.abs(angle_between(np.array(found_coords[-1]) - np.array(found_coords[0]), np.array(unique_coords[i]) - np.array(found_coords[0]))) for i in xrange(len(unique_coords)) ]
+
+        closest_index = np.argmin(angles)
         next_coords = unique_coords[closest_index]
     else:
+        # only one potential point was found; pick that one
         next_coords = unique_coords[0]
 
     return next_coords
@@ -1014,8 +976,8 @@ def find_unique_coords(coords, found_coords):
 # --- Headfixed tail tracking --- #
 
 def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30, heading_direction=None): # todo: make smoothing factor user settable
+    # extract parameters
     tail_start_coords = get_relative_coords(params['tail_start_coords'], crop_params['offset'])
-    # heading_direction = params['heading_direction']
     n_tail_points     = params['n_tail_points']
     heading_angle     = params['heading_angle']
 
@@ -1284,13 +1246,14 @@ def clear_headfixed_tracking():
 # --- Helper functions --- #
 
 def crop_frame_around_body(frame, body_position, body_crop):
+    # crop the frame around the body position
+
     if body_crop is None or body_position is None:
         body_crop_coords = np.array([[0, frame.shape[0]], [0, frame.shape[1]]])
     else:
         body_crop_coords = np.array([[np.maximum(0, int((body_position[0]-body_crop[0]))), np.minimum(frame.shape[0], int((body_position[0]+body_crop[0])))],
                                      [np.maximum(0, int((body_position[1]-body_crop[1]))), np.minimum(frame.shape[1], int((body_position[1]+body_crop[1])))]])
 
-    # crop the frame to the tail
     if len(frame.shape) == 3:
         body_crop_frame = frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1], :].copy()
     else:
@@ -1306,20 +1269,21 @@ def get_video_info(video_path):
     return fps, n_frames
 
 def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
+    # extract parameters
     tail_coords    = tracking_results['tail_coords']
     spline_coords  = tracking_results['spline_coords']
     heading_angle  = tracking_results['heading_angle']
     body_position  = tracking_results['body_position']
     eye_coords     = tracking_results['eye_coords']
 
-    # convert to BGR
+    # convert to RGB
     if len(frame.shape) < 3:
         tracked_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
     else:
         tracked_frame = frame
 
     if cropped == True:
-        # add extra dimension for # of crops
+        # add an extra dimension for # of crops
         if tail_coords is not None:
             tail_coords   = tail_coords[np.newaxis, :, :]
         if spline_coords is not None:
@@ -1332,6 +1296,7 @@ def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
             eye_coords    = eye_coords[np.newaxis, :, :]
 
     for k in range(n_crops):
+        # add an arrow showing the heading direction
         if heading_angle is not None and not np.isnan(heading_angle[k, 0]):
                 if body_position is not None and not np.isnan(body_position[k, 0]) and not np.isnan(body_position[k, 1]):
                     cv2.arrowedLine(tracked_frame, (int(round(body_position[k, 1])), int(round(body_position[k, 0]))),
@@ -1376,23 +1341,11 @@ def get_threshold_frame(frame, threshold, remove_noise=False):
     _, threshold_frame = cv2.threshold(frame, threshold, 255, cv2.THRESH_BINARY_INV)
     np.divide(threshold_frame, 255, out=threshold_frame, casting='unsafe')
 
-    # remove noise from the thresholded image
-    # if remove_noise:
-    #     kernel = np.ones((3, 3), np.uint8)
-    #     threshold_frame = cv2.erode(threshold_frame, kernel, iterations=1)
-    #     threshold_frame = cv2.dilate(threshold_frame, kernel, iterations=1)
-
-    # kernel = np.ones((5,5),np.uint8)
-    # cv2.morphologyEx(threshold_frame, cv2.MORPH_CLOSE, kernel)
-
-    # kernel = np.ones((3,3),np.uint8)
-    # cv2.morphologyEx(threshold_frame, cv2.MORPH_OPEN, kernel)
-
-    # kernel = np.ones((5,5),np.uint8)
-    # cv2.morphologyEx(threshold_frame, cv2.MORPH_CLOSE, kernel)
-
-    # kernel = np.ones((5,5),np.uint8)
-    # cv2.morphologyEx(threshold_frame, cv2.MORPH_OPEN, kernel)
+    # optionally remove noise from the thresholded image
+    if remove_noise:
+        kernel = np.ones((3, 3), np.uint8)
+        threshold_frame = cv2.erode(threshold_frame, kernel, iterations=1)
+        threshold_frame = cv2.dilate(threshold_frame, kernel, iterations=1)
 
     return threshold_frame
 
@@ -1424,7 +1377,7 @@ def get_absolute_coords(coords, offset):
 
 # --- Misc. --- #
 
-def get_video_batch_align_offsets(params):
+def get_video_batch_align_offsets(params): # todo: rewrite this using background images to estime transforms
     video_paths = params['video_paths']
 
     # store first frame of the first video
