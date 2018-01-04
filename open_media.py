@@ -25,11 +25,6 @@ def open_image(image_path):
     return frame
 
 def open_video(video_path, frame_nums=None, return_frames=True, calc_background=False, progress_signal=None, capture=None, seek_to_starting_frame=True, dark_background=False, greyscale=True, thread=None):
-    # mask_points = np.array([(415, 0), (281, 79), (163, 206), (110, 315), (77, 513), (98, 665), (161, 803), (254, 917), (409, 1021), (886, 1021), (1057, 896), (1154, 709), (1183, 496), (1148, 311), (1050, 152), (840, 0)])
-    # mask = np.zeros((1024, 1280)).astype(np.uint8)
-    # cv2.fillConvexPoly(mask, mask_points, 1)
-    # mask = mask.astype(bool)
-
     # create a capture object if it's not provided
     if capture is None:
         new_capture = True
@@ -135,12 +130,6 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             if thread is not None and thread.running == False:
                 return None
 
-    # if return_frames:
-    #     frames[:, mask == False] = 255
-
-    # if calc_background:
-    #     background[mask == False] = 255
-
     if new_capture:
         # close the capture object
         capture.release()
@@ -150,8 +139,6 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     if return_frames and frames is None:
         print("Error: Could not get any frames from the video.")
         return None
-    # if return_frames:
-    #     frames = tracking.remove_noise(frames)
 
     if return_frames and calc_background:
         return frames, background
