@@ -283,13 +283,23 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         if not params['track_tail']:
             tail_coords_array   = None
             spline_coords_array = None
+
+        # calculate the tail angles (in degrees)
+        tail_angle_array = analysis.calculate_freeswimming_tail_angles(heading_angle_array, body_position_array, tail_coords_array)*180.0/np.pi
+
+        # save tail angles as CSV files -- rows are points along the tail, columns are video frames
+        if n_crops > 1:
+            for k in range(n_crops):
+                np.savetxt(os.path.join(tracking_dir, "{}_tail_angles_crop_{}.csv".format(os.path.splitext(os.path.basename(video_path))[0], k)), tail_angle_array[k], fmt="%.4f", delimiter=",")
+        else:
+            np.savetxt(os.path.join(tracking_dir, "{}_tail_angles.csv".format(os.path.splitext(os.path.basename(video_path))[0])), tail_angle_array[0], fmt="%.4f", delimiter=",")
     else:
         # set tracking variables to None if they weren't used
         eye_coords_array    = None
         body_position_array = None
 
         # calculate the tail angles (in degrees)
-        tail_angle_array = analysis.calculate_tail_angles(params['heading_angle'], tail_coords_array)*180.0/np.pi
+        tail_angle_array = analysis.calculate_headfixed_tail_angles(params['heading_angle'], tail_coords_array)*180.0/np.pi
 
         # save tail angles as CSV files -- rows are points along the tail, columns are video frames
         if n_crops > 1:

@@ -1338,7 +1338,7 @@ class GetBackgroundThread(QThread):
         self.dark_background = dark_background
 
     def add_video_paths(self, video_paths):
-        self.video_paths    += video_paths
+        self.video_paths += video_paths
 
     def set_parameters(self, video_paths, dark_background):
         self.video_paths     = video_paths
@@ -1348,12 +1348,14 @@ class GetBackgroundThread(QThread):
         self.running = True
 
         while len(self.video_paths) > 0 and self.running:
+            # get video info
             fps, n_frames_total = open_media.get_video_info(self.video_paths[0])
 
+            # calculate background using 1000 evenly-spaced frames of the video
             frame_nums = utilities.split_evenly(n_frames_total, 1000)
-
             background = open_media.open_video(self.video_paths[0], frame_nums, False, True, dark_background=self.dark_background, progress_signal=self.progress, thread=self)
 
+            # emit a signal with the background and video path
             if background is not None:
                 self.finished.emit(background, self.video_paths[0])
             else:
@@ -1371,17 +1373,17 @@ class TrackVideosThread(QThread):
         QThread.__init__(self, parent)
 
     def set_parameters(self, params, tracking_path):
-        self.params = params
+        self.params        = params
         self.tracking_path = tracking_path
 
     def run(self):
-        tracking_func = tracking.open_and_track_video_batch
-
         if self.tracking_path != "":
             start_time = time.time()
 
-            tracking_func(self.params, self.tracking_path, progress_signal=self.progress)
+            # track the batch of videos
+            tracking.open_and_track_video_batch(self.params, self.tracking_path, progress_signal=self.progress)
 
             end_time = time.time()
 
+            # emit a signal of how long tracking took
             self.finished.emit(end_time - start_time)
