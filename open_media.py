@@ -87,7 +87,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
                 capture.set(1, frame_num-1)
 
             if return_frames:
-                frames[frame_count] = ndi.gaussian_filter(capture.read()[1][..., 0], 0.5)
+                frames[frame_count] = capture.read()[1][..., 0]
             else:
                 frame = capture.read()[1][..., 0]
 

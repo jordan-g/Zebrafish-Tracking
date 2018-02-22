@@ -695,7 +695,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position, heading_a
     tail_threshold     = crop_params['tail_threshold']
 
     # threshold the frame to extract the tail
-    tail_threshold_frame = get_threshold_frame(frame, tail_threshold, remove_noise=True)
+    tail_threshold_frame = get_threshold_frame(frame, tail_threshold, remove_noise=False)
 
     # get tail coordinates
     tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,

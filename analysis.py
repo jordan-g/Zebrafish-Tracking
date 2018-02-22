@@ -151,6 +151,30 @@ def get_tail_end_angles(tail_angle_array, num_to_average=1):
 
     return tail_end_angles
 
+def fix_heading_angles(heading_angle_array):
+    # get number of crops, frames & tail points
+    n_crops          = heading_angle_array.shape[0]
+    n_frames         = heading_angle_array.shape[1]
+    n_heading_points = heading_angle_array.shape[-1]
+
+    for k in range(n_crops):
+        for j in range(n_heading_points):
+            heading_angle_array = np.pi - heading_angle_array
+
+            for i in range(1, n_frames):
+                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] > np.pi:
+                    heading_angle_array[k, i:, j] -= 2*np.pi
+                if heading_angle_array[k, i, j] - heading_angle_array[k, i-1, j] < -np.pi:
+                    heading_angle_array[k, i:, j] += 2*np.pi
+
+            for i in range(1, n_frames-2):
+                if heading_angle_array[k, i, j] == np.nan and heading_angle_array[k, i-1, j] != np.nan and heading_angle_array[k, i+1, j] != np.nan:
+                    heading_angle_array[k, i, j] = (heading_angle_array[k, i-1, j] + heading_angle_array[k, i+1, j])/2
+                elif heading_angle_array[k, i, j] == np.nan and heading_angle_array[k, i+1, j] == np.nan and heading_angle_array[k, i-1, j] != np.nan and heading_angle_array[k, i+2, j] != np.nan:
+                    heading_angle_array[k, i:i+2, j] = (heading_angle_array[k, i-1, j] + heading_angle_array[k, i+2, j])/2
+
+    return heading_angle_array
+
 def get_position_history(body_position_array, plot=True):
     positions_y = body_position_array[:, :, 0]
     positions_x = body_position_array[:, :, 1]
