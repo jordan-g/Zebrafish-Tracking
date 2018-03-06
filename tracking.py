@@ -287,12 +287,19 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         # calculate the tail angles (in degrees)
         tail_angle_array = analysis.calculate_freeswimming_tail_angles(heading_angle_array, body_position_array, tail_coords_array)
 
-        # save tail angles as CSV files -- rows are points along the tail, columns are video frames
+        # save tail angles, body position & heading angle as CSV files
+        # for tail angles, rows are video frames, columns points along the tail
+        # for body position, rows are video frames, columns are x & y coordinates
+        # for heading angle, rows are video frames
         if n_crops > 1:
             for k in range(n_crops):
                 np.savetxt(os.path.join(tracking_dir, "{}_tail_angles_crop_{}.csv".format(os.path.splitext(os.path.basename(video_path))[0], k)), tail_angle_array[k], fmt="%.4f", delimiter=",")
+                np.savetxt(os.path.join(tracking_dir, "{}_body_position_crop_{}.csv".format(os.path.splitext(os.path.basename(video_path))[0], k)), body_position_array[k], fmt="%.4f", delimiter=",")
+                np.savetxt(os.path.join(tracking_dir, "{}_heading_angle_crop_{}.csv".format(os.path.splitext(os.path.basename(video_path))[0], k)), heading_angle_array[k], fmt="%.4f", delimiter=",")
         else:
             np.savetxt(os.path.join(tracking_dir, "{}_tail_angles.csv".format(os.path.splitext(os.path.basename(video_path))[0])), tail_angle_array[0], fmt="%.4f", delimiter=",")
+            np.savetxt(os.path.join(tracking_dir, "{}_body_position.csv".format(os.path.splitext(os.path.basename(video_path))[0])), body_position_array[0], fmt="%.4f", delimiter=",")
+            np.savetxt(os.path.join(tracking_dir, "{}_heading_angle.csv".format(os.path.splitext(os.path.basename(video_path))[0])), heading_angle_array[0], fmt="%.4f", delimiter=",")
     else:
         # set tracking variables to None if they weren't used
         eye_coords_array    = None

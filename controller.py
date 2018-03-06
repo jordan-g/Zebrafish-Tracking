@@ -459,9 +459,12 @@ class Controller():
                 else:
                     incomplete_load = True
 
-
             self.params['video_paths'] = current_params['video_paths']
-            self.params['backgrounds'] = current_params['backgrounds']
+
+            if self.params['dark_background'] != current_params['dark_background']:
+                self.toggle_dark_background(checkbox=None)
+            else:
+                self.params['backgrounds'] = current_params['backgrounds']
 
             # re-open the video paths specified in the loaded params
             # self.open_video_batch(self.params['video_paths'])
@@ -587,7 +590,8 @@ class Controller():
             self.preview_window.plot_image(image, self.params, self.params['crop_params'][self.current_crop], self.tracking_results, new_load, new_frame, show_slider, crop_around_body=crop_around_body)
 
     def toggle_dark_background(self, checkbox):
-        self.params['dark_background'] = checkbox.isChecked()
+        if checkbox is not None:
+            self.params['dark_background'] = checkbox.isChecked()
 
         self.params['backgrounds'] = [None for i in range(len(self.params['video_paths']))]
         self.bg_sub_frames         = [None for i in range(len(self.params['video_paths']))]
