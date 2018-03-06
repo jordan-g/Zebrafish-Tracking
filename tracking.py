@@ -285,7 +285,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
             spline_coords_array = None
 
         # calculate the tail angles (in degrees)
-        tail_angle_array = analysis.calculate_freeswimming_tail_angles(heading_angle_array, body_position_array, tail_coords_array)*180.0/np.pi
+        tail_angle_array = analysis.calculate_freeswimming_tail_angles(heading_angle_array, body_position_array, tail_coords_array)
 
         # save tail angles as CSV files -- rows are points along the tail, columns are video frames
         if n_crops > 1:
@@ -299,7 +299,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         body_position_array = None
 
         # calculate the tail angles (in degrees)
-        tail_angle_array = analysis.calculate_headfixed_tail_angles(params['heading_angle'], tail_coords_array)*180.0/np.pi
+        tail_angle_array = analysis.calculate_headfixed_tail_angles(params['heading_angle'], tail_coords_array)
 
         # save tail angles as CSV files -- rows are points along the tail, columns are video frames
         if n_crops > 1:

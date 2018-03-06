@@ -111,7 +111,10 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     else:
         while frame_count <= n_frames-1:
             if return_frames:
-                frames[frame_count] = capture.read()[1][..., 0]
+                try:
+                    frames[frame_count] = capture.read()[1][..., 0]
+                except:
+                    pass
             else:
                 frame = capture.read()[1][..., 0]
 
