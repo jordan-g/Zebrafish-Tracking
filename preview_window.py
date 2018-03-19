@@ -80,7 +80,6 @@ class PreviewQLabel(QLabel):
             self.click_end_coord = (int((event.y()/self.scale_factor)), int((event.x()/self.scale_factor)))
 
             print("User clicked {}.".format(self.click_end_coord))
-            print(self.scale_factor)
 
             if self.click_end_coord != self.click_start_coord:
                 # finished selecting crop area; crop the image
@@ -183,6 +182,8 @@ class PreviewWindow(QMainWindow):
 
         self.zoom = 1
         self.offset = [0, 0]
+        self.center_y = 0
+        self.center_x = 0
 
         # initialize variables
         self.image                  = None  # image to show
@@ -209,7 +210,7 @@ class PreviewWindow(QMainWindow):
 
         self.zoom = int(self.zoom*100)/100.0
 
-        self.update_image_label(self.final_image)
+        self.update_image_label(self.final_image, zooming=True)
 
     def start_selecting_crop(self):
         # start selecting crop
@@ -360,16 +361,25 @@ class PreviewWindow(QMainWindow):
     def remove_angle_overlay(self):
         self.update_image_label(self.image)
 
-    def update_image_label(self, image, zoom=True, new_load=False):
+    def update_image_label(self, image, zoom=True, new_load=False, zooming=False):
         if image is not None and self.zoom != 1 and zoom:
-            self.offset[0] = min(max(0, self.offset[0]), image.shape[0] - int(round(image.shape[0]/self.zoom)))
-            self.offset[1] = min(max(0, self.offset[1]), image.shape[1] - int(round(image.shape[1]/self.zoom)))
+            if zooming:
+                self.offset[0] = min(max(0, self.offset[0] + int((self.image_label.image.shape[0])/2.0) - int(round((image.shape[0]/self.zoom)/2.0))), image.shape[0] - int(round(image.shape[0]/self.zoom)))
+                self.offset[1] = min(max(0, self.offset[1] + int((self.image_label.image.shape[1])/2.0) - int(round((image.shape[1]/self.zoom)/2.0))), image.shape[1] - int(round(image.shape[1]/self.zoom)))
+            else:
+                self.offset[0] = min(max(0, self.offset[0]), image.shape[0] - int(round(image.shape[0]/self.zoom)))
+                self.offset[1] = min(max(0, self.offset[1]), image.shape[1] - int(round(image.shape[1]/self.zoom)))
+
+            if self.center_y is None:
+                self.center_y = int(round(image.shape[0]/2.0))
+            if self.center_x is None:
+                self.center_x = int(round(image.shape[1]/2.0))
 
             image = image[self.offset[0]:int(round(image.shape[0]/self.zoom))+self.offset[0], self.offset[1]:int(round(image.shape[1]/self.zoom))+self.offset[1], :].copy()
 
         if image is not None:
             if zoom:
-                self.setWindowTitle("Preview - Zoom: {}x".format(int(self.zoom)))
+                self.setWindowTitle("Preview - Zoom: {:.1f}x".format(self.zoom))
             else:
                 self.setWindowTitle("Preview - Zoom: 1x")
         else:
