@@ -12,10 +12,14 @@ from scipy.ndimage import zoom
 try:
     from PyQt4.QtCore import Qt, QThread, QSize
     from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QGraphicsDropShadowEffect, QColor
+
+    pyqt_version = 4
 except:
     from PyQt5.QtCore import Qt, QThread, QSize
     from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon, QColor
     from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QGraphicsDropShadowEffect
+
+    pyqt_version = 5
 
 import tracking
 import utilities
@@ -42,6 +46,7 @@ class PreviewQLabel(QLabel):
         self.scale_factor   = None
         self.pix            = None  # image label's pixmap
         self.pix_size       = None  # size of image label's pixmap
+        self.image          = None
 
         # accept clicks
         self.setAcceptDrops(True)
@@ -49,6 +54,8 @@ class PreviewQLabel(QLabel):
     def resizeEvent(self, event):
         if self.pix is not None:
             self.setPixmap(self.pix.scaled(self.width(), self.height(), Qt.KeepAspectRatio))
+
+            self.scale_factor = self.pixmap().height()/self.image.shape[0]
 
     def mousePressEvent(self, event):
         if self.scale_factor:
@@ -73,6 +80,7 @@ class PreviewQLabel(QLabel):
             self.click_end_coord = (int((event.y()/self.scale_factor)), int((event.x()/self.scale_factor)))
 
             print("User clicked {}.".format(self.click_end_coord))
+            print(self.scale_factor)
 
             if self.click_end_coord != self.click_start_coord:
                 # finished selecting crop area; crop the image
@@ -102,7 +110,9 @@ class PreviewQLabel(QLabel):
 
             self.setPixmap(self.pix.scaled(self.width(), self.height(), Qt.KeepAspectRatio, Qt.FastTransformation))
 
-            self.scale_factor = self.height()/image.shape[0]
+            self.scale_factor = self.pixmap().height()/image.shape[0]
+
+        self.image = image
 
 class PreviewWindow(QMainWindow):
     """
@@ -137,11 +147,11 @@ class PreviewWindow(QMainWindow):
 
         # create label that shows frames
         self.image_widget = QWidget(self)
-        self.image_layout = QHBoxLayout(self.image_widget)
+        self.image_layout = QVBoxLayout(self.image_widget)
         self.image_layout.setContentsMargins(0, 0, 0, 0)
         self.image_label = PreviewQLabel(self)
         self.image_label.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
-        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.image_label.hide()
         self.image_layout.addWidget(self.image_label)
         self.main_layout.addWidget(self.image_widget, 0, 0)
@@ -186,7 +196,10 @@ class PreviewWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
 
         # set window buttons
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowFullscreenButtonHint)
+        if pyqt_version == 5:
+            self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowFullscreenButtonHint)
+        else:
+            self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
 
         self.show()
 

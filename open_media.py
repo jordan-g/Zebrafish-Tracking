@@ -86,17 +86,20 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             except:
                 capture.set(1, frame_num-1)
 
-            if return_frames:
-                frames[frame_count] = capture.read()[1][..., 0]
-            else:
+            try:
                 frame = capture.read()[1][..., 0]
+
+                if return_frames:
+                    frames[frame_count] = frame
+            except:
+                frame = None
 
             if progress_signal:
                 # send an update signal to the GUI
                 percent_complete = int(100.0*float(frame_count)/n_frames)
                 progress_signal.emit(percent_complete, video_path)
 
-            if calc_background:
+            if calc_background and frame is not None:
                 # update background array
                 if dark_background:
                     mask_2 = np.greater(background, frame)
@@ -110,20 +113,20 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
                 return None
     else:
         while frame_count <= n_frames-1:
-            if return_frames:
-                try:
-                    frames[frame_count] = capture.read()[1][..., 0]
-                except:
-                    pass
-            else:
+            try:
                 frame = capture.read()[1][..., 0]
+
+                if return_frames:
+                    frames[frame_count] = frame
+            except:
+                frame = None
 
             if progress_signal:
                 # send an update signal to the GUI
                 percent_complete = int(100.0*float(frame_count)/n_frames)
                 progress_signal.emit(percent_complete, video_path)
 
-            if calc_background:
+            if calc_background and frame is not None:
                 # update background array
                 mask_2 = np.less(background, frame)
                 background[mask_2] = frame[mask_2]

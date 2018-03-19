@@ -12,10 +12,14 @@ import pdb
 try:
     from PyQt4.QtCore import Qt, QThread
     from PyQt4.QtGui import qRgb, QImage, QPixmap, QIcon, QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView, QFrame
+
+    pyqt_version = 4
 except:
     from PyQt5.QtCore import Qt, QThread
     from PyQt5.QtGui import qRgb, QImage, QPixmap, QIcon
     from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QAction, QMessageBox, QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QSizePolicy, QSlider, QFileDialog, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView, QFrame
+
+    pyqt_version = 5
 
 class ParamWindow(QMainWindow):
     def __init__(self, controller):
@@ -84,7 +88,10 @@ class ParamWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
 
         # set window title bar buttons
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowFullscreenButtonHint)
+        if pyqt_version == 5:
+            self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowFullscreenButtonHint)
+        else:
+            self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
 
         # disable controls
         self.set_gui_disabled(True)
