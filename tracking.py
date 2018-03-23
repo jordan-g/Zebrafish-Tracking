@@ -736,7 +736,7 @@ def track_freeswimming_tail(frame, params, crop_params, body_position, heading_a
         
         while tail_coords is None and i < 8:
             #  create a thresholded frame using new threshold
-            tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i], remove_noise=True)
+            tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i], remove_noise=False)
 
             # get tail coordinates
             tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
