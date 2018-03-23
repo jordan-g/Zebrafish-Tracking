@@ -104,7 +104,10 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
 
     # extract parameters
     subtract_background = params['subtract_background']
-    background          = params['backgrounds'][video_number]
+    if params['backgrounds'] is not None:
+        background = params['backgrounds'][video_number]
+    else:
+        background = None
     crop_params         = params['crop_params']
     n_tail_points       = params['n_tail_points']
     save_video          = params['save_video']
@@ -143,7 +146,10 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         print("Calculating background...")
 
         # calculate the background
-        frame_nums = utilities.split_evenly(n_frames_total, 1000)
+        if n_frames_total > 1000:
+            frame_nums = utilities.split_evenly(n_frames_total, 1000)
+        else:
+            frame_nums = list(range(n_frames_total))
         background = open_video(video_path, frame_nums, return_frames=False, calc_background=True, capture=capture, dark_background=dark_background)
 
     # initialize tracking data arrays
@@ -162,6 +168,10 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
     if use_multiprocessing:
         # create a pool of workers
         pool = multiprocessing.Pool(None)
+    
+    # create the directory for saving tracking data if it doesn't exist
+    if not os.path.exists(tracking_dir):
+        os.makedirs(tracking_dir)
 
     for i in range(len(big_split_frame_nums)):
         print("Tracking frames {} to {}...".format(big_split_frame_nums[i][0], big_split_frame_nums[i][-1]))
@@ -268,10 +278,6 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         # release the video writer
         writer.release()
     
-    # create the directory for saving tracking data if it doesn't exist
-    if not os.path.exists(tracking_dir):
-        os.makedirs(tracking_dir)
-
     # make a tracking params dictionary for this video
     tracking_params = params.copy()
     tracking_params['video_num'] = video_number
