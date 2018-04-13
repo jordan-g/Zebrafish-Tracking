@@ -14,6 +14,7 @@ import itertools
 import time
 import pdb
 import psutil
+from scipy import sparse
 
 import multiprocessing
 from multiprocessing import sharedctypes
@@ -85,6 +86,39 @@ def subtract_background_from_frames(frames, background, bg_sub_threshold, dark_b
 
     return bg_sub_frames.astype(np.uint8)
 
+def get_best_background_image(background_array):
+    return background_array[np.argmin([np.sum([1 for pixel_value in np.hstack(background) if pixel_value < 100]) for background in background_array])]
+
+def calculate_background_as_running_average(video_path, alpha = 0.01, total_frame_num = None):
+    if not os.path.isfile(video_path):
+        print('Error! Video: {0} does not exist. Check to make sure the video path has been entered correctly.'.format(video_path))
+        return
+    try:
+        capture = cv2.VideoCapture(video_path)
+    except:
+        print('Error! Could not open video.'.format(video_path))
+        return
+    background_array = []
+    video_fps, video_total_frames = get_video_info(video_path)
+    if total_frame_num == None:
+        total_frame_num = video_total_frames
+    for frame_num in range(total_frame_num):
+        print('Calculating background. Processing frame number: {0}/{1}.'.format(frame_num + 1, total_frame_num), end = '\r')
+        success, frame = capture.read()
+        if success:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if frame_num == 0:
+                running_average = frame.copy().astype(np.float32)
+            cv2.accumulateWeighted(frame, running_average, alpha)
+            background = cv2.convertScaleAbs(running_average)
+            if (frame_num + 1) % int(1/alpha) == 0:
+                background_array.append(background)
+            else:
+                if (frame_num + 1) == total_frame_num:
+                    background_array.append(background)
+    print('Calculating background. Processing frame number: {0}/{1}.'.format(frame_num + 1, total_frame_num))
+    return background_array
+
 # --- Tracking --- #
 
 def open_and_track_video(video_path, params, tracking_dir, video_number=0, progress_signal=None):
@@ -150,7 +184,9 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
             frame_nums = utilities.split_evenly(n_frames_total, 1000)
         else:
             frame_nums = list(range(n_frames_total))
-        background = open_video(video_path, frame_nums, return_frames=False, calc_background=True, capture=capture, dark_background=dark_background)
+        # background = open_video(video_path, frame_nums, return_frames=False, calc_background=True, capture=capture, dark_background=dark_background)
+        backgrounds = calculate_background_as_running_average(video_path, alpha=0.0008)
+        background = get_best_background_image(backgrounds)
 
     # initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
@@ -174,6 +210,7 @@ def open_and_track_video(video_path, params, tracking_dir, video_number=0, progr
         os.makedirs(tracking_dir)
 
     for i in range(len(big_split_frame_nums)):
+        
         print("Tracking frames {} to {}...".format(big_split_frame_nums[i][0], big_split_frame_nums[i][-1]))
 
         # get the frame numbers to process
@@ -405,7 +442,10 @@ def track_frames(params, background, frames):
 
     if subtract_background and background is not None:
         # subtract the background
-        frames = subtract_background_from_frames(frames, background, bg_sub_threshold, dark_background=dark_background)
+        original_frames = frames.copy()
+        frames          = subtract_background_from_frames(frames, background, bg_sub_threshold, dark_background=dark_background)
+    else:
+        original_frames = frames
 
     for frame_number in range(n_frames):
         # get the frame
@@ -420,7 +460,7 @@ def track_frames(params, background, frames):
             cropped_frame = crop_frame(frame, offset, crop)
 
             # track the frame
-            results, _, _ = track_cropped_frame(cropped_frame, params, crop_params[k])
+            results, _, _ = track_cropped_frame(cropped_frame, params, crop_params[k], original_frame=original_frames[frame_number])
 
             # add coordinates to tracking data arrays
             if results['tail_coords'] is not None:
@@ -432,7 +472,7 @@ def track_frames(params, background, frames):
 
     return tail_coords_array, spline_coords_array, heading_angle_array, body_position_array, eye_coords_array
 
-def track_cropped_frame(frame, params, crop_params):
+def track_cropped_frame(frame, params, crop_params, original_frame=None):
     '''
     Perform tracking on the provided frame.
 
@@ -448,6 +488,8 @@ def track_cropped_frame(frame, params, crop_params):
         body_crop_coords (list)  : List of coordinates of the crop around the tracked body position
                                    that is used to track the eyes and tail (for freeswimming fish).
     '''
+    if original_frame is None:
+        original_frame = frame
 
     # extract tracking type
     tracking_type  = params['type']
@@ -464,11 +506,14 @@ def track_cropped_frame(frame, params, crop_params):
         # track the heading angle and body position
         if crop_around_body:
             heading_angle, body_position, rel_body_position, body_crop_coords, body_crop_frame = track_body(frame, params, crop_params, crop_around_body=True)
+
+            _, body_crop_original_frame = crop_frame_around_body(original_frame, body_position, body_crop)
         else:
             heading_angle, body_position = track_body(frame, params, crop_params, crop_around_body=False)
-            rel_body_position = body_position
-            body_crop_coords  = None
-            body_crop_frame   = frame
+            rel_body_position            = body_position
+            body_crop_coords             = None
+            body_crop_frame              = frame
+            body_crop_original_frame     = original_frame
 
         if track_eyes_bool:
             # track the eyes
@@ -486,7 +531,7 @@ def track_cropped_frame(frame, params, crop_params):
 
         if track_tail_bool and body_position is not None:
             # track the tail only if the body center was found
-            tail_coords, spline_coords, skeleton_frame = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position, heading_angle)
+            tail_coords, spline_coords, skeleton_frame = track_freeswimming_tail(body_crop_frame, params, crop_params, rel_body_position, heading_angle, original_frame=body_crop_original_frame)
             if tail_coords is not None:
                 if crop_around_body and body_crop_coords is not None and np.sum(body_crop_frame) > 0:
                     # convert the tail coords to be relative to the initial frame
@@ -518,10 +563,11 @@ def track_body(frame, params, crop_params, crop_around_body=True):
     # extract parameters
     adjust_thresholds = params['adjust_thresholds']
     body_threshold    = crop_params['body_threshold']
+    eyes_threshold    = crop_params['eyes_threshold']
     body_crop         = params['body_crop']
 
     # create body threshold frame
-    body_threshold_frame = get_threshold_frame(frame, body_threshold)
+    body_threshold_frame = get_threshold_frame(frame, body_threshold, min_threshold=None, dilate=False)
 
     # get heading angle & body position
     heading_angle, body_position = get_heading_angle_and_body_position(body_threshold_frame, frame)
@@ -698,7 +744,10 @@ def get_eye_positions(eyes_threshold_image, prev_eye_coords=None):
 
 # --- Freeswimming tail tracking --- #
 
-def track_freeswimming_tail(frame, params, crop_params, body_position, heading_angle):
+def track_freeswimming_tail(frame, params, crop_params, body_position, heading_angle, original_frame=None):
+    if original_frame is None:
+        original_frame = frame
+
     # extract parameters
     adjust_thresholds  = params['adjust_thresholds']
     min_tail_body_dist = params['min_tail_body_dist']
@@ -710,43 +759,131 @@ def track_freeswimming_tail(frame, params, crop_params, body_position, heading_a
     # threshold the frame to extract the tail
     tail_threshold_frame = get_threshold_frame(frame, tail_threshold, remove_noise=False)
 
-    # get tail coordinates
-    tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
-                                                              min_tail_body_dist, max_tail_body_dist,
-                                                              n_tail_points, alt_tracking=alt_tail_tracking)
+    if alt_tail_tracking:
+        tail_coords, spline_coords, skeleton_image = track_freeswimming_tail_alt(frame, tail_threshold_frame, params, crop_params, body_position, heading_angle)
+    else:
+        # get tail coordinates
+        tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
+                                                                  min_tail_body_dist, max_tail_body_dist,
+                                                                  n_tail_points, alt_tracking=alt_tail_tracking)
+        if tail_coords is None:
+            # try increasing the minimum tail-body distance
+            i = 1
 
-    if tail_coords is None:
-        # try increasing the minimum tail-body distance
-        i = 1
+            while i <= 5:
+                tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
+                                                                  min_tail_body_dist+i, max_tail_body_dist,
+                                                                  n_tail_points, alt_tracking=alt_tail_tracking)
 
-        while i <= 5:
-            tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
-                                                              min_tail_body_dist+i, max_tail_body_dist,
-                                                              n_tail_points, alt_tracking=alt_tail_tracking)
-
-            i += 1
+                i += 1
 
 
-    if adjust_thresholds and tail_coords is None:
-        # initialize counter
-        i = 0
-        
-        # create a list of tail thresholds to go through
-        tail_thresholds = list(range(tail_threshold-1, tail_threshold-5, -1)) + list(range(tail_threshold+1, tail_threshold+5))
-        
-        while tail_coords is None and i < 8:
-            #  create a thresholded frame using new threshold
-            tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i], remove_noise=False)
+        if adjust_thresholds and tail_coords is None:
+            # initialize counter
+            i = 0
+            
+            # create a list of tail thresholds to go through
+            tail_thresholds = list(range(tail_threshold-1, tail_threshold-5, -1)) + list(range(tail_threshold+1, tail_threshold+5))
+            
+            while tail_coords is None and i < 8:
+                #  create a thresholded frame using new threshold
+                tail_threshold_frame = get_threshold_frame(frame, tail_thresholds[i], remove_noise=False)
 
-            # get tail coordinates
-            tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
-                                                                      min_tail_body_dist, max_tail_body_dist,
-                                                                      n_tail_points, alt_tracking=alt_tail_tracking)
+                # get tail coordinates
+                tail_coords, spline_coords, skeleton_image = get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle,
+                                                                          min_tail_body_dist, max_tail_body_dist,
+                                                                          n_tail_points, alt_tracking=alt_tail_tracking)
 
-            # increase counter
-            i += 1
+                # increase counter
+                i += 1
 
     return tail_coords, spline_coords, skeleton_image
+
+def track_freeswimming_tail_alt(frame, tail_threshold_frame, params, crop_params, body_position, heading_angle):
+    tail_threshold     = crop_params['tail_threshold']
+    n_tail_points      = params['n_tail_points']
+    radius             = params['radius']
+    max_tail_value     = params['max_tail_value']
+    angle_range        = params['angle_range']
+
+    # get tail skeleton image
+    skeleton_image = get_tail_skeleton_frame(tail_threshold_frame)
+
+    start_coord = np.array(body_position)
+
+    prev_coord = start_coord
+    angle = 180 - heading_angle
+    tail_coords = []
+    angles = []
+    i = 0
+    while prev_coord is not None and i < 200:
+        next_coord = find_next_coord(frame, prev_coord, angle, radius=radius, max_value=max_tail_value, angle_range=angle_range)
+        if next_coord is None:
+            r = radius-1
+            while next_coord is None and r > 1:
+                next_coord = find_next_coord(frame, prev_coord, angle, radius=r, max_value=max_tail_value, angle_range=angle_range)
+                r -= 1
+        if next_coord is not None:
+            angle = np.arctan2(np.array([next_coord[1] - prev_coord[1]]), np.array([next_coord[0] - prev_coord[0]]))[0]*180.0/np.pi
+            tail_coords.append(next_coord)
+            angles.append(angle)
+        prev_coord = next_coord
+        i += 1
+
+    if len(tail_coords) > 0:
+        tail_coords = np.array(tail_coords).T
+        n_tail_coords = tail_coords.shape[1]
+    else:
+        return [None]*2 + [skeleton_image]
+
+    if n_tail_coords > n_tail_points:
+        # get evenly-spaced tail indices
+        tail_nums = np.linspace(0, tail_coords.shape[1]-1, n_tail_points).astype(int)
+
+        # pick evenly-spaced points along the tail
+        tail_coords = tail_coords[:, tail_nums]
+
+    n_tail_coords = tail_coords.shape[1]
+
+    try:
+        # make ascending spiral in 3D space
+        t = np.zeros(n_tail_coords)
+        t[1:] = np.sqrt((tail_coords[1, 1:] - tail_coords[1, :-1])**2 + (tail_coords[0, 1:] - tail_coords[0, :-1])**2)
+        t = np.cumsum(t)
+        t /= t[-1]
+
+        nt = np.linspace(0, 1, 100)
+
+        # calculate cubic spline
+        spline_y_coords = interpolate.UnivariateSpline(t, tail_coords[0, :], k=3, s=3)(nt)
+        spline_x_coords = interpolate.UnivariateSpline(t, tail_coords[1, :], k=3, s=3)(nt)
+
+        spline_coords = np.array([spline_y_coords, spline_x_coords])
+
+        # get evenly-spaced spline indices
+        spline_nums = np.linspace(0, spline_coords.shape[1]-1, n_tail_points).astype(int)
+
+        # pick evenly-spaced points along the spline
+        spline_coords = spline_coords[:, spline_nums]
+    except:
+        print("Error: Could not calculate tail spline.")
+        return [None]*2 + [skeleton_image]
+
+    return tail_coords, spline_coords, skeleton_image
+
+def find_next_coord(frame, start_coord, angle, radius=5, max_value=50, angle_range=120):
+    angles = np.linspace(angle-angle_range/2, angle+angle_range/2, 100)*np.pi/180.0
+    x_coords = np.maximum(0, np.minimum(np.round((radius*np.sin(angles) + start_coord[1])).astype(int), frame.shape[1]-1))
+    y_coords = np.maximum(0, np.minimum(np.round((radius*np.cos(angles) + start_coord[0])).astype(int), frame.shape[0]-1))
+    coords = np.unique(np.vstack((y_coords, x_coords)).T, axis=0)
+    mask = sparse.coo_matrix((np.ones(coords.shape[0]), list(zip(*coords)) ), shape=frame.shape, dtype=bool).toarray()
+    masked_frame = np.ones(frame.shape).astype(np.uint8)*255
+    masked_frame[mask] = frame[mask]
+    min_value = np.amin(masked_frame)
+    if min_value > max_value:
+        return None
+    next_coord = np.unravel_index(masked_frame.argmin(), frame.shape)
+    return next_coord
 
 def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_angle, min_tail_body_dist, max_tail_body_dist, n_tail_points, max_r=2, smoothing_factor=3, alt_tracking=False): # todo: make max radius & smoothing factor user settable
     # get tail skeleton image
@@ -830,10 +967,8 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_an
         tail_coords = tail_coords.astype(float)
 
     if n_tail_coords > n_tail_points:
-        r = lambda m, n: [i*n//m + n//(2*m) for i in range(m)] # generates a list of m evenly spaced numbers from 0 to n
-
         # get evenly-spaced tail indices
-        tail_nums = [0] + r(n_tail_points-2, tail_coords.shape[1]) + [tail_coords.shape[1]-1]
+        tail_nums = np.linspace(0, tail_coords.shape[1]-1, n_tail_points).astype(int)
 
         # pick evenly-spaced points along the tail
         tail_coords = tail_coords[:, tail_nums]
@@ -856,7 +991,7 @@ def get_freeswimming_tail_coords(tail_threshold_frame, body_position, heading_an
         spline_coords = np.array([spline_y_coords, spline_x_coords])
 
         # get evenly-spaced spline indices
-        spline_nums = [0] + r(n_tail_points-2, spline_coords.shape[1]) + [spline_coords.shape[1]-1]
+        spline_nums = np.linspace(0, spline_coords.shape[1]-1, n_tail_points).astype(int)
 
         # pick evenly-spaced points along the spline
         spline_coords = spline_coords[:, spline_nums]
@@ -1201,14 +1336,12 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30, headin
     # get tail coordinates
     tail_coords = np.fliplr(frame_fit[:count]).T
 
-    r = lambda m, n: [i*n//m + n//(2*m) for i in range(m)] # generates a list of m evenly spaced numbers from 0 to n
-
     # get number of tail coordinates
     n_tail_coords = tail_coords.shape[1]
     
     if n_tail_coords > n_tail_points:
         # get evenly spaced tail indices
-        tail_nums = r(n_tail_points-1, tail_coords.shape[1]) + [tail_coords.shape[1]-1]
+        tail_nums = np.linspace(0, tail_coords.shape[1]-1, n_tail_points).astype(int)
     
         tail_coords = tail_coords[:, tail_nums]
 
@@ -1238,9 +1371,9 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30, headin
     
     if n_spline_coords > n_tail_points:
         # get evenly spaced spline indices
-        frame_nums = [0] + r(n_tail_points-2, spline_coords.shape[1]) + [spline_coords.shape[1]-1]
+        spline_nums = np.linspace(0, spline_coords.shape[1]-1, n_tail_points).astype(int)
     
-        spline_coords = spline_coords[:, frame_nums]
+        spline_coords = spline_coords[:, spline_nums]
     
     return tail_coords, spline_coords
 
@@ -1334,13 +1467,13 @@ def add_tracking_to_frame(frame, tracking_results, cropped=False, n_crops=1):
                     cv2.line(tracked_frame, (int(round(spline_coords[k, 1, i])), int(round(spline_coords[k, 0, i]))),
                                             (int(round(spline_coords[k, 1, i+1])), int(round(spline_coords[k, 0, i+1]))), (0, 0, 255), 1)
 
-        if tail_coords is not None and tail_coords[k, 0, 0] != np.nan:
+        if spline_coords is not None and spline_coords[k, 0, 0] != np.nan:
             # add tail points
-            tail_length = tail_coords.shape[2]
+            tail_length = spline_coords.shape[2]
             for i in range(tail_length):
-                if not np.isnan(tail_coords[k, 0, i]) and not np.isnan(tail_coords[k, 1, i]):
-                    cv2.line(tracked_frame, (int(round(tail_coords[k, 1, i])), int(round(tail_coords[k, 0, i]))),
-                                            (int(round(tail_coords[k, 1, i])), int(round(tail_coords[k, 0, i]))), (0, 255, 255), 1)
+                if not np.isnan(spline_coords[k, 0, i]) and not np.isnan(spline_coords[k, 1, i]):
+                    cv2.line(tracked_frame, (int(round(spline_coords[k, 1, i])), int(round(spline_coords[k, 0, i]))),
+                                            (int(round(spline_coords[k, 1, i])), int(round(spline_coords[k, 0, i]))), (0, 255, 255), 1)
 
     return tracked_frame
 
@@ -1350,8 +1483,11 @@ def crop_frame(frame, offset, crop):
     else:
         return frame
 
-def get_threshold_frame(frame, threshold, remove_noise=False):
+def get_threshold_frame(frame, threshold, remove_noise=False, min_threshold=None, dilate=False):
     _, threshold_frame = cv2.threshold(frame, threshold, 255, cv2.THRESH_BINARY_INV)
+    if min_threshold is not None:
+        _, threshold_frame_2 = cv2.threshold(frame, min_threshold, 255, cv2.THRESH_BINARY_INV)
+        threshold_frame = np.logical_and(threshold_frame, np.logical_not(threshold_frame_2)).astype(np.uint8)*255
     np.divide(threshold_frame, 255, out=threshold_frame, casting='unsafe')
 
     # optionally remove noise from the thresholded image
@@ -1359,6 +1495,11 @@ def get_threshold_frame(frame, threshold, remove_noise=False):
         kernel = np.ones((3, 3), np.uint8)
         threshold_frame = cv2.erode(threshold_frame, kernel, iterations=1)
         threshold_frame = cv2.dilate(threshold_frame, kernel, iterations=1)
+
+    if dilate:
+        kernel = np.ones((3, 3), np.uint8)
+        threshold_frame = cv2.erode(threshold_frame, kernel, iterations=1)
+        threshold_frame = cv2.dilate(threshold_frame, kernel, iterations=2)
 
     return threshold_frame
 

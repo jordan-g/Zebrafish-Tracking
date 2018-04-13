@@ -65,14 +65,18 @@ DEFAULT_FREESWIMMING_PARAMS = {'crop_params': [],
                                'backgrounds': [],                            # backgrounds calculated for background subtraction
                                'use_multiprocessing': True,                  # whether to use multiprocessing
                                'alt_tail_tracking': False,                   # whether to use alternate slower, but more accurate tail tracking
+                               'radius': 3,
+                               'max_tail_value': 100,
+                               'angle_range': 120,
                                'gui_params': { 'show_body_threshold': False, # show body threshold in preview window
                                                'show_eyes_threshold': False, # show eye threshold in preview window
                                                'show_tail_threshold': False, # show tail threshold in preview window
                                                'show_tail_skeleton': False,  # show tail skeleton in preview window
+                                               'show_bg_sub_frame': False,
                                                'auto_track': False,          # automatically track a frame when you switch to it
                                                'zoom_body_crop': False }}    # automatically zoom to fit body crop
 
-max_n_frames = 100 # maximum # of frames to load for previewing
+max_n_frames = 200 # maximum # of frames to load for previewing
 
 class Controller():
     def __init__(self, default_params, default_crop_params):
@@ -84,9 +88,11 @@ class Controller():
         self.default_crop_params = default_crop_params.copy()
 
         # initialize variables
-        self.current_frame      = None # currently showing frame (uncropped)
-        self.cropped_frame      = None # cropped frame
-        self.body_cropped_frame = None # frame cropped around the body
+        self.current_frame          = None # currently showing frame (uncropped)
+        self.original_current_frame = None # currently showing frame (uncropped)
+        self.cropped_frame          = None # cropped frame
+        self.original_cropped_frame = None # cropped frame
+        self.body_cropped_frame     = None # frame cropped around the body
 
         self.frames                = [] # list of loaded frames, one element per video
         self.bg_sub_frames         = [] # list of background subtracted frames, one element per video
@@ -242,7 +248,8 @@ class Controller():
                 return
 
             # set the current frame to the first frame
-            self.current_frame = self.frames[self.curr_video_num][0]
+            self.current_frame          = self.frames[self.curr_video_num][0]
+            self.original_current_frame = self.current_frame
 
             # get number of loaded frames
             self.n_frames = len(self.frames[self.curr_video_num])
@@ -454,10 +461,18 @@ class Controller():
             incomplete_load = False
             self.params = self.default_params.copy()
             for key in saved_params:
-                if key in self.params:
+                if key == 'gui_params':
+                    for key in saved_params['gui_params']:
+                        if key in self.params['gui_params']:
+                            self.params['gui_params'][key] = saved_params['gui_params'][key]
+                        else:
+                            incomplete_load = True
+                elif key in self.params:
                     self.params[key] = saved_params[key]
                 else:
                     incomplete_load = True
+
+            print(self.default_params['gui_params'])
 
             self.params['video_paths'] = current_params['video_paths']
 
@@ -535,9 +550,11 @@ class Controller():
 
         # set current frame
         if self.params['subtract_background'] and self.bg_sub_frames[self.curr_video_num] is not None:
-            self.current_frame = self.bg_sub_frames[self.curr_video_num][self.n]
+            self.current_frame          = self.bg_sub_frames[self.curr_video_num][self.n]
+            self.original_current_frame = self.frames[self.curr_video_num][self.n]
         else:
-            self.current_frame = self.frames[self.curr_video_num][self.n]
+            self.current_frame          = self.frames[self.curr_video_num][self.n]
+            self.original_current_frame = self.current_frame
 
         # reshape the image (shrink, crop & invert)
         self.reshape_frame()
@@ -565,9 +582,11 @@ class Controller():
                 crop   = current_crop_params['crop']
                 offset = current_crop_params['offset']
 
-                self.cropped_frame = tracking.crop_frame(self.current_frame, offset, crop)
+                self.cropped_frame          = tracking.crop_frame(self.current_frame, offset, crop)
+                self.original_cropped_frame = tracking.crop_frame(self.original_current_frame, offset, crop)
             else:
-                self.cropped_frame = self.current_frame
+                self.cropped_frame          = self.current_frame
+                self.original_cropped_frame = self.original_current_frame
 
     def update_preview(self, image=None, new_load=False, new_frame=False):
         if image is None:
@@ -622,7 +641,7 @@ class Controller():
         current_crop_params = self.params['crop_params'][self.current_crop]
 
         # generate thresholded frames
-        self.body_threshold_frame = tracking.get_threshold_frame(self.cropped_frame, current_crop_params['body_threshold'])*255
+        self.body_threshold_frame = tracking.get_threshold_frame(self.cropped_frame, current_crop_params['body_threshold'], min_threshold=None, dilate=False)*255
         self.eyes_threshold_frame = tracking.get_threshold_frame(self.cropped_frame, current_crop_params['eyes_threshold'])*255
         self.tail_threshold_frame = tracking.get_threshold_frame(self.cropped_frame, current_crop_params['tail_threshold'])*255
         self.tail_skeleton_frame  = tracking.get_tail_skeleton_frame(self.tail_threshold_frame/255)*255
@@ -662,7 +681,7 @@ class Controller():
     def track_frame(self):
         if self.current_frame is not None:
             # track current frame
-            self.tracking_results, skeleton_image, body_crop_coords = tracking.track_cropped_frame(self.cropped_frame, self.params, self.params['crop_params'][self.current_crop])
+            self.tracking_results, skeleton_image, body_crop_coords = tracking.track_cropped_frame(self.cropped_frame, self.params, self.params['crop_params'][self.current_crop], original_frame=self.original_cropped_frame)
             if skeleton_image is not None and body_crop_coords is not None:
                 self.tail_skeleton_frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1]] = skeleton_image*255
 
@@ -961,8 +980,10 @@ class FreeswimmingController(Controller):
                 image = self.tail_threshold_frame
             elif self.params['gui_params']["show_tail_skeleton"]:
                 image = self.tail_skeleton_frame
-            else:
+            elif self.params['gui_params']["show_bg_sub_frame"]:
                 image = self.cropped_frame
+            else:
+                image = self.original_cropped_frame
 
         Controller.update_preview(self, image, new_load, new_frame)
 
@@ -976,23 +997,33 @@ class FreeswimmingController(Controller):
                 self.param_window.param_controls["show_eyes_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
+                self.param_window.param_controls["show_bg_sub_frame"].setChecked(False)
             elif checkbox.text() == "Show eye threshold":
                 self.param_window.param_controls["show_body_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
+                self.param_window.param_controls["show_bg_sub_frame"].setChecked(False)
             elif checkbox.text() == "Show tail threshold":
                 self.param_window.param_controls["show_body_threshold"].setChecked(False)
                 self.param_window.param_controls["show_eyes_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
+                self.param_window.param_controls["show_bg_sub_frame"].setChecked(False)
             elif checkbox.text() == "Show tail skeleton":
                 self.param_window.param_controls["show_body_threshold"].setChecked(False)
                 self.param_window.param_controls["show_eyes_threshold"].setChecked(False)
                 self.param_window.param_controls["show_tail_threshold"].setChecked(False)
+                self.param_window.param_controls["show_bg_sub_frame"].setChecked(False)
+            elif checkbox.text() == "Show bg-subtracted frame":
+                self.param_window.param_controls["show_body_threshold"].setChecked(False)
+                self.param_window.param_controls["show_eyes_threshold"].setChecked(False)
+                self.param_window.param_controls["show_tail_threshold"].setChecked(False)
+                self.param_window.param_controls["show_tail_skeleton"].setChecked(False)
 
         self.params['gui_params']['show_body_threshold'] = self.param_window.param_controls["show_body_threshold"].isChecked()
         self.params['gui_params']['show_eyes_threshold']  = self.param_window.param_controls["show_eyes_threshold"].isChecked()
         self.params['gui_params']['show_tail_threshold'] = self.param_window.param_controls["show_tail_threshold"].isChecked()
         self.params['gui_params']['show_tail_skeleton']  = self.param_window.param_controls["show_tail_skeleton"].isChecked()
+        self.params['gui_params']['show_bg_sub_frame']  = self.param_window.param_controls["show_bg_sub_frame"].isChecked()
 
         # update the image preview
         self.update_preview(image=None, new_load=False, new_frame=True)
@@ -1214,6 +1245,51 @@ class FreeswimmingController(Controller):
             except:
                 self.param_window.set_invalid_params_text("Invalid tail threshold value.")
 
+    def update_radius(self, radius):
+        if self.current_frame is not None:
+            try:
+                radius = int(float(radius))
+                if not(radius >= 1):
+                    raise
+
+                self.params['radius'] = radius
+
+                self.param_window.set_invalid_params_text("")
+
+                self.show_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("")
+
+    def update_max_tail_value(self, max_tail_value):
+        if self.current_frame is not None:
+            try:
+                max_tail_value = int(float(max_tail_value))
+                if not(max_tail_value >= 1 and max_tail_value <= 255):
+                    raise
+
+                self.params['max_tail_value'] = max_tail_value
+
+                self.param_window.set_invalid_params_text("")
+
+                self.show_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("")
+
+    def update_angle_range(self, angle_range):
+        if self.current_frame is not None:
+            try:
+                angle_range = int(float(angle_range))
+                if not(angle_range >= 1 and angle_range < 360):
+                    raise
+
+                self.params['angle_range'] = angle_range
+
+                self.param_window.set_invalid_params_text("")
+
+                self.show_frame(self.n)
+            except:
+                self.param_window.set_invalid_params_text("")
+
     def update_crop_from_selection(self, start_crop_coord, end_crop_coord):
         Controller.update_crop_from_selection(self, start_crop_coord, end_crop_coord)
 
@@ -1356,7 +1432,9 @@ class GetBackgroundThread(QThread):
 
             # calculate background using 1000 evenly-spaced frames of the video
             frame_nums = utilities.split_evenly(n_frames_total, 1000)
-            background = open_media.open_video(self.video_paths[0], frame_nums, False, True, dark_background=self.dark_background, progress_signal=self.progress, thread=self)
+            # background = open_media.open_video(self.video_paths[0], frame_nums, False, True, dark_background=self.dark_background, progress_signal=self.progress, thread=self)
+            backgrounds = tracking.calculate_background_as_running_average(self.video_paths[0], alpha=0.0008)
+            background = tracking.get_best_background_image(backgrounds)
 
             # emit a signal with the background and video path
             if background is not None:

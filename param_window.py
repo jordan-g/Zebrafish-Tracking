@@ -782,8 +782,9 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_checkbox('show_eyes_threshold', "Show eyes threshold", self.controller.toggle_threshold_image, params['gui_params']['show_eyes_threshold'], self.checkbox_layout, 2, 0)
         self.add_checkbox('show_tail_threshold', "Show tail threshold", self.controller.toggle_threshold_image, params['gui_params']['show_tail_threshold'], self.checkbox_layout, 3, 0)
         self.add_checkbox('show_tail_skeleton', "Show tail skeleton", self.controller.toggle_threshold_image, params['gui_params']['show_tail_skeleton'], self.checkbox_layout, 4, 0)
-        self.add_checkbox('track_tail', "Track tail", self.controller.toggle_tail_tracking, params['track_tail'], self.checkbox_layout, 5, 0)
-        self.add_checkbox('track_eyes', "Track eyes", self.controller.toggle_eye_tracking, params['track_eyes'], self.checkbox_layout, 6, 0)
+        self.add_checkbox('show_bg_sub_frame', "Show bg-subtracted frame", self.controller.toggle_threshold_image, params['gui_params']['show_bg_sub_frame'], self.checkbox_layout, 5, 0)
+        self.add_checkbox('track_tail', "Track tail", self.controller.toggle_tail_tracking, params['track_tail'], self.checkbox_layout, 6, 0)
+        self.add_checkbox('track_eyes', "Track eyes", self.controller.toggle_eye_tracking, params['track_eyes'], self.checkbox_layout, 7, 0)
         self.add_checkbox('save_video', "Save video", self.controller.toggle_save_video, params['save_video'], self.checkbox_layout, 0, 1)
         self.add_checkbox('adjust_thresholds', 'Adjust thresholds', self.controller.toggle_adjust_thresholds, params['adjust_thresholds'], self.checkbox_layout, 1, 1)
         self.add_checkbox('subtract_background', 'Subtract background', self.controller.toggle_subtract_background, params['subtract_background'], self.checkbox_layout, 2, 1)
@@ -802,6 +803,9 @@ class FreeswimmingParamWindow(ParamWindow):
         self.add_param_textbox('max_tail_body_dist', 'Body/tail max. dist.:', self.controller.update_max_tail_body_dist, params['max_tail_body_dist'], self.params_layout)
         self.add_param_textbox('tracking_video_fps', 'Tracking video FPS:', self.controller.update_tracking_video_fps, params['tracking_video_fps'], self.params_layout)
         self.add_param_textbox('n_tail_points', 'Number of tail points:', self.controller.update_n_tail_points, params['n_tail_points'], self.params_layout)
+        self.add_param_textbox('radius', 'Radius:', self.controller.update_radius, params['radius'], self.params_layout)
+        self.add_param_textbox('max_tail_value', 'Max tail value:', self.controller.update_max_tail_value, params['max_tail_value'], self.params_layout)
+        self.add_param_textbox('angle_range', 'Angle range:', self.controller.update_angle_range, params['angle_range'], self.params_layout)
 
     def update_gui_from_params(self, params):
         # update param controls with current parameters
