@@ -229,7 +229,7 @@ class Controller():
         if video_path not in ("", None):
             # get video info
             fps, n_frames_total = open_media.get_video_info(video_path)
-            
+
             print("Loaded video with {} frame{}.".format(n_frames_total, "s"*(n_frames_total > 1)))
 
             # load evenly spaced frames -- TODO: Add an option to load sequential frames
@@ -414,7 +414,7 @@ class Controller():
 
             n_backgrounds_calculated = sum([ x is not None for x in self.params['backgrounds'] ])
             n_backgrounds_total      = len(self.params['backgrounds'])
-            
+
             if n_backgrounds_calculated == n_backgrounds_total or background is None:
                 self.param_window.update_background_progress_text(n_backgrounds_total - n_backgrounds_calculated, 100)
 
@@ -604,7 +604,7 @@ class Controller():
 
             # get gui params
             gui_params = self.params['gui_params']
-            
+
             # send signal to update image in preview window
             self.preview_window.plot_image(image, self.params, self.params['crop_params'][self.current_crop], self.tracking_results, new_load, new_frame, show_slider, crop_around_body=crop_around_body)
 
@@ -1114,7 +1114,7 @@ class FreeswimmingController(Controller):
             if valid_params:
                 # if self.params['bg_sub_threshold'] != bg_sub_threshold:
                 #     self.bg_sub_frames[self.curr_video_num] = tracking.subtract_background_from_frames(self.frames[self.curr_video_num], self.params['backgrounds'][self.curr_video_num], self.params['bg_sub_threshold'])
-                
+
                 self.params['tracking_video_fps']    = tracking_video_fps
                 self.params['n_tail_points']      = n_tail_points
                 self.params['body_crop']          = np.array([body_crop_height, body_crop_width])
@@ -1432,9 +1432,11 @@ class GetBackgroundThread(QThread):
 
             # calculate background using 1000 evenly-spaced frames of the video
             frame_nums = utilities.split_evenly(n_frames_total, 1000)
-            # background = open_media.open_video(self.video_paths[0], frame_nums, False, True, dark_background=self.dark_background, progress_signal=self.progress, thread=self)
-            backgrounds = tracking.calculate_background_as_running_average(self.video_paths[0], alpha=0.0008)
-            background = tracking.get_best_background_image(backgrounds)
+            background = open_media.open_video(self.video_paths[0], frame_nums, False, True, dark_background=self.dark_background, progress_signal=self.progress, thread=self)
+            # backgrounds = tracking.calculate_background_as_running_average(self.video_paths[0], alpha=0.0008)
+            # background = tracking.get_best_background_image(backgrounds)
+            # backgrounds = tracking.calculate_backgrounds_as_brightest_pixel_value(self.video_paths[0])
+            # background = backgrounds[0]
 
             # emit a signal with the background and video path
             if background is not None:
