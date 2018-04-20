@@ -90,7 +90,6 @@ def extract_background_extended(video_path, num_backgrounds = 1, threshold_value
             contour_sum += fish_contour_frame
     print('Extracting running average background using fish contours. Processing frame number: {0}/{1}.'.format(frame_num + 1, video_total_frames))
     background = frame_sum / contour_sum
-    show_image(background)
     capture.release()
     if save_background:
         background_path = '{0}_background.tif'.format(video_path[:-4])
