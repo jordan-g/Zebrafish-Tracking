@@ -62,7 +62,6 @@ def extract_background_extended(video_path, num_backgrounds = 1, threshold_value
         print('Error! Video: {0} does not exist. Check to make sure the video path has been entered correctly.'.format(video_path))
         return
     background_array = calculate_backgrounds_as_brightest_pixel_value(video_path, num_backgrounds = num_backgrounds)
-    print(len(background_array))
     try:
         capture = cv2.VideoCapture(video_path)
     except:
