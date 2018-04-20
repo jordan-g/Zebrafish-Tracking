@@ -62,29 +62,37 @@ def extract_background_extended(video_path, num_backgrounds = 1, threshold_value
         print('Error! Video: {0} does not exist. Check to make sure the video path has been entered correctly.'.format(video_path))
         return
     background_array = calculate_backgrounds_as_brightest_pixel_value(video_path, num_backgrounds = num_backgrounds)
+    print(len(background_array))
     try:
         capture = cv2.VideoCapture(video_path)
     except:
         print('Error! Could not open video.'.format(video_path))
         return
-    video_total_frames = get_video_info(video_path)[1]
+    # video_total_frames = get_video_info(video_path)[1]
+    video_total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    background_chunk_index = int(video_total_frames / num_backgrounds)
     for frame_num in range(video_total_frames):
-        background_chunk_index = video_total_frames / num_backgrounds
-        print('Extracting true background using fish contours. Processing frame number: {0}/{1}.'.format(frame_num + 1, video_total_frames), end = '\r')
+        print('Extracting running average background using fish contours. Processing frame number: {0}/{1}.'.format(frame_num + 1, video_total_frames), end = '\r')
         success, frame = capture.read()
         if success:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
             if frame_num == 0:
                 frame_sum = np.zeros(np.shape(frame))
                 contour_sum = np.zeros(np.shape(frame))
-            background_subtracted_frame = calculate_absolute_difference_between_background_and_frame(frame, background_array[int(frame_num/background_chunk_index)])
+            n_background = int(frame_num/background_chunk_index)
+            try:
+                background_subtracted_frame = calculate_absolute_difference_between_background_and_frame(frame, background_array[n_background])
+            except:
+                background_subtracted_frame = calculate_absolute_difference_between_background_and_frame(frame, background_array[n_background - 1])
             threshold_frame = apply_threshold_to_frame(background_subtracted_frame, threshold_value = threshold_value)
             fish_contour_frame = extract_fish_contour_from_threshold_frame(threshold_frame, morph = morph, kernel_size = kernel_size, n_iterations = n_iterations)
             fish_contour_frame = -fish_contour_frame/255 + 1
             frame_sum += frame * fish_contour_frame
             contour_sum += fish_contour_frame
-    print('Extracting true background using fish contours. Processing frame number: {0}/{1}.'.format(frame_num + 1, video_total_frames))
+    print('Extracting running average background using fish contours. Processing frame number: {0}/{1}.'.format(frame_num + 1, video_total_frames))
     background = frame_sum / contour_sum
+    show_image(background)
+    capture.release()
     if save_background:
         background_path = '{0}_background.tif'.format(video_path[:-4])
         cv2.imwrite(background_path, background.astype(np.uint8))
@@ -100,7 +108,9 @@ def calculate_backgrounds_as_brightest_pixel_value(video_path, num_backgrounds =
         print('Error! Could not open video.')
         return
     background_array = []
-    video_total_frames = get_video_info(video_path)[1]
+    # video_total_frames = get_video_info(video_path)[1]
+    video_total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    background_chunk_index = int(video_total_frames / num_backgrounds)
     if num_backgrounds >= video_total_frames:
         print('Error! Number of backgrounds requested exceeds the total number of frames in the video.')
         return
@@ -113,12 +123,13 @@ def calculate_backgrounds_as_brightest_pixel_value(video_path, num_backgrounds =
                 background = frame.copy().astype(np.float32)
             mask = np.less(background, frame)
             background[mask] = frame[mask]
-            if frame_num % (video_total_frames / num_backgrounds) == 0:
+            if frame_num > 0 and frame_num % background_chunk_index == 0:
                 background_array.append(background)
-            else:
+            elif len(background_array) < num_backgrounds:
                 if (frame_num + 1) == video_total_frames:
                     background_array.append(background)
     print('Calculating background. Processing frame number: {0}/{1}.'.format(frame_num + 1, video_total_frames))
+    capture.release()
     return background_array
 
 def calculate_absolute_difference_between_background_and_frame(frame, background):
@@ -288,7 +299,9 @@ def open_and_track_video(video_path, background_path, params, tracking_dir, vide
         return
 
     # get video info
-    fps, n_frames_total = get_video_info(video_path)
+    # fps, n_frames_total = get_video_info(video_path)
+    n_frames_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = capture.get(cv2.CAP_PROP_FPS)
 
     print("Total number of frames to track: {}.".format(n_frames_total))
 
@@ -305,7 +318,7 @@ def open_and_track_video(video_path, background_path, params, tracking_dir, vide
         else:
             frame_nums = list(range(n_frames_total))
         # background = open_video(video_path, frame_nums, return_frames=False, calc_background=True, capture=capture, dark_background=dark_background)
-        background = extract_background_extended(video_path, threshold_value = 2, save_background = True)
+        background = extract_background_extended(video_path, num_backgrounds = 10, threshold_value = 8, save_background = True)
 
     # initialize tracking data arrays
     tail_coords_array    = np.zeros((n_crops, n_frames_total, 2, n_tail_points)) + np.nan
