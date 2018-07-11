@@ -33,7 +33,10 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             capture = cv2.VideoCapture(video_path)
         except:
             print("Error: Could not open video.")
-            return None
+            if return_frames and calc_background:
+                return None, None
+            else:
+                return None
     else:
         new_capture = False
 
@@ -61,12 +64,29 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
         except:
             capture.set(1, frame_nums[0]-1)
 
-    # get the first frame
-    frame = capture.read()[1][..., 0]
+    frame_count = 0
 
-    if calc_background:
-        # initialize background array
-        background = frame.copy()
+    while frame_count < n_frames:
+        try:
+            # get the first frame
+            frame = capture.read()[1][..., 0]
+
+            if calc_background:
+                # initialize background array
+                background = frame.copy()
+
+            break
+        except:
+            pass
+
+        frame_count += 1
+
+    if frame_count == n_frames - 1:
+        print("Error: Could not load any frames from the video.")
+        if return_frames and calc_background:
+            return None, None
+        else:
+            return None
 
     if return_frames:
         # initialize array to hold all frames
@@ -76,8 +96,6 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             frames = np.zeros((n_frames, frame.shape[0], frame.shape[1], frame.shape[2])).astype(np.uint8)
 
         frames[0] = frame
-
-    frame_count = 1
 
     if not frame_nums_are_sequential:
         for frame_num in frame_nums[1:]:
@@ -110,7 +128,10 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             frame_count += 1
 
             if thread is not None and thread.running == False:
-                return None
+                if return_frames and calc_background:
+                    return None, None
+                else:
+                    return None
     else:
         while frame_count <= n_frames-1:
             try:
@@ -134,7 +155,10 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
             frame_count += 1
 
             if thread is not None and thread.running == False:
-                return None
+                if return_frames and calc_background:
+                    return None, None
+                else:
+                    return None
 
     if new_capture:
         # close the capture object
