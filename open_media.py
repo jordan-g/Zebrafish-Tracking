@@ -53,6 +53,9 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     # or not (ie. [20, 35, 401, ...])
     frame_nums_are_sequential = list(frame_nums) == list(range(frame_nums[0], frame_nums[-1]+1))
 
+    if not frame_nums_are_sequential:
+        n_frames_range = frame_nums[-1] - frame_nums[0] + 1
+
     frames      = None
     background  = None
 
@@ -64,53 +67,64 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
         except:
             capture.set(1, frame_nums[0]-1)
 
-    frame_count = 0
+    try:
+        # get the first frame
+        frame = capture.read()[1][..., 0]
 
-    while frame_count < n_frames:
-        try:
-            # get the first frame
-            frame = capture.read()[1][..., 0]
-
-            if calc_background:
-                # initialize background array
-                background = frame.copy()
-
-            break
-        except:
-            pass
-
-        frame_count += 1
-
-    if frame_count == n_frames - 1:
+        if calc_background:
+            # initialize background array
+            background = frame.copy()
+    except:
         print("Error: Could not load any frames from the video.")
         if return_frames and calc_background:
             return None, None
         else:
             return None
 
-    if return_frames:
-        # initialize array to hold all frames
-        if greyscale:
-            frames = np.zeros((n_frames, frame.shape[0], frame.shape[1])).astype(np.uint8)
-        else:
-            frames = np.zeros((n_frames, frame.shape[0], frame.shape[1], frame.shape[2])).astype(np.uint8)
+    frame_count = 1
 
-        frames[0] = frame
+    if return_frames:
+        # initialize list to hold all frames
+        frames = []
+
+        frames.append(frame)
 
     if not frame_nums_are_sequential:
-        for frame_num in frame_nums[1:]:
-            try:
-                capture.set(cv2.CV_CAP_PROP_POS_FRAMES, frame_num-1)
-            except:
-                capture.set(1, frame_num-1)
+        while frame_count <= n_frames_range-1:
+            _ = capture.grab()
 
-            try:
-                frame = capture.read()[1][..., 0]
+            if frame_nums[0] + frame_count in frame_nums:
+                frame = capture.retrieve()[1][..., 0]
 
                 if return_frames:
-                    frames[frame_count] = frame
-            except:
-                frame = None
+                    frames.append(frame)
+
+                if calc_background and frame is not None:
+                    # update background array
+                    if dark_background:
+                        mask_2 = np.greater(background, frame)
+                    else:
+                        mask_2 = np.less(background, frame)
+                    background[mask_2] = frame[mask_2]
+
+            if progress_signal:
+                # send an update signal to the GUI
+                percent_complete = int(100.0*float(frame_count)/n_frames_range)
+                progress_signal.emit(percent_complete, video_path)
+
+            frame_count += 1
+
+            if thread is not None and thread.running == False:
+                if return_frames and calc_background:
+                    return None, None
+                else:
+                    return None
+    else:
+        while frame_count <= n_frames-1:
+            frame = capture.read()[1][..., 0]
+
+            if return_frames:
+                frames.append(frame)
 
             if progress_signal:
                 # send an update signal to the GUI
@@ -132,46 +146,21 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
                     return None, None
                 else:
                     return None
-    else:
-        while frame_count <= n_frames-1:
-            try:
-                frame = capture.read()[1][..., 0]
-
-                if return_frames:
-                    frames[frame_count] = frame
-            except:
-                frame = None
-
-            if progress_signal:
-                # send an update signal to the GUI
-                percent_complete = int(100.0*float(frame_count)/n_frames)
-                progress_signal.emit(percent_complete, video_path)
-
-            if calc_background and frame is not None:
-                # update background array
-                mask_2 = np.less(background, frame)
-                background[mask_2] = frame[mask_2]
-
-            frame_count += 1
-
-            if thread is not None and thread.running == False:
-                if return_frames and calc_background:
-                    return None, None
-                else:
-                    return None
 
     if new_capture:
         # close the capture object
         capture.release()
 
-    print("{} frame{} opened.".format(n_frames, "s"*(n_frames > 1)))
+    if return_frames:
+        n_frames = len(frames)
+        print("{} frame{} opened.".format(n_frames, "s"*(n_frames > 1)))
 
     if return_frames and frames is None:
         print("Error: Could not get any frames from the video.")
         return None
 
     if return_frames and calc_background:
-        return frames, background
+        return np.array(frames), background
     elif calc_background:
         return background
     else:
