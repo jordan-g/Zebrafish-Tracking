@@ -681,7 +681,7 @@ class Controller():
     def track_frame(self):
         if self.current_frame is not None:
             # track current frame
-            self.tracking_results, skeleton_image, body_crop_coords = tracking.track_cropped_frame(self.cropped_frame, self.params, self.params['crop_params'][self.current_crop], original_frame=self.original_cropped_frame)
+            self.tracking_results, skeleton_image, body_crop_coords = tracking.track_cropped_frame(self.cropped_frame, None, self.params, self.params['crop_params'][self.current_crop], original_frame=self.original_cropped_frame)
             if skeleton_image is not None and body_crop_coords is not None:
                 self.tail_skeleton_frame[body_crop_coords[0, 0]:body_crop_coords[0, 1], body_crop_coords[1, 0]:body_crop_coords[1, 1]] = skeleton_image*255
 

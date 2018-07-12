@@ -164,7 +164,7 @@ def open_video(video_path, frame_nums=None, return_frames=True, calc_background=
     elif calc_background:
         return background
     else:
-        return frames
+        return np.array(frames)
 
 # --- Helper functions --- #
 

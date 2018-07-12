@@ -371,7 +371,7 @@ def open_and_track_video(video_path, background_path, params, tracking_dir, vide
 
             # get the pool of workers to track the chunks of frames
             result_list = []
-            for result in pool.imap(partial(track_frames, params, background), split_frames, 20):
+            for result in pool.imap(partial(track_frames, params, background, frame_nums), split_frames, 20):
                 result_list.append(result)
 
                 # increase the number of tracked frames counter
@@ -394,7 +394,7 @@ def open_and_track_video(video_path, background_path, params, tracking_dir, vide
         else:
             # track the big chunk of frames and add results to tracking data arrays
             (tail_coords_small_array, spline_coords_small_array,
-             heading_angle_small_array, body_position_small_array, eye_coords_small_array) = track_frames(params, background, frames, frame_nums)
+             heading_angle_small_array, body_position_small_array, eye_coords_small_array) = track_frames(params, background, frame_nums, frames)
 
             # increase the number of tracked frames counter
             n_frames_tracked += len(frame_nums)
@@ -523,9 +523,9 @@ def open_and_track_video_batch(params, tracking_dir, progress_signal=None):
 
     # track each video with the same parameters
     for i in range(len(video_paths)):
-        open_and_track_video(video_paths[i], params, tracking_dir, i, progress_signal)
+        open_and_track_video(video_paths[i], None, params, tracking_dir, i, progress_signal)
 
-def track_frames(params, background, frames, frame_nums):
+def track_frames(params, background, frame_nums, frames):
     '''
     Perform tracking on the provided frames.
 
