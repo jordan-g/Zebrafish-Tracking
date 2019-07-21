@@ -7,7 +7,6 @@ import traceback
 import scipy.ndimage
 import scipy.stats
 from scipy import interpolate
-import pylab
 
 import os
 import re
@@ -1323,7 +1322,7 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30, headin
             tail_brightness = frame[current_point[1]-2:current_point[1]+3, current_point[0]-2:current_point[0]+3, 0].mean()
 
         # create a Gaussian pdf (we will use this to find the midline of the tail)
-        normpdf = pylab.normpdf(np.arange(-guess_tail_width/4.0, (guess_tail_width/4.0)+1), 0, 8)
+        normpdf = scipy.stats.norm.pdf(np.arange(-guess_tail_width/4.0, (guess_tail_width/4.0)+1), 0, 8)
     else:
         # set current point to the first point that was found in the last tracked frame
         # current_point = fitted_tail[-1][0, :]
@@ -1427,7 +1426,7 @@ def track_headfixed_tail(frame, params, crop_params, smoothing_factor=30, headin
         if first_frame:
             if count > 10:
                 # get contrast in all convolution results
-                trapz = [pylab.trapz(result - result.mean()) for result in convolution_results]
+                trapz = [np.trapz(result - result.mean()) for result in convolution_results]
 
                 slicesnp = np.vstack(slices)
 
